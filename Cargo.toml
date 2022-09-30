@@ -1,0 +1,12 @@
+[package]
+name = "bdat"
+version = "0.1.0"
+edition = "2021"
+license = "mit OR apache-2.0"
+
+[dependencies]
+serde = {version = "1.0", optional = true}
+
+[features]
+default = ["serde"]
+serde = ["dep:serde"]
