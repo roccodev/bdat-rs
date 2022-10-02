@@ -1,6 +1,5 @@
 use crate::types::Value;
 
-#[cfg(feature = "serde")]
 impl<'de> serde::Deserialize<'de> for Value {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where

@@ -1,14 +1,32 @@
-use std::ops::Index;
+use std::{marker::PhantomData, ops::Index};
+
+/// A deserialized Bdat table
+pub struct Table<R> {
+    rows: Vec<R>,
+    columns: usize,
+}
+
+/// A memory-mapped Bdat table
+pub struct MappedTable<'b, I, R> {
+    buffer: &'b I,
+    _ty: PhantomData<R>,
+}
 
 /// A Bdat table
 ///
 /// ## Accessing cells
 /// The [`RowRef`] struct provides an easy interface to access cells.  
-/// For example, to access the cell at row 1 and column "Param1", you can use `table.row(1)["Param1"]`.
-pub struct Table {
-    name: Label,
-    columns: Vec<String>,
-    rows: Vec<Cell>,
+/// For example, to access the cell at row 1 and column "Param1", you can use `table.row(1)["Param1".into()]`.
+pub struct RawTable {
+    pub(crate) name: Option<Label>,
+    pub(crate) columns: Vec<ColumnDef>,
+    pub(crate) rows: Vec<Vec<Cell>>,
+}
+
+/// A column definition from a Bdat table
+pub struct ColumnDef {
+    pub(crate) ty: u8,
+    pub(crate) label: Label,
 }
 
 /// A cell in a Bdat table
@@ -35,17 +53,28 @@ pub enum Value {
     Unknown3(u16),
 }
 
+#[derive(PartialEq, Eq)]
 pub enum Label {
     Hash(u32),
     String(String),
 }
 
-struct RowRef<'t> {
+pub struct RowRef<'t> {
     index: usize,
-    table: &'t Table,
+    table: &'t RawTable,
 }
 
-impl Table {
+impl<R> Table<R> {
+    pub fn len(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub fn columns(&self) -> usize {
+        self.columns
+    }
+}
+
+impl RawTable {
     /// Gets a row by its ID
     ///
     /// # Panics
@@ -66,18 +95,30 @@ impl Table {
 
 impl<'t, S> Index<S> for RowRef<'t>
 where
-    S: AsRef<str>,
+    S: Into<Label>,
 {
     type Output = Cell;
 
     fn index(&self, index: S) -> &Self::Output {
-        let index = index.as_ref();
+        let index = index.into();
         let index = self
             .table
             .columns
             .iter()
-            .position(|col| col == index)
+            .position(|col| col.label == index)
             .expect("no such column");
-        &self.table.rows[index]
+        &self.table.rows[self.index][index]
+    }
+}
+
+impl From<String> for Label {
+    fn from(s: String) -> Self {
+        Self::String(s)
+    }
+}
+
+impl From<u32> for Label {
+    fn from(hash: u32) -> Self {
+        Self::Hash(hash)
     }
 }

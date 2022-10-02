@@ -5,8 +5,6 @@ edition = "2021"
 license = "mit OR apache-2.0"
 
 [dependencies]
-serde = {version = "1.0", optional = true}
-
-[features]
-default = ["serde"]
-serde = ["dep:serde"]
+serde = "1.0"
+byteorder = "1.4"
+thiserror = "1.0"
