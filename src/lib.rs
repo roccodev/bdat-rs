@@ -1,4 +1,4 @@
 mod de;
 pub mod error;
-mod read;
+pub mod read;
 mod types;

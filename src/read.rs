@@ -1,22 +1,37 @@
 use std::{
-    io::{BufRead, Read},
+    convert::TryFrom,
+    io::{BufRead, Read, Seek, SeekFrom},
     marker::PhantomData,
     num::NonZeroU32,
 };
 
-use byteorder::{ByteOrder, LittleEndian, ReadBytesExt};
+use byteorder::{ByteOrder, ReadBytesExt};
 
 use crate::{
     error::{BdatError, Result, Scope},
-    types::{ColumnDef, Label, RawTable, Value},
+    types::{ColumnDef, Label, RawTable, ValueType},
 };
+
+pub use byteorder::{BigEndian, LittleEndian, NativeEndian, NetworkEndian};
 
 const LEN_COLUMN_DEF_V2: usize = 3;
 const LEN_HASH_DEF_V2: usize = 8;
 
-struct BdatReader<R, E = LittleEndian> {
+pub struct BdatFile<R, E> {
+    reader: BdatReader<R, E>,
+    header: FileHeader,
+}
+
+struct BdatReader<R, E> {
     stream: R,
+    version: BdatVersion,
     _endianness: PhantomData<E>,
+}
+
+#[derive(Debug)]
+struct FileHeader {
+    table_count: usize,
+    table_offsets: Vec<usize>,
 }
 
 struct TableData<'r> {
@@ -27,29 +42,92 @@ struct TableData<'r> {
     rows_offset: usize,
 }
 
-impl<R, E> BdatReader<R, E>
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+enum BdatVersion {
+    /// Used in XC1/XCX/XC2/XCDE
+    Legacy,
+    /// Used in XC3
+    Modern,
+}
+
+impl<R, E> BdatFile<R, E>
 where
-    R: Read,
+    R: Read + Seek,
     E: ByteOrder,
 {
+    pub fn read(input: R) -> Result<Self> {
+        let mut reader = BdatReader::read_file(input)?;
+        let header = reader.read_header()?;
+        Ok(Self { reader, header })
+    }
+
+    pub fn get_tables(&mut self) -> Result<Vec<RawTable>> {
+        let mut tables = Vec::with_capacity(self.header.table_count);
+
+        for i in 0..self.header.table_count {
+            self.reader
+                .stream
+                .seek(SeekFrom::Start(self.header.table_offsets[i] as u64))?;
+            let table = self.reader.read_table()?;
+
+            tables.push(table);
+        }
+
+        Ok(tables)
+    }
+}
+
+impl<R, E> BdatReader<R, E>
+where
+    R: Read + Seek,
+    E: ByteOrder,
+{
+    pub fn new(stream: R, version: BdatVersion) -> Self {
+        Self {
+            stream,
+            version,
+            _endianness: PhantomData,
+        }
+    }
+
+    pub fn read_file(mut stream: R) -> Result<Self> {
+        if stream.read_u32::<E>()? == 0x54_41_44_42 {
+            if stream.read_u32::<E>()? != 0x01_00_10_04 {
+                return Err(BdatError::MalformedBdat(Scope::File));
+            }
+            Ok(Self::new(stream, BdatVersion::Modern))
+        } else {
+            Ok(Self::new(stream, BdatVersion::Legacy))
+        }
+    }
+
+    pub fn read_table(&mut self) -> Result<RawTable> {
+        match self.version {
+            BdatVersion::Legacy => todo!("legacy bdats"),
+            BdatVersion::Modern => self.read_table_v2(),
+        }
+    }
+
     fn read_table_v2(&mut self) -> Result<RawTable> {
-        if self.r_i32()? != 0x42_44_41_54 || self.r_i32()? != 0x3004 {
+        let base_offset = self.stream.stream_position()?;
+
+        if self.r_u32()? != 0x54_41_44_42 || self.r_u32()? != 0x3004 {
             return Err(BdatError::MalformedBdat(Scope::Table));
         }
 
-        let columns = self.r_i32()? as usize;
-        let rows = self.r_i32()? as usize;
-        let base_id = self.r_i32()?;
-        self.r_i32()?;
+        let columns = self.r_u32()? as usize;
+        let rows = self.r_u32()? as usize;
+        let base_id = self.r_u32()?;
+        self.r_u32()?;
 
-        let offset_col = self.r_i32()? as usize;
-        let offset_hash = self.r_i32()? as usize;
-        let offset_row = self.r_i32()? as usize;
+        let offset_col = self.r_u32()? as usize;
+        let offset_hash = self.r_u32()? as usize;
+        let offset_row = self.r_u32()? as usize;
         let offset_string;
 
-        let row_length = self.r_i32()? as usize;
-        offset_string = self.r_i32()? as usize;
-        let str_length = self.r_i32()? as usize;
+        let row_length = self.r_u32()? as usize;
+        offset_string = self.r_u32()? as usize;
+        let str_length = self.r_u32()? as usize;
 
         let lengths = [
             offset_col + LEN_COLUMN_DEF_V2 * columns,
@@ -58,7 +136,9 @@ where
             offset_string + str_length,
         ];
         let table_len = lengths.iter().max_by_key(|&i| i).expect("todo");
-        let table_raw = vec![0u8; *table_len];
+        let mut table_raw = vec![0u8; *table_len];
+        self.stream.seek(SeekFrom::Start(base_offset))?;
+        self.stream.read_exact(&mut table_raw)?;
         let table_data = TableData::read(
             &table_raw,
             offset_string,
@@ -71,13 +151,19 @@ where
         let mut col_data = Vec::with_capacity(columns);
         let mut row_data = Vec::with_capacity(rows);
 
+        let mut data_offset = 0;
         for i in 0..columns {
             let col = &table_raw[offset_col + i * LEN_COLUMN_DEF_V2..];
-            let ty = col[0];
+            let ty = ValueType::try_from(col[0]).expect("unsupported value type");
             let name_offset = (&col[1..]).read_u16::<E>()?;
             let label = table_data.get_label::<E>(name_offset as usize)?;
 
-            col_data.push(ColumnDef { ty, label });
+            col_data.push(ColumnDef {
+                ty,
+                label,
+                offset: data_offset,
+            });
+            data_offset += ty.data_len();
         }
 
         for i in 0..rows {
@@ -92,9 +178,27 @@ where
         })
     }
 
+    fn read_header(&mut self) -> Result<FileHeader> {
+        let table_count = self.r_u32()? as usize;
+        let mut table_offsets = Vec::with_capacity(table_count);
+
+        if self.version == BdatVersion::Modern {
+            self.stream.read_u32::<E>()?;
+        }
+
+        for _ in 0..table_count {
+            table_offsets.push(self.r_u32()? as usize);
+        }
+
+        Ok(FileHeader {
+            table_count,
+            table_offsets,
+        })
+    }
+
     #[inline]
-    fn r_i32(&mut self) -> Result<i32> {
-        Ok(self.stream.read_i32::<E>().expect("todo"))
+    fn r_u32(&mut self) -> Result<u32> {
+        Ok(self.stream.read_u32::<E>()?)
     }
 }
 

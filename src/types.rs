@@ -1,4 +1,7 @@
-use std::{marker::PhantomData, ops::Index};
+use std::{fmt::Display, marker::PhantomData, ops::Index};
+
+use enum_kinds::EnumKind;
+use num_enum::TryFromPrimitive;
 
 /// A deserialized Bdat table
 pub struct Table<R> {
@@ -18,15 +21,17 @@ pub struct MappedTable<'b, I, R> {
 /// The [`RowRef`] struct provides an easy interface to access cells.  
 /// For example, to access the cell at row 1 and column "Param1", you can use `table.row(1)["Param1".into()]`.
 pub struct RawTable {
-    pub(crate) name: Option<Label>,
-    pub(crate) columns: Vec<ColumnDef>,
-    pub(crate) rows: Vec<Vec<Cell>>,
+    pub name: Option<Label>,
+    pub columns: Vec<ColumnDef>,
+    pub rows: Vec<Vec<Cell>>,
 }
 
 /// A column definition from a Bdat table
+#[derive(Debug)]
 pub struct ColumnDef {
-    pub(crate) ty: u8,
-    pub(crate) label: Label,
+    pub ty: ValueType,
+    pub label: Label,
+    pub offset: usize,
 }
 
 /// A cell in a Bdat table
@@ -37,7 +42,10 @@ pub enum Cell {
 }
 
 /// A value in a Bdat cell
+#[derive(EnumKind)]
+#[enum_kind(ValueType, derive(TryFromPrimitive), repr(u8))]
 pub enum Value {
+    Unknown,
     UnsignedByte(u8),
     UnsignedShort(u16),
     UnsignedInt(u32),
@@ -53,7 +61,7 @@ pub enum Value {
     Unknown3(u16),
 }
 
-#[derive(PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum Label {
     Hash(u32),
     String(String),
@@ -93,6 +101,18 @@ impl RawTable {
     }
 }
 
+impl ValueType {
+    pub fn data_len(&self) -> usize {
+        use ValueType::*;
+        match self {
+            Unknown => 0,
+            UnsignedByte | SignedByte | Percent | Unknown2 => 1,
+            UnsignedShort | SignedShort | Unknown3 => 2,
+            UnsignedInt | SignedInt | String | Float | HashRef | Unknown1 => 4,
+        }
+    }
+}
+
 impl<'t, S> Index<S> for RowRef<'t>
 where
     S: Into<Label>,
@@ -120,5 +140,14 @@ impl From<String> for Label {
 impl From<u32> for Label {
     fn from(hash: u32) -> Self {
         Self::Hash(hash)
+    }
+}
+
+impl Display for Label {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Hash(hash) => write!(f, "<{:08X}>", hash), // TODO
+            Self::String(s) => write!(f, "{}", s),
+        }
     }
 }

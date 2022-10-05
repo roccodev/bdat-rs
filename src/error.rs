@@ -17,4 +17,5 @@ pub enum BdatError {
 #[derive(Debug)]
 pub enum Scope {
     Table,
+    File,
 }
