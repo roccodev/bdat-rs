@@ -23,7 +23,7 @@ pub struct MappedTable<'b, I, R> {
 pub struct RawTable {
     pub name: Option<Label>,
     pub columns: Vec<ColumnDef>,
-    pub rows: Vec<Vec<Cell>>,
+    pub rows: Vec<Row>,
 }
 
 /// A column definition from a Bdat table
@@ -34,7 +34,15 @@ pub struct ColumnDef {
     pub offset: usize,
 }
 
-/// A cell in a Bdat table
+/// A row from a Bdat table
+#[derive(Debug)]
+pub struct Row {
+    pub id: usize,
+    pub cells: Vec<Cell>,
+}
+
+/// A cell from a Bdat row
+#[derive(Debug)]
 pub enum Cell {
     Single(Value),
     List(Vec<Value>),
@@ -42,7 +50,7 @@ pub enum Cell {
 }
 
 /// A value in a Bdat cell
-#[derive(EnumKind)]
+#[derive(EnumKind, Debug)]
 #[enum_kind(ValueType, derive(TryFromPrimitive), repr(u8))]
 pub enum Value {
     Unknown,
@@ -55,7 +63,7 @@ pub enum Value {
     String(String),
     Float(f32),
     HashRef(u32),
-    Percent(f32),
+    Percent(u8),
     Unknown1(u32),
     Unknown2(u8),
     Unknown3(u16),
@@ -127,7 +135,7 @@ where
             .iter()
             .position(|col| col.label == index)
             .expect("no such column");
-        &self.table.rows[self.index][index]
+        &self.table.rows[self.index].cells[index]
     }
 }
 
@@ -148,6 +156,30 @@ impl Display for Label {
         match self {
             Self::Hash(hash) => write!(f, "<{:08X}>", hash), // TODO
             Self::String(s) => write!(f, "{}", s),
+        }
+    }
+}
+
+macro_rules! default_display {
+    ($fmt:expr, $val:expr, $($variants:tt ) *) => {
+        match $val {
+            $(
+                Value::$variants(a) => a.fmt($fmt),
+            )*
+            v => panic!("Unsupported Display {:?}", v)
+        }
+    };
+}
+
+impl Display for Value {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Unknown => return Ok(()),
+            Self::HashRef(h) => Label::Hash(*h).fmt(f),
+            Self::Percent(v) => write!(f, "{}%", v),
+            v => {
+                default_display!(f, v, SignedByte SignedShort SignedInt UnsignedByte UnsignedShort UnsignedInt Unknown1 Unknown2 Unknown3 String Float)
+            }
         }
     }
 }

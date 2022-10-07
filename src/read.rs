@@ -1,6 +1,6 @@
 use std::{
     convert::TryFrom,
-    io::{BufRead, Read, Seek, SeekFrom},
+    io::{BufRead, Cursor, Read, Seek, SeekFrom},
     marker::PhantomData,
     num::NonZeroU32,
 };
@@ -9,7 +9,7 @@ use byteorder::{ByteOrder, ReadBytesExt};
 
 use crate::{
     error::{BdatError, Result, Scope},
-    types::{ColumnDef, Label, RawTable, ValueType},
+    types::{Cell, ColumnDef, Label, RawTable, Row, Value, ValueType},
 };
 
 pub use byteorder::{BigEndian, LittleEndian, NativeEndian, NetworkEndian};
@@ -168,13 +168,46 @@ where
 
         for i in 0..rows {
             let row = &table_raw[offset_row + i * row_length..];
-            // TODO parse values
+            let mut cells = Vec::with_capacity(col_data.len());
+            let mut cursor = Cursor::new(row);
+            for col in &col_data {
+                let value = Self::read_value_v2(&table_data, &mut cursor, col.ty)?;
+                cells.push(Cell::Single(value));
+            }
+            row_data.push(Row { id: 0, cells });
         }
 
         Ok(RawTable {
             name,
             columns: col_data,
             rows: row_data,
+        })
+    }
+
+    fn read_value_v2(
+        table_data: &TableData,
+        mut buf: impl Read,
+        col_type: ValueType,
+    ) -> Result<Value> {
+        Ok(match col_type {
+            ValueType::Unknown => Value::Unknown,
+            ValueType::UnsignedByte => Value::UnsignedByte(buf.read_u8()?),
+            ValueType::UnsignedShort => Value::UnsignedShort(buf.read_u16::<E>()?),
+            ValueType::UnsignedInt => Value::UnsignedInt(buf.read_u32::<E>()?),
+            ValueType::SignedByte => Value::SignedByte(buf.read_i8()?),
+            ValueType::SignedShort => Value::SignedShort(buf.read_i16::<E>()?),
+            ValueType::SignedInt => Value::SignedInt(buf.read_i32::<E>()?),
+            ValueType::String => Value::String(
+                table_data
+                    .get_string(buf.read_u32::<E>()? as usize, usize::MAX)?
+                    .to_string(),
+            ),
+            ValueType::Float => Value::Float(buf.read_f32::<E>()?),
+            ValueType::Percent => Value::Percent(buf.read_u8()?),
+            ValueType::HashRef => Value::HashRef(buf.read_u32::<E>()?),
+            ValueType::Unknown1 => Value::Unknown1(buf.read_u32::<E>()?),
+            ValueType::Unknown2 => Value::Unknown2(buf.read_u8()?),
+            ValueType::Unknown3 => Value::Unknown3(buf.read_u16::<E>()?),
         })
     }
 
@@ -237,7 +270,7 @@ impl<'r> TableData<'r> {
             .flatten()
             .take(limit)
             .count();
-        Ok(std::str::from_utf8(&self.data[str_ptr..len])?)
+        Ok(std::str::from_utf8(&self.data[str_ptr..str_ptr + len])?)
     }
 
     /// Reads a column label (either a string or a hash) from the string table at the given offset
