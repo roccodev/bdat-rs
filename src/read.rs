@@ -19,7 +19,7 @@ const LEN_HASH_DEF_V2: usize = 8;
 
 pub struct BdatFile<R, E> {
     reader: BdatReader<R, E>,
-    header: FileHeader,
+    pub header: FileHeader,
 }
 
 struct BdatReader<R, E> {
@@ -29,8 +29,8 @@ struct BdatReader<R, E> {
 }
 
 #[derive(Debug)]
-struct FileHeader {
-    table_count: usize,
+pub struct FileHeader {
+    pub table_count: usize,
     table_offsets: Vec<usize>,
 }
 
@@ -117,7 +117,7 @@ where
 
         let columns = self.r_u32()? as usize;
         let rows = self.r_u32()? as usize;
-        let base_id = self.r_u32()?;
+        let base_id = self.r_u32()? as usize;
         self.r_u32()?;
 
         let offset_col = self.r_u32()? as usize;
@@ -174,7 +174,10 @@ where
                 let value = Self::read_value_v2(&table_data, &mut cursor, col.ty)?;
                 cells.push(Cell::Single(value));
             }
-            row_data.push(Row { id: 0, cells });
+            row_data.push(Row {
+                id: base_id + i,
+                cells,
+            });
         }
 
         Ok(RawTable {

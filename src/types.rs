@@ -69,7 +69,7 @@ pub enum Value {
     Unknown3(u16),
 }
 
-#[derive(PartialEq, Eq, Debug)]
+#[derive(PartialEq, Eq, Debug, Clone)]
 pub enum Label {
     Hash(u32),
     String(String),
@@ -154,7 +154,13 @@ impl From<u32> for Label {
 impl Display for Label {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Hash(hash) => write!(f, "<{:08X}>", hash), // TODO
+            Self::Hash(hash) => {
+                if f.sign_plus() {
+                    write!(f, "{:08X}", hash)
+                } else {
+                    write!(f, "<{:08X}>", hash)
+                }
+            }
             Self::String(s) => write!(f, "{}", s),
         }
     }

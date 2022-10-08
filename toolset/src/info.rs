@@ -1,4 +1,4 @@
-use std::fs::File;
+use std::{fs::File, io::BufReader};
 
 use crate::{
     filter::{Filter, FilterArg},
@@ -22,36 +22,42 @@ pub struct InfoArgs {
 }
 
 pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
-    let file = File::open(input.in_file)?;
-    let mut file = BdatFile::<_, LittleEndian>::read(file).context("Failed to read BDAT file")?;
-
     let table_filter: Filter = args.tables.into_iter().map(FilterArg).collect();
     let column_filter: Filter = args.columns.into_iter().map(FilterArg).collect();
 
-    for table in file.get_tables().context("Could not parse BDAT tables")? {
-        let name = match table.name {
-            Some(n) => {
-                if !table_filter.contains(&n) {
-                    continue;
+    for file in input.list_files("bdat") {
+        let path = file?;
+        let file = BufReader::new(File::open(&path)?);
+        let mut file =
+            BdatFile::<_, LittleEndian>::read(file).context("Failed to read BDAT file")?;
+        for table in file
+            .get_tables()
+            .with_context(|| format!("Could not parse BDAT tables ({})", path.to_string_lossy()))?
+        {
+            let name = match table.name {
+                Some(n) => {
+                    if !table_filter.contains(&n) {
+                        continue;
+                    }
+                    n
                 }
-                n
-            }
-            None => continue,
-        };
-        println!("Table {}", name);
-        println!(
-            "  Columns: {} / Rows: {}",
-            table.columns.len(),
-            table.rows.len()
-        );
-        if !table.columns.is_empty() {
-            println!("  Columns:");
-            for col in table
-                .columns
-                .into_iter()
-                .filter(|c| column_filter.contains(&c.label))
-            {
-                println!("    - [{}] {}: {:?}", col.offset, col.label, col.ty);
+                None => continue,
+            };
+            println!("Table {}", name);
+            println!(
+                "  Columns: {} / Rows: {}",
+                table.columns.len(),
+                table.rows.len()
+            );
+            if !table.columns.is_empty() {
+                println!("  Columns:");
+                for col in table
+                    .columns
+                    .into_iter()
+                    .filter(|c| column_filter.contains(&c.label))
+                {
+                    println!("    - [{}] {}: {:?}", col.offset, col.label, col.ty);
+                }
             }
         }
     }
