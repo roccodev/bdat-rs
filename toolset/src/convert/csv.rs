@@ -51,7 +51,7 @@ impl CsvConverter {
 }
 
 impl BdatSerialize for CsvConverter {
-    fn write_table(&mut self, table: RawTable, writer: &mut dyn Write) -> Result<()> {
+    fn write_table(&self, table: RawTable, writer: &mut dyn Write) -> Result<()> {
         let header = table
             .columns
             .iter()

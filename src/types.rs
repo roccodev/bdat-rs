@@ -73,6 +73,7 @@ pub enum Value {
 pub enum Label {
     Hash(u32),
     String(String),
+    Unhashed(String),
 }
 
 pub struct RowRef<'t> {
@@ -161,7 +162,7 @@ impl Display for Label {
                     write!(f, "<{:08X}>", hash)
                 }
             }
-            Self::String(s) => write!(f, "{}", s),
+            Self::String(s) | Self::Unhashed(s) => write!(f, "{}", s),
         }
     }
 }

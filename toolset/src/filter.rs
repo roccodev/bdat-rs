@@ -14,7 +14,7 @@ impl Filter {
 
         let hash = match label {
             Label::Hash(h) => *h,
-            Label::String(s) => Self::hash(s),
+            Label::String(s) | Label::Unhashed(s) => Self::hash(s),
         };
         self.hashes.binary_search(&hash).is_ok()
     }
@@ -43,7 +43,7 @@ impl FromIterator<Label> for Filter {
             .into_iter()
             .map(|l| match l {
                 Label::Hash(h) => h,
-                Label::String(s) => Self::hash(&s),
+                Label::String(s) | Label::Unhashed(s) => Self::hash(&s),
             })
             .collect::<Vec<_>>();
         hashes.sort_unstable();

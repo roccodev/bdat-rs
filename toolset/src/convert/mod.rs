@@ -11,6 +11,7 @@ use bdat::{
 };
 use clap::{error::ErrorKind, Args, Error};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use rayon::prelude::*;
 
 use crate::{
     filter::{Filter, FilterArg},
@@ -43,13 +44,17 @@ pub struct ConvertArgs {
     /// Only convert these columns. If absent, converts all columns.
     #[arg(short, long)]
     columns: Vec<String>,
+    /// The number of jobs (or threads) to use in the conversion process.
+    /// By default, this is the number of cores/threads in the system.
+    #[arg(short, long)]
+    jobs: Option<u16>,
 
     #[clap(flatten)]
     csv_opts: csv::CsvOptions,
 }
 
 pub trait BdatSerialize {
-    fn write_table(&mut self, table: RawTable, writer: &mut dyn Write) -> Result<()>;
+    fn write_table(&self, table: RawTable, writer: &mut dyn Write) -> Result<()>;
 
     fn get_file_name(&self, table_name: &str) -> String;
 }
@@ -59,6 +64,15 @@ pub trait BdatDeserialize {
 }
 
 pub fn run_conversions(input: InputData, args: ConvertArgs) -> Result<()> {
+    // Change number of jobs in Rayon's thread pool
+    let mut pool_builder = rayon::ThreadPoolBuilder::new();
+    if let Some(jobs) = args.jobs {
+        pool_builder = pool_builder.num_threads(jobs as usize);
+    }
+    pool_builder
+        .build_global()
+        .context("Could not build thread pool")?;
+
     run_serialization(input, args)
 }
 
@@ -69,7 +83,7 @@ pub fn run_serialization(input: InputData, args: ConvertArgs) -> Result<()> {
     let out_dir = Path::new(&out_dir);
     std::fs::create_dir(out_dir).context("Could not create output directory")?;
 
-    let mut serializer: Box<dyn BdatSerialize> = match args
+    let serializer: Box<dyn BdatSerialize + Send + Sync> = match args
         .file_type
         .ok_or_else(|| Error::raw(ErrorKind::MissingRequiredArgument, "file type is required"))?
         .as_str()
@@ -98,65 +112,74 @@ pub fn run_serialization(input: InputData, args: ConvertArgs) -> Result<()> {
             .unwrap(),
         ),
     );
-    let table_bar = multi_bar.add(
-        ProgressBar::new(0).with_style(
-            ProgressStyle::with_template(
-                "{spinner:.green} Tables: {human_pos}/{human_len} ({percent}%) [{bar}]",
-            )
-            .unwrap(),
-        ),
-    );
 
-    for file in files {
-        let path = file?;
-        let file = BufReader::new(File::open(&path)?);
-        let mut file =
-            BdatFile::<_, LittleEndian>::read(file).context("Failed to read BDAT file")?;
+    let table_bar_style = ProgressStyle::with_template(
+        "{spinner:.green} Tables: {human_pos}/{human_len} ({percent}%) [{bar}]",
+    )
+    .unwrap();
 
-        file_bar.inc(0);
-        table_bar.reset();
-        table_bar.set_length(file.header.table_count as u64);
+    let hash_table = input.load_hashes()?;
 
-        for table in file
-            .get_tables()
-            .with_context(|| format!("Could not parse BDAT tables ({})", path.to_string_lossy()))?
-        {
-            let name = match table.name {
-                Some(ref n) => {
-                    if !table_filter.contains(&n) {
+    let res = files
+        .into_par_iter()
+        .map(|file| {
+            let path = file?;
+            let file = BufReader::new(File::open(&path)?);
+            let mut file =
+                BdatFile::<_, LittleEndian>::read(file).context("Failed to read BDAT file")?;
+
+            file_bar.inc(0);
+            let table_bar = multi_bar.add(
+                ProgressBar::new(file.header.table_count as u64)
+                    .with_style(table_bar_style.clone()),
+            );
+
+            for mut table in file.get_tables().with_context(|| {
+                format!("Could not parse BDAT tables ({})", path.to_string_lossy())
+            })? {
+                hash_table.convert_all(&mut table);
+
+                let name = match table.name {
+                    Some(ref n) => {
+                        if !table_filter.contains(&n) {
+                            continue;
+                        }
+                        n
+                    }
+                    None => {
+                        eprintln!(
+                            "[Warn] Found unnamed table in {}",
+                            path.file_name().unwrap().to_string_lossy()
+                        );
                         continue;
                     }
-                    n
-                }
-                None => {
-                    eprintln!(
-                        "[Warn] Found unnamed table in {}",
-                        path.file_name().unwrap().to_string_lossy()
-                    );
-                    continue;
-                }
-            };
+                };
 
-            // {:+} displays hashed names without brackets (<>)
-            let out_file =
-                File::create(out_dir.join(serializer.get_file_name(&format!("{:+}", name))))
-                    .context("Could not create output file")?;
-            let mut writer = BufWriter::new(out_file);
-            serializer
-                .write_table(table, &mut writer)
-                .context("Could not write table")?;
-            writer.flush().context("Could not save table")?;
+                // {:+} displays hashed names without brackets (<>)
+                let out_file =
+                    File::create(out_dir.join(serializer.get_file_name(&format!("{:+}", name))))
+                        .context("Could not create output file")?;
+                let mut writer = BufWriter::new(out_file);
+                serializer
+                    .write_table(table, &mut writer)
+                    .context("Could not write table")?;
+                writer.flush().context("Could not save table")?;
 
-            table_bar.inc(1);
-        }
+                table_bar.inc(1);
+            }
 
-        file_bar.inc(1);
+            file_bar.inc(1);
+            multi_bar.remove(&table_bar);
+
+            Ok(())
+        })
+        .find(|r: &anyhow::Result<()>| r.is_err());
+
+    if let Some(r) = res {
+        r?;
     }
 
-    table_bar.finish();
     file_bar.finish();
 
     Ok(())
 }
-
-fn serialize_tables<T, E>(in_file: BdatFile<T, E>, out_dir: &str) {}

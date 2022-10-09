@@ -1,15 +1,19 @@
 use std::{
     borrow::Cow,
+    fs::File,
     path::{Path, PathBuf},
 };
 
-use clap::{Parser, Subcommand};
+use anyhow::{Context, Result};
+use clap::{Args, Parser, Subcommand};
 use convert::ConvertArgs;
+use hash::HashNameTable;
 use info::InfoArgs;
 use walkdir::WalkDir;
 
 mod convert;
 pub mod filter;
+pub mod hash;
 mod info;
 
 #[derive(Parser)]
@@ -18,14 +22,8 @@ struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
 
-    /// A file containing unhashed names, one in each line. If provided, all matched hashes will
-    /// be replaced with the unhashed names.
-    #[arg(long, global = true)]
-    hashes: Option<String>,
-
-    /// The input files
-    #[arg(global = true)]
-    files: Vec<String>,
+    #[clap(flatten)]
+    input: InputData,
 }
 
 #[derive(Subcommand)]
@@ -36,18 +34,24 @@ enum Commands {
     Info(InfoArgs),
 }
 
+#[derive(Args)]
 pub struct InputData {
-    in_file: Vec<String>,
+    /// A file containing unhashed names, one in each line. If provided, all matched hashes will
+    /// be replaced with the unhashed names.
+    #[arg(long, global = true)]
+    hashes: Option<String>,
+
+    /// The input files
+    #[arg(global = true)]
+    files: Vec<String>,
 }
 
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Info(args)) => info::get_info(InputData { in_file: cli.files }, args),
-        Some(Commands::Convert(args)) => {
-            convert::run_conversions(InputData { in_file: cli.files }, args)
-        }
+        Some(Commands::Info(args)) => info::get_info(cli.input, args),
+        Some(Commands::Convert(args)) => convert::run_conversions(cli.input, args),
         _ => Ok(()),
     }
 }
@@ -58,7 +62,7 @@ impl InputData {
         extension: E,
     ) -> impl IntoIterator<Item = walkdir::Result<PathBuf>> + 'a {
         let extension = extension.into();
-        self.in_file.iter().flat_map(move |name| {
+        self.files.iter().flat_map(move |name| {
             WalkDir::new(name)
                 .into_iter()
                 .filter_map(move |p| match (p, extension) {
@@ -75,5 +79,15 @@ impl InputData {
                     }
                 })
         })
+    }
+
+    pub fn load_hashes(&self) -> Result<HashNameTable> {
+        match &self.hashes {
+            Some(path) => {
+                let file = File::open(path).context("Could not open hashes file")?;
+                Ok(HashNameTable::load_from_names(file, 0)?)
+            }
+            None => Ok(HashNameTable::empty()),
+        }
     }
 }
