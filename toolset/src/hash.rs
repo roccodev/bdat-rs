@@ -34,10 +34,10 @@ impl HashNameTable {
 
         for _ in 0..usize::from_le_bytes(buf) {
             reader.read_exact(&mut buf[0..4])?;
-            reader.read_exact(&mut buf[3..5])?;
+            reader.read_exact(&mut buf[4..6])?;
 
             let hash = u32::from_le_bytes(buf[0..4].try_into().unwrap());
-            let len = u16::from_le_bytes(buf[3..5].try_into().unwrap());
+            let len = u16::from_le_bytes(buf[4..6].try_into().unwrap());
 
             let mut string = vec![0u8; len as usize];
             reader.read_exact(&mut string)?;
