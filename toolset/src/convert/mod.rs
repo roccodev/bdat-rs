@@ -19,6 +19,7 @@ use crate::{
 };
 
 mod csv;
+mod json;
 
 #[derive(Args)]
 pub struct ConvertArgs {
@@ -51,6 +52,8 @@ pub struct ConvertArgs {
 
     #[clap(flatten)]
     csv_opts: csv::CsvOptions,
+    #[clap(flatten)]
+    json_opts: json::JsonOptions,
 }
 
 pub trait BdatSerialize {
@@ -79,16 +82,19 @@ pub fn run_conversions(input: InputData, args: ConvertArgs) -> Result<()> {
 pub fn run_serialization(input: InputData, args: ConvertArgs) -> Result<()> {
     let out_dir = args
         .out_file
+        .as_ref()
         .ok_or_else(|| Error::raw(ErrorKind::MissingRequiredArgument, "out dir is required"))?;
     let out_dir = Path::new(&out_dir);
     std::fs::create_dir(out_dir).context("Could not create output directory")?;
 
     let serializer: Box<dyn BdatSerialize + Send + Sync> = match args
         .file_type
+        .as_ref()
         .ok_or_else(|| Error::raw(ErrorKind::MissingRequiredArgument, "file type is required"))?
         .as_str()
     {
         "csv" => Box::new(csv::CsvConverter::new(args.csv_opts)),
+        "json" => Box::new(json::JsonConverter::new(&args)),
         t => {
             return Err(Error::raw(
                 ErrorKind::ValueValidation,
@@ -173,7 +179,7 @@ pub fn run_serialization(input: InputData, args: ConvertArgs) -> Result<()> {
 
             Ok(())
         })
-        .find(|r: &anyhow::Result<()>| r.is_err());
+        .find_any(|r: &anyhow::Result<()>| r.is_err());
 
     if let Some(r) = res {
         r?;
