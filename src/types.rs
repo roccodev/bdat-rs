@@ -20,6 +20,7 @@ pub struct MappedTable<'b, I, R> {
 /// ## Accessing cells
 /// The [`RowRef`] struct provides an easy interface to access cells.  
 /// For example, to access the cell at row 1 and column "Param1", you can use `table.row(1)["Param1".into()]`.
+#[derive(Debug, Clone, PartialEq)]
 pub struct RawTable {
     pub name: Option<Label>,
     pub columns: Vec<ColumnDef>,
@@ -27,7 +28,7 @@ pub struct RawTable {
 }
 
 /// A column definition from a Bdat table
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ColumnDef {
     pub ty: ValueType,
     pub label: Label,
@@ -35,14 +36,14 @@ pub struct ColumnDef {
 }
 
 /// A row from a Bdat table
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Row {
     pub id: usize,
     pub cells: Vec<Cell>,
 }
 
 /// A cell from a Bdat row
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Cell {
     Single(Value),
     List(Vec<Value>),
@@ -50,7 +51,7 @@ pub enum Cell {
 }
 
 /// A value in a Bdat cell
-#[derive(EnumKind, Debug)]
+#[derive(EnumKind, Debug, Clone, PartialEq)]
 #[enum_kind(ValueType, derive(TryFromPrimitive), repr(u8))]
 pub enum Value {
     Unknown,
@@ -69,7 +70,7 @@ pub enum Value {
     Unknown3(u16),
 }
 
-#[derive(PartialEq, Eq, Debug, Clone)]
+#[derive(PartialEq, Eq, Debug, Clone, Hash)]
 pub enum Label {
     Hash(u32),
     String(String),

@@ -1,5 +1,5 @@
+use std::num::TryFromIntError;
 use std::str::Utf8Error;
-
 use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, BdatError>;
@@ -12,6 +12,8 @@ pub enum BdatError {
     Io(#[from] std::io::Error),
     #[error("Malformed BDAT ({0:?})")]
     MalformedBdat(Scope),
+    #[error(transparent)]
+    InvalidLength(#[from] TryFromIntError),
 }
 
 #[derive(Debug)]

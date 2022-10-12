@@ -5,7 +5,7 @@ use crate::{
     InputData,
 };
 use anyhow::{Context, Result};
-use bdat::read::{BdatFile, LittleEndian};
+use bdat::io::{BdatFile, LittleEndian};
 use clap::Args;
 
 #[derive(Args)]
@@ -35,7 +35,7 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
             .with_context(|| format!("Could not parse BDAT tables ({})", path.to_string_lossy()))?
         {
             let name = match table.name {
-                Some(n) => {
+                Some(ref n) => {
                     if !table_filter.contains(&n) {
                         continue;
                     }
@@ -49,6 +49,7 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
                 table.columns.len(),
                 table.rows.len()
             );
+
             if !table.columns.is_empty() {
                 println!("  Columns:");
                 for col in table

@@ -6,7 +6,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use bdat::{
-    read::{BdatFile, LittleEndian},
+    io::{BdatFile, LittleEndian},
     types::RawTable,
 };
 use clap::{error::ErrorKind, Args, Error};
@@ -136,8 +136,7 @@ pub fn run_serialization(input: InputData, args: ConvertArgs) -> Result<()> {
 
             file_bar.inc(0);
             let table_bar = multi_bar.add(
-                ProgressBar::new(file.header.table_count as u64)
-                    .with_style(table_bar_style.clone()),
+                ProgressBar::new(file.table_count() as u64).with_style(table_bar_style.clone()),
             );
 
             for mut table in file.get_tables().with_context(|| {

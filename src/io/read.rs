@@ -1,6 +1,6 @@
 use std::{
     convert::TryFrom,
-    io::{BufRead, Cursor, Read, Seek, SeekFrom},
+    io::{Cursor, Read, Seek, SeekFrom},
     marker::PhantomData,
     num::NonZeroU32,
 };
@@ -12,26 +12,15 @@ use crate::{
     types::{Cell, ColumnDef, Label, RawTable, Row, Value, ValueType},
 };
 
-pub use byteorder::{BigEndian, LittleEndian, NativeEndian, NetworkEndian};
+use super::{BdatVersion, FileHeader};
 
 const LEN_COLUMN_DEF_V2: usize = 3;
 const LEN_HASH_DEF_V2: usize = 8;
 
-pub struct BdatFile<R, E> {
-    reader: BdatReader<R, E>,
-    pub header: FileHeader,
-}
-
-struct BdatReader<R, E> {
+pub(crate) struct BdatReader<R, E> {
     stream: R,
     version: BdatVersion,
     _endianness: PhantomData<E>,
-}
-
-#[derive(Debug)]
-pub struct FileHeader {
-    pub table_count: usize,
-    table_offsets: Vec<usize>,
 }
 
 struct TableData<'r> {
@@ -40,41 +29,6 @@ struct TableData<'r> {
     hash_table_offset: usize,
     columns_offset: usize,
     rows_offset: usize,
-}
-
-#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
-enum BdatVersion {
-    /// Used in XC1/XCX/XC2/XCDE
-    Legacy,
-    /// Used in XC3
-    Modern,
-}
-
-impl<R, E> BdatFile<R, E>
-where
-    R: Read + Seek,
-    E: ByteOrder,
-{
-    pub fn read(input: R) -> Result<Self> {
-        let mut reader = BdatReader::read_file(input)?;
-        let header = reader.read_header()?;
-        Ok(Self { reader, header })
-    }
-
-    pub fn get_tables(&mut self) -> Result<Vec<RawTable>> {
-        let mut tables = Vec::with_capacity(self.header.table_count);
-
-        for i in 0..self.header.table_count {
-            self.reader
-                .stream
-                .seek(SeekFrom::Start(self.header.table_offsets[i] as u64))?;
-            let table = self.reader.read_table()?;
-
-            tables.push(table);
-        }
-
-        Ok(tables)
-    }
 }
 
 impl<R, E> BdatReader<R, E>
@@ -118,7 +72,9 @@ where
         let columns = self.r_u32()? as usize;
         let rows = self.r_u32()? as usize;
         let base_id = self.r_u32()? as usize;
-        self.r_u32()?;
+        if self.r_u32()? != 0 {
+            panic!("Found unknown value that was not 0");
+        }
 
         let offset_col = self.r_u32()? as usize;
         let offset_hash = self.r_u32()? as usize;
@@ -139,7 +95,7 @@ where
         let mut table_raw = vec![0u8; *table_len];
         self.stream.seek(SeekFrom::Start(base_offset))?;
         self.stream.read_exact(&mut table_raw)?;
-        let table_data = TableData::read(
+        let table_data = TableData::new(
             &table_raw,
             offset_string,
             offset_hash,
@@ -214,12 +170,12 @@ where
         })
     }
 
-    fn read_header(&mut self) -> Result<FileHeader> {
+    pub(super) fn read_header(&mut self) -> Result<FileHeader> {
         let table_count = self.r_u32()? as usize;
         let mut table_offsets = Vec::with_capacity(table_count);
 
         if self.version == BdatVersion::Modern {
-            self.stream.read_u32::<E>()?;
+            self.stream.read_u32::<E>()?; // File size
         }
 
         for _ in 0..table_count {
@@ -232,6 +188,10 @@ where
         })
     }
 
+    pub(super) fn stream_mut(&mut self) -> &mut R {
+        &mut self.stream
+    }
+
     #[inline]
     fn r_u32(&mut self) -> Result<u32> {
         Ok(self.stream.read_u32::<E>()?)
@@ -239,7 +199,7 @@ where
 }
 
 impl<'r> TableData<'r> {
-    fn read(
+    fn new(
         data: &'r [u8],
         strings_offset: usize,
         hashes_offset: usize,
@@ -293,6 +253,7 @@ impl<'r> TableData<'r> {
     }
 
     fn are_labels_hashed(&self) -> bool {
+        // TODO its the opposite
         self.data[self.string_table_offset] != 0
     }
 }

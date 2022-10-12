@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    fs::{File, OpenOptions},
+    fs::OpenOptions,
     hash::{BuildHasher, Hasher},
     io::{BufRead, BufReader, Read, Seek, Write},
 };
