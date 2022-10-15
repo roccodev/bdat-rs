@@ -15,11 +15,15 @@ use rayon::prelude::*;
 
 use crate::{
     filter::{Filter, FilterArg},
+    hash::HashNameTable,
     InputData,
 };
 
+use self::schema::AsFileName;
+
 mod csv;
 mod json;
+mod schema;
 
 #[derive(Args)]
 pub struct ConvertArgs {
@@ -66,7 +70,7 @@ pub trait BdatDeserialize {
     fn read_table(&self) -> Result<RawTable>;
 }
 
-pub fn run_conversions(input: InputData, args: ConvertArgs) -> Result<()> {
+pub fn run_conversions(input: InputData, args: ConvertArgs, is_extracting: bool) -> Result<()> {
     // Change number of jobs in Rayon's thread pool
     let mut pool_builder = rayon::ThreadPoolBuilder::new();
     if let Some(jobs) = args.jobs {
@@ -76,10 +80,16 @@ pub fn run_conversions(input: InputData, args: ConvertArgs) -> Result<()> {
         .build_global()
         .context("Could not build thread pool")?;
 
-    run_serialization(input, args)
+    let hash_table = input.load_hashes()?;
+
+    run_serialization(input, args, hash_table)
 }
 
-pub fn run_serialization(input: InputData, args: ConvertArgs) -> Result<()> {
+pub fn run_serialization(
+    input: InputData,
+    args: ConvertArgs,
+    hash_table: HashNameTable,
+) -> Result<()> {
     let out_dir = args
         .out_file
         .as_ref()
@@ -124,8 +134,6 @@ pub fn run_serialization(input: InputData, args: ConvertArgs) -> Result<()> {
     )
     .unwrap();
 
-    let hash_table = input.load_hashes()?;
-
     let res = files
         .into_par_iter()
         .map(|file| {
@@ -162,7 +170,7 @@ pub fn run_serialization(input: InputData, args: ConvertArgs) -> Result<()> {
 
                 // {:+} displays hashed names without brackets (<>)
                 let out_file =
-                    File::create(out_dir.join(serializer.get_file_name(&format!("{:+}", name))))
+                    File::create(out_dir.join(serializer.get_file_name(&name.as_file_name())))
                         .context("Could not create output file")?;
                 let mut writer = BufWriter::new(out_file);
                 serializer
@@ -186,5 +194,9 @@ pub fn run_serialization(input: InputData, args: ConvertArgs) -> Result<()> {
 
     file_bar.finish();
 
+    Ok(())
+}
+
+fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
     Ok(())
 }

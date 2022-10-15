@@ -24,8 +24,10 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Convert to and from BDAT files
-    Convert(ConvertArgs),
+    /// Extract tables from BDAT files
+    Extract(ConvertArgs),
+    /// Convert from deserialized data to BDAT files
+    Pack(ConvertArgs),
     /// Print info about the structure of the BDAT file and the tables contained within
     Info(InfoArgs),
 }
@@ -47,7 +49,8 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Some(Commands::Info(args)) => info::get_info(cli.input, args),
-        Some(Commands::Convert(args)) => convert::run_conversions(cli.input, args),
+        Some(Commands::Extract(args)) => convert::run_conversions(cli.input, args, true),
+        Some(Commands::Pack(args)) => convert::run_conversions(cli.input, args, false),
         _ => Ok(()),
     }
 }
@@ -81,7 +84,7 @@ impl InputData {
         match &self.hashes {
             Some(path) => {
                 let file = File::open(path).context("Could not open hashes file")?;
-                Ok(HashNameTable::load_from_names(file, 0)?)
+                Ok(HashNameTable::load_from_names(file)?)
             }
             None => Ok(HashNameTable::empty()),
         }

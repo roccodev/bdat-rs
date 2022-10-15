@@ -52,7 +52,12 @@ pub enum Cell {
 
 /// A value in a Bdat cell
 #[derive(EnumKind, Debug, Clone, PartialEq)]
-#[enum_kind(ValueType, derive(TryFromPrimitive), repr(u8))]
+#[enum_kind(
+    ValueType,
+    derive(TryFromPrimitive),
+    repr(u8),
+    cfg_attr(feature = "derive-impls", derive(serde::Serialize, serde::Deserialize))
+)]
 pub enum Value {
     Unknown,
     UnsignedByte(u8),
@@ -71,6 +76,7 @@ pub enum Value {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
+#[cfg_attr(feature = "derive-impls", derive(serde::Serialize, serde::Deserialize))]
 pub enum Label {
     Hash(u32),
     String(String),

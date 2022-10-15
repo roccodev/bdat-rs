@@ -1,17 +1,21 @@
-use std::io::{Read, Seek, SeekFrom};
-
-use self::read::BdatReader;
+use self::{read::BdatReader, write::BdatWriter};
 use crate::{error::Result, types::RawTable};
-
-pub mod read;
-pub mod write;
-
 use byteorder::ByteOrder;
+use std::io::{Read, Seek, SeekFrom, Write};
+
+mod read;
+mod write;
+
 pub use byteorder::{BigEndian, LittleEndian, NativeEndian, NetworkEndian};
 
-pub struct BdatFile<R, E> {
-    reader: BdatReader<R, E>,
-    pub(crate) header: FileHeader,
+/// A little-endian BDAT file for the Nintendo Switch and Wii games
+pub type SwitchBdatFile<R> = BdatFile<R, LittleEndian>;
+/// A big-endian BDAT file for Xenoblade X
+pub type WiiUBdatFile<R> = BdatFile<R, BigEndian>;
+
+pub struct BdatFile<S, E> {
+    stream: BdatIo<S, E>,
+    header: Option<FileHeader>,
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
@@ -28,6 +32,11 @@ pub(crate) struct FileHeader {
     pub(crate) table_offsets: Vec<usize>,
 }
 
+enum BdatIo<S, E> {
+    Reader(BdatReader<S, E>),
+    Writer(BdatWriter<S, E>),
+}
+
 impl<R, E> BdatFile<R, E>
 where
     R: Read + Seek,
@@ -36,25 +45,56 @@ where
     pub fn read(input: R) -> Result<Self> {
         let mut reader = BdatReader::read_file(input)?;
         let header = reader.read_header()?;
-        Ok(Self { reader, header })
+        Ok(Self {
+            stream: BdatIo::Reader(reader),
+            header: Some(header),
+        })
     }
 
     pub fn table_count(&self) -> usize {
-        self.header.table_count
+        self.header
+            .as_ref()
+            .map(|h| h.table_count)
+            .unwrap_or_default()
     }
 
     pub fn get_tables(&mut self) -> Result<Vec<RawTable>> {
-        let mut tables = Vec::with_capacity(self.header.table_count);
+        let (reader, header) = match (&mut self.stream, &self.header) {
+            (BdatIo::Reader(r), Some(header)) => (r, header),
+            _ => panic!("unsupported read"),
+        };
 
-        for i in 0..self.header.table_count {
-            self.reader
+        let mut tables = Vec::with_capacity(header.table_count);
+
+        for i in 0..header.table_count {
+            reader
                 .stream_mut()
-                .seek(SeekFrom::Start(self.header.table_offsets[i] as u64))?;
-            let table = self.reader.read_table()?;
+                .seek(SeekFrom::Start(header.table_offsets[i] as u64))?;
+            let table = reader.read_table()?;
 
             tables.push(table);
         }
 
         Ok(tables)
+    }
+}
+
+impl<W, E> BdatFile<W, E>
+where
+    W: Write + Seek,
+    E: ByteOrder,
+{
+    pub fn new(writer: W, version: BdatVersion) -> Self {
+        Self {
+            stream: BdatIo::Writer(BdatWriter::new(writer, version)),
+            header: None,
+        }
+    }
+
+    pub fn write_all_tables(&mut self, tables: impl IntoIterator<Item = RawTable>) -> Result<()> {
+        match &mut self.stream {
+            BdatIo::Writer(w) => w.write_file(tables),
+            _ => panic!("unsupported write"),
+        }
     }
 }
