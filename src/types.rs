@@ -56,7 +56,8 @@ pub enum Cell {
     ValueType,
     derive(TryFromPrimitive),
     repr(u8),
-    cfg_attr(feature = "derive-impls", derive(serde::Serialize, serde::Deserialize))
+    cfg_attr(feature = "derive-impls", derive(serde::Serialize, serde::Deserialize)),
+    cfg_attr(feature = "derive-impls", serde(into = "u8", try_from = "u8"))
 )]
 pub enum Value {
     Unknown,
@@ -171,6 +172,12 @@ impl Display for Label {
             }
             Self::String(s) | Self::Unhashed(s) => write!(f, "{}", s),
         }
+    }
+}
+
+impl From<ValueType> for u8 {
+    fn from(t: ValueType) -> Self {
+        t as u8
     }
 }
 
