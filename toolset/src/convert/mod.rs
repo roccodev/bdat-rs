@@ -1,6 +1,7 @@
 use std::{
+    ffi::OsStr,
     fs::File,
-    io::{BufReader, BufWriter, Write},
+    io::{BufReader, BufWriter, Read, Write},
     path::Path,
 };
 
@@ -19,7 +20,7 @@ use crate::{
     InputData,
 };
 
-use self::schema::AsFileName;
+use self::schema::{AsFileName, FileSchema};
 
 mod csv;
 mod json;
@@ -67,7 +68,8 @@ pub trait BdatSerialize {
 }
 
 pub trait BdatDeserialize {
-    fn read_table(&self) -> Result<RawTable>;
+    /// Reads a BDAT table from a file.
+    fn read_table(&self, schema: &FileSchema, reader: &mut dyn Read) -> Result<RawTable>;
 }
 
 pub fn run_conversions(input: InputData, args: ConvertArgs, is_extracting: bool) -> Result<()> {
@@ -147,10 +149,24 @@ pub fn run_serialization(
                 ProgressBar::new(file.table_count() as u64).with_style(table_bar_style.clone()),
             );
 
+            let mut schema = (!args.no_schema).then(|| {
+                FileSchema::new(
+                    path.file_stem()
+                        .and_then(OsStr::to_str)
+                        .map(ToString::to_string)
+                        .unwrap(),
+                    args.untyped,
+                )
+            });
+
             for mut table in file.get_tables().with_context(|| {
                 format!("Could not parse BDAT tables ({})", path.to_string_lossy())
             })? {
                 hash_table.convert_all(&mut table);
+
+                if let Some(schema) = &mut schema {
+                    schema.feed_table(&table);
+                }
 
                 let name = match table.name {
                     Some(ref n) => {
@@ -181,6 +197,10 @@ pub fn run_serialization(
                 table_bar.inc(1);
             }
 
+            if let Some(schema) = schema {
+                schema.write(out_dir)?;
+            }
+
             file_bar.inc(1);
             multi_bar.remove(&table_bar);
 
@@ -198,5 +218,38 @@ pub fn run_serialization(
 }
 
 fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
+    let schema_files = input.list_files("bschema").into_iter().collect::<Vec<_>>();
+    if schema_files.is_empty() {
+        todo!("no schema files found; schema files are required for deserialization");
+    }
+
+    let multi_bar = MultiProgress::new();
+    let file_bar = multi_bar.add(
+        ProgressBar::new(schema_files.len() as u64).with_style(
+            ProgressStyle::with_template(
+                "{spinner:.green} Files: {human_pos}/{human_len} ({percent}%) [{bar}] ETA: {eta}",
+            )
+            .unwrap(),
+        ),
+    );
+
+    let table_bar_style = ProgressStyle::with_template(
+        "{spinner:.green} Tables: {human_pos}/{human_len} ({percent}%) [{bar}]",
+    )
+    .unwrap();
+
+    file_bar.inc(0);
+    for schema_file in schema_files {
+        let schema_file = FileSchema::read(File::open(schema_file?)?)?;
+
+        let table_bar = multi_bar.add(
+            ProgressBar::new(schema_file.table_count() as u64).with_style(table_bar_style.clone()),
+        );
+
+        file_bar.inc(1);
+        multi_bar.remove(&table_bar);
+    }
+
+    file_bar.finish();
     Ok(())
 }

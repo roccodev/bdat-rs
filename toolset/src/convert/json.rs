@@ -1,11 +1,15 @@
-use std::io::Write;
+use std::{
+    collections::HashMap,
+    io::{Read, Write},
+};
 
 use anyhow::{Context, Result};
-use bdat::types::{Cell, Label, RawTable};
+use bdat::types::{Cell, Label, RawTable, ValueType};
 use clap::Args;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
-use super::{BdatSerialize, ConvertArgs};
+use super::{schema::FileSchema, BdatDeserialize, BdatSerialize, ConvertArgs};
 
 #[derive(Args)]
 pub struct JsonOptions {
@@ -13,6 +17,28 @@ pub struct JsonOptions {
     /// to improve readability.
     #[arg(long)]
     pretty: bool,
+}
+
+#[derive(Serialize)]
+struct JsonTable {
+    schema: Option<Vec<ColumnSchema>>,
+    rows: Vec<TableRow>,
+}
+
+#[derive(Serialize)]
+struct TableRow {
+    #[serde(rename = "$id")]
+    id: usize,
+    #[serde(flatten)]
+    cells: HashMap<String, Cell>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct ColumnSchema {
+    name: String,
+    #[serde(rename = "type")]
+    ty: ValueType,
+    hashed: bool,
 }
 
 pub struct JsonConverter {
@@ -29,21 +55,7 @@ impl JsonConverter {
     }
 
     fn convert(&self, bdat: bdat::types::Value) -> Value {
-        use bdat::types::Value as Bdat;
-
-        match bdat {
-            Bdat::Unknown => Value::Null,
-            Bdat::UnsignedByte(n) | Bdat::Unknown2(n) => n.into(),
-            Bdat::UnsignedShort(n) | Bdat::Unknown3(n) => n.into(),
-            Bdat::UnsignedInt(n) | Bdat::Unknown1(n) => n.into(),
-            Bdat::SignedByte(n) => n.into(),
-            Bdat::SignedShort(n) => n.into(),
-            Bdat::SignedInt(n) => n.into(),
-            Bdat::String(s) => Value::String(s),
-            Bdat::Float(f) => f.into(),
-            Bdat::HashRef(n) => Value::String(Label::Hash(n).to_string()),
-            Bdat::Percent(f) => (f as f32 * 0.01).into(),
-        }
+        serde_json::to_value(bdat).unwrap()
     }
 }
 
@@ -53,12 +65,10 @@ impl BdatSerialize for JsonConverter {
             table
                 .columns
                 .iter()
-                .map(|c| {
-                    json! ({
-                        "name": c.label.to_string(),
-                        "type": c.ty as u8,
-                        "hashed": matches!(c.label, Label::Unhashed(_)),
-                    })
+                .map(|c| ColumnSchema {
+                    name: c.label.to_string(),
+                    ty: c.ty,
+                    hashed: matches!(c.label, Label::Unhashed(_)),
                 })
                 .collect::<Vec<_>>()
         });
@@ -67,30 +77,17 @@ impl BdatSerialize for JsonConverter {
             .rows
             .into_iter()
             .map(|mut row| {
-                let mut doc = Map::default();
-                doc.insert(String::from("$id"), row.id.into());
-                for col in &table.columns {
-                    doc.insert(
-                        col.label.to_string(),
-                        match row.cells.remove(0) {
-                            Cell::Single(v) => self.convert(v),
-                            Cell::Flag(f) => f.into(),
-                            Cell::List(l) => l
-                                .into_iter()
-                                .map(|v| self.convert(v))
-                                .collect::<Vec<_>>()
-                                .into(),
-                        },
-                    );
-                }
-                Value::Object(doc)
+                let cells = table
+                    .columns
+                    .iter()
+                    .map(|col| (col.label.to_string(), row.cells.remove(0)))
+                    .collect();
+
+                TableRow { id: row.id, cells }
             })
             .collect::<Vec<_>>();
 
-        let json = json!({
-            "schema": schema,
-            "rows": rows
-        });
+        let json = JsonTable { schema, rows };
         if self.pretty {
             serde_json::to_writer_pretty(writer, &json)
         } else {
@@ -103,5 +100,13 @@ impl BdatSerialize for JsonConverter {
 
     fn get_file_name(&self, table_name: &str) -> String {
         format!("{table_name}.json")
+    }
+}
+
+impl BdatDeserialize for JsonConverter {
+    fn read_table(&self, schema: &FileSchema, reader: &mut dyn Read) -> Result<RawTable> {
+        //let table: JsonTable =
+        //    serde_json::from_reader(reader).context("failed to read JSON table")?;
+        Ok(todo!())
     }
 }

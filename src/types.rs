@@ -44,6 +44,7 @@ pub struct Row {
 
 /// A cell from a Bdat row
 #[derive(Debug, Clone, PartialEq)]
+#[cfg_attr(feature = "derive-impls", derive(serde::Serialize), serde(untagged))]
 pub enum Cell {
     Single(Value),
     List(Vec<Value>),
