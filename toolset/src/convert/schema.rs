@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 /// be re-serialized properly.
 #[derive(Serialize, Deserialize)]
 pub struct FileSchema {
-    file_name: String,
+    pub file_name: String,
     tables: Vec<String>,
     type_overrides: Option<HashMap<ColumnPath, ValueType>>,
 }

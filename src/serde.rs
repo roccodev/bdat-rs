@@ -1,9 +1,9 @@
 use serde::{
-    de::{self, DeserializeSeed, Visitor},
-    Deserialize, Serialize,
+    de::{self, DeserializeSeed, IntoDeserializer, Visitor},
+    Deserialize, Deserializer, Serialize,
 };
 
-use crate::types::{Label, Value, ValueType};
+use crate::types::{Cell, Label, Value, ValueType};
 
 /// A wrapper struct that associates a [`Value`] with its type,
 /// allowing deserialization.
@@ -20,6 +20,9 @@ enum ValueTypeFields {
 }
 
 struct HexVisitor;
+
+/// An implementation of [`DeserializeSeed`] for [`Cell`]s.
+pub struct CellSeed(ValueType);
 
 impl Serialize for Value {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
@@ -72,6 +75,10 @@ impl ValueType {
             Self::Unknown3 => Value::Unknown3(u16::deserialize(deserializer)?),
         })
     }
+
+    pub fn as_cell_seed(self) -> CellSeed {
+        CellSeed(self)
+    }
 }
 
 impl<'de> Visitor<'de> for HexVisitor {
@@ -100,8 +107,11 @@ impl<'de> Visitor<'de> for HexVisitor {
     where
         E: de::Error,
     {
-        Ok(u32::from_str_radix(v, 16)
-            .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))?)
+        Ok(match v.len() {
+            10 => u32::from_str_radix(&v[1..8], 16), // <XXXXXXXX>
+            _ => u32::from_str_radix(v, 16),
+        }
+        .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))?)
     }
 }
 
@@ -240,11 +250,61 @@ impl<'de> DeserializeSeed<'de> for ValueType {
     }
 }
 
+impl<'de> DeserializeSeed<'de> for CellSeed {
+    type Value = Cell;
+
+    fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        struct CellVisitor(ValueType);
+
+        impl<'de> Visitor<'de> for CellVisitor {
+            type Value = Cell;
+
+            fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                formatter.write_str("Value, bool, or sequence of Values")
+            }
+
+            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+            where
+                E: de::Error,
+            {
+                Ok(Cell::Flag(v))
+            }
+
+            fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
+            where
+                A: de::SeqAccess<'de>,
+            {
+                let mut values = Vec::with_capacity(seq.size_hint().unwrap_or_default());
+                while let Some(v) = seq.next_element_seed(self.0)? {
+                    values.push(v);
+                }
+                Ok(Cell::List(values))
+            }
+        }
+
+        // Hacky way to mimic untagged enum deserialization
+        let value = serde_value::Value::deserialize(deserializer)?;
+        value
+            .clone()
+            .deserialize_any(CellVisitor(self.0))
+            .or_else(|_| {
+                Ok(Cell::Single(
+                    self.0.deserialize(value).map_err(|e| e.into_error())?,
+                ))
+            })
+    }
+}
+
 #[cfg(test)]
 mod tests {
+    use serde::de::DeserializeSeed;
+
     use crate::{
         serde::ValueWithType,
-        types::{Value, ValueType},
+        types::{Cell, Value, ValueType},
     };
 
     #[test]
@@ -332,5 +392,41 @@ mod tests {
         let ty = ValueType::HashRef;
         ty.deser_value(&mut serde_json::Deserializer::from_str("10000000000"))
             .unwrap();
+    }
+
+    #[test]
+    fn deser_cell() {
+        assert_eq!(
+            ValueType::Unknown // Not needed for Flag cells
+                .as_cell_seed()
+                .deserialize(&mut serde_json::Deserializer::from_str("true"))
+                .unwrap(),
+            Cell::Flag(true)
+        );
+
+        assert_eq!(
+            ValueType::UnsignedInt
+                .as_cell_seed()
+                .deserialize(&mut serde_json::Deserializer::from_str(
+                    "[1, 2, 3, 4, 5, 6]"
+                ))
+                .unwrap(),
+            Cell::List(vec![
+                Value::UnsignedInt(1),
+                Value::UnsignedInt(2),
+                Value::UnsignedInt(3),
+                Value::UnsignedInt(4),
+                Value::UnsignedInt(5),
+                Value::UnsignedInt(6),
+            ])
+        );
+
+        assert_eq!(
+            ValueType::Float
+                .as_cell_seed()
+                .deserialize(&mut serde_json::Deserializer::from_str("3.14"))
+                .unwrap(),
+            Cell::Single(Value::Float(3.14))
+        );
     }
 }

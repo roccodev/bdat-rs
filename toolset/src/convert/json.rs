@@ -4,9 +4,9 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::types::{Cell, Label, RawTable, ValueType};
+use bdat::types::{Cell, ColumnDef, Label, RawTable, Row, ValueType};
 use clap::Args;
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeSeed, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
 use super::{schema::FileSchema, BdatDeserialize, BdatSerialize, ConvertArgs};
@@ -19,18 +19,18 @@ pub struct JsonOptions {
     pretty: bool,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct JsonTable {
     schema: Option<Vec<ColumnSchema>>,
     rows: Vec<TableRow>,
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, Deserialize)]
 struct TableRow {
     #[serde(rename = "$id")]
     id: usize,
     #[serde(flatten)]
-    cells: HashMap<String, Cell>,
+    cells: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -80,7 +80,12 @@ impl BdatSerialize for JsonConverter {
                 let cells = table
                     .columns
                     .iter()
-                    .map(|col| (col.label.to_string(), row.cells.remove(0)))
+                    .map(|col| {
+                        (
+                            col.label.to_string(),
+                            serde_json::to_value(&row.cells.remove(0)).unwrap(),
+                        )
+                    })
                     .collect();
 
                 TableRow { id: row.id, cells }
@@ -104,9 +109,60 @@ impl BdatSerialize for JsonConverter {
 }
 
 impl BdatDeserialize for JsonConverter {
-    fn read_table(&self, schema: &FileSchema, reader: &mut dyn Read) -> Result<RawTable> {
-        //let table: JsonTable =
-        //    serde_json::from_reader(reader).context("failed to read JSON table")?;
-        Ok(todo!())
+    fn read_table(
+        &self,
+        name: Option<Label>,
+        schema: &FileSchema,
+        reader: &mut dyn Read,
+    ) -> Result<RawTable> {
+        let table: JsonTable =
+            serde_json::from_reader(reader).context("failed to read JSON table")?;
+
+        let (columns, column_map, _): (Vec<ColumnDef>, HashMap<String, (usize, ValueType)>, _) =
+            table
+                .schema
+                .expect("TODO, no column schema")
+                .into_iter()
+                .fold(
+                    (Vec::new(), HashMap::default(), 0),
+                    |(mut cols, mut map, idx), col| {
+                        map.insert(col.name.clone(), (idx, col.ty));
+                        cols.push(ColumnDef {
+                            ty: col.ty,
+                            label: if col.hashed {
+                                Label::Unhashed(col.name)
+                            } else {
+                                Label::Hash(0)
+                            }, // Todo
+                            offset: 0, // only used when reading bdats
+                        });
+                        (cols, map, idx + 1)
+                    },
+                );
+
+        let rows: Vec<_> = table
+            .rows
+            .into_iter()
+            .map(|r| {
+                let id = r.id;
+                let mut cells = vec![None; r.cells.len()];
+                for (k, v) in r.cells {
+                    let (index, ty) = column_map[&k];
+                    cells[index] = Some(ty.as_cell_seed().deserialize(v).unwrap());
+                }
+                let old_len = cells.len();
+                let cells: Vec<Cell> = cells.into_iter().flatten().collect();
+                if cells.len() != old_len {
+                    panic!("rows must have all cells");
+                }
+                Row { id, cells }
+            })
+            .collect();
+
+        Ok(RawTable {
+            name,
+            rows,
+            columns,
+        })
     }
 }

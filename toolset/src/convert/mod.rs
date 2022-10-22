@@ -7,8 +7,8 @@ use std::{
 
 use anyhow::{Context, Result};
 use bdat::{
-    io::{BdatFile, LittleEndian},
-    types::RawTable,
+    io::{BdatFile, BdatVersion, LittleEndian, SwitchBdatFile},
+    types::{Label, RawTable},
 };
 use clap::{error::ErrorKind, Args, Error};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
@@ -69,7 +69,12 @@ pub trait BdatSerialize {
 
 pub trait BdatDeserialize {
     /// Reads a BDAT table from a file.
-    fn read_table(&self, schema: &FileSchema, reader: &mut dyn Read) -> Result<RawTable>;
+    fn read_table(
+        &self,
+        name: Option<Label>,
+        schema: &FileSchema,
+        reader: &mut dyn Read,
+    ) -> Result<RawTable>;
 }
 
 pub fn run_conversions(input: InputData, args: ConvertArgs, is_extracting: bool) -> Result<()> {
@@ -82,9 +87,12 @@ pub fn run_conversions(input: InputData, args: ConvertArgs, is_extracting: bool)
         .build_global()
         .context("Could not build thread pool")?;
 
-    let hash_table = input.load_hashes()?;
-
-    run_serialization(input, args, hash_table)
+    if is_extracting {
+        let hash_table = input.load_hashes()?;
+        run_serialization(input, args, hash_table)
+    } else {
+        run_deserialization(input, args)
+    }
 }
 
 pub fn run_serialization(
@@ -223,6 +231,22 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
         todo!("no schema files found; schema files are required for deserialization");
     }
 
+    let deserializer: Box<dyn BdatDeserialize + Send + Sync> = match args
+        .file_type
+        .as_ref()
+        .ok_or_else(|| Error::raw(ErrorKind::MissingRequiredArgument, "file type is required"))? // TODO
+        .as_str()
+    {
+        "json" => Box::new(json::JsonConverter::new(&args)),
+        t => {
+            return Err(Error::raw(
+                ErrorKind::ValueValidation,
+                format!("unknown file type '{}'", t),
+            )
+            .into())
+        }
+    };
+
     let multi_bar = MultiProgress::new();
     let file_bar = multi_bar.add(
         ProgressBar::new(schema_files.len() as u64).with_style(
@@ -239,16 +263,41 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
     .unwrap();
 
     file_bar.inc(0);
-    for schema_file in schema_files {
-        let schema_file = FileSchema::read(File::open(schema_file?)?)?;
+    schema_files
+        .into_par_iter()
+        .map(|schema_path| {
+            let schema_path = schema_path?;
+            let schema_file = FileSchema::read(File::open(&schema_path)?)?;
+            let table_bar = multi_bar.add(
+                ProgressBar::new(schema_file.table_count() as u64)
+                    .with_style(table_bar_style.clone()),
+            );
 
-        let table_bar = multi_bar.add(
-            ProgressBar::new(schema_file.table_count() as u64).with_style(table_bar_style.clone()),
-        );
+            let tables = schema_file
+                .find_table_files(schema_path.parent().unwrap(), "json")
+                .into_par_iter()
+                .map(|table| {
+                    let table_file = File::open(table)?;
+                    let mut reader = BufReader::new(table_file);
 
-        file_bar.inc(1);
-        multi_bar.remove(&table_bar);
-    }
+                    table_bar.inc(1);
+                    Ok(deserializer.read_table(None, &schema_file, &mut reader)?)
+                })
+                .collect::<Vec<Result<_>>>();
+
+            multi_bar.remove(&table_bar);
+
+            let out_file =
+                File::create(Path::new("/tmp/").join(&format!("{}.bdat", schema_file.file_name)))?;
+            let mut out_file = SwitchBdatFile::new(out_file, BdatVersion::Modern);
+            out_file.write_all_tables(tables.into_iter().flatten().collect::<Vec<_>>())?; // TODO handle
+                                                                                          // errors
+
+            file_bar.inc(1);
+
+            Ok(())
+        })
+        .find_any(|r: &anyhow::Result<()>| r.is_err());
 
     file_bar.finish();
     Ok(())
