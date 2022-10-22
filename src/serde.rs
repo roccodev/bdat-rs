@@ -108,7 +108,7 @@ impl<'de> Visitor<'de> for HexVisitor {
         E: de::Error,
     {
         Ok(match v.len() {
-            10 => u32::from_str_radix(&v[1..=8], 16), // <XXXXXXXX>
+            10 if v.as_bytes()[0] == b'<' => u32::from_str_radix(&v[1..=8], 16), // <XXXXXXXX>
             _ => u32::from_str_radix(v, 16),
         }
         .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))?)
