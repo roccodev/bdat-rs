@@ -129,11 +129,7 @@ impl BdatDeserialize for JsonConverter {
                         map.insert(col.name.clone(), (idx, col.ty));
                         cols.push(ColumnDef {
                             ty: col.ty,
-                            label: if col.hashed {
-                                Label::Unhashed(col.name)
-                            } else {
-                                Label::Hash(0)
-                            }, // Todo
+                            label: Label::parse(col.name, col.hashed),
                             offset: 0, // only used when reading bdats
                         });
                         (cols, map, idx + 1)

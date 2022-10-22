@@ -90,6 +90,29 @@ pub struct RowRef<'t> {
     table: &'t RawTable,
 }
 
+impl Label {
+    /// Extracts a [`Label`] from a [`String`].
+    ///
+    /// The format is as follows:  
+    /// * `<01ABCDEF>` (8 hex digits) => `Label::Hash(0x01abcdef)`
+    /// * s => `Label::String(s)`
+    ///
+    /// If `force_hash` is `true`, the label will be re-hashed
+    /// if it is either [`Label::String`] or [`Label::Unhashed`].
+    pub fn parse(text: String, force_hash: bool) -> Self {
+        if text.len() == 10 && text.as_bytes()[0] == b'<' {
+            if let Ok(n) = u32::from_str_radix(&text[1..=8], 16) {
+                return Label::Hash(n);
+            }
+        }
+        if force_hash {
+            Label::Hash(crate::hash::murmur3(&text))
+        } else {
+            Label::String(text)
+        }
+    }
+}
+
 impl<R> Table<R> {
     pub fn len(&self) -> usize {
         self.rows.len()

@@ -277,11 +277,19 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
                 .find_table_files(schema_path.parent().unwrap(), "json")
                 .into_par_iter()
                 .map(|table| {
-                    let table_file = File::open(table)?;
+                    let table_file = File::open(&table)?;
                     let mut reader = BufReader::new(table_file);
 
                     table_bar.inc(1);
-                    Ok(deserializer.read_table(None, &schema_file, &mut reader)?)
+                    // TODO check force hash
+                    Ok(deserializer.read_table(
+                        Some(Label::parse(
+                            table.file_stem().unwrap().to_string_lossy().to_string(),
+                            true,
+                        )),
+                        &schema_file,
+                        &mut reader,
+                    )?)
                 })
                 .collect::<Vec<Result<_>>>();
 
