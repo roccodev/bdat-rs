@@ -8,12 +8,16 @@ pub fn get_common_denominator(paths: &[impl AsRef<Path>]) -> PathBuf {
     if paths.is_empty() {
         return PathBuf::new();
     }
+    let mut paths = paths
+        .iter()
+        .map(|p| p.as_ref().iter().collect::<Vec<_>>())
+        .collect::<Vec<_>>();
     let mut common = PathBuf::new();
-    'outer: for (i, to_match) in paths[0].as_ref().iter().enumerate() {
-        for path in paths.iter().skip(1) {
-            match path.as_ref().iter().nth(i) {
+    'outer: for (i, to_match) in paths.remove(0).into_iter().enumerate() {
+        for path in &paths {
+            match path.get(i) {
                 None => break 'outer,
-                Some(c) if c != to_match => break 'outer,
+                Some(c) if *c != to_match => break 'outer,
                 _ => {}
             }
         }
