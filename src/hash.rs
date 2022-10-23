@@ -7,7 +7,7 @@ pub fn murmur3(src: &str) -> u32 {
     let mut hash = MURMUR3_SEED;
     let mut buf = [0u8; 4];
     let mut start = 0;
-    for i in 0..(len as usize >> 2) {
+    for _ in 0..(len as usize >> 2) {
         buf.copy_from_slice(&bytes[start..(start + 4)]);
         hash ^= murmur3_scramble(u32::from_le_bytes(buf));
         hash = (hash << 13) | (hash >> 19);

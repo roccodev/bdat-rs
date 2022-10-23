@@ -44,7 +44,7 @@ pub struct Row {
 
 /// A cell from a Bdat row
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "derive-impls", derive(serde::Serialize), serde(untagged))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize), serde(untagged))]
 pub enum Cell {
     Single(Value),
     List(Vec<Value>),
@@ -57,8 +57,8 @@ pub enum Cell {
     ValueType,
     derive(TryFromPrimitive),
     repr(u8),
-    cfg_attr(feature = "derive-impls", derive(serde::Serialize, serde::Deserialize)),
-    cfg_attr(feature = "derive-impls", serde(into = "u8", try_from = "u8"))
+    cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize)),
+    cfg_attr(feature = "serde", serde(into = "u8", try_from = "u8"))
 )]
 pub enum Value {
     Unknown,
@@ -78,7 +78,7 @@ pub enum Value {
 }
 
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
-#[cfg_attr(feature = "derive-impls", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Label {
     Hash(u32),
     String(String),

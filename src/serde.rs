@@ -7,9 +7,9 @@ use crate::types::{Cell, Label, Value, ValueType};
 
 /// A wrapper struct that associates a [`Value`] with its type,
 /// allowing deserialization.
-#[cfg_attr(feature = "derive-impls", derive(serde::Serialize))]
+#[derive(serde::Serialize)]
 pub struct ValueWithType {
-    #[cfg_attr(feature = "derive-impls", serde(rename = "type"))]
+    #[serde(rename = "type")]
     pub ty: ValueType,
     pub value: Value,
 }
