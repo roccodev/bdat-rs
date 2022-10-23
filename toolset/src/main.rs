@@ -11,6 +11,7 @@ mod convert;
 pub mod filter;
 pub mod hash;
 mod info;
+pub mod util;
 
 #[derive(Parser)]
 #[command(author, version, about)]

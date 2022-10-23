@@ -2,7 +2,7 @@ use std::{
     ffi::OsStr,
     fs::File,
     io::{BufReader, BufWriter, Read, Write},
-    path::Path,
+    path::{Path, PathBuf},
 };
 
 use anyhow::{Context, Result};
@@ -127,7 +127,11 @@ pub fn run_serialization(
     let table_filter: Filter = args.tables.into_iter().map(FilterArg).collect();
     let column_filter: Filter = args.columns.into_iter().map(FilterArg).collect();
 
-    let files = input.list_files("bdat").into_iter().collect::<Vec<_>>();
+    let files = input
+        .list_files("bdat")
+        .into_iter()
+        .collect::<walkdir::Result<Vec<_>>>()?;
+    let base_path = crate::util::get_common_denominator(&files);
 
     let multi_bar = MultiProgress::new();
     let file_bar = multi_bar.add(
@@ -146,26 +150,32 @@ pub fn run_serialization(
 
     let res = files
         .into_par_iter()
-        .map(|file| {
-            let path = file?;
+        .map(|path| {
             let file = BufReader::new(File::open(&path)?);
             let mut file =
                 BdatFile::<_, LittleEndian>::read(file).context("Failed to read BDAT file")?;
+            let file_name = path
+                .file_stem()
+                .and_then(OsStr::to_str)
+                .map(ToString::to_string)
+                .unwrap();
 
             file_bar.inc(0);
             let table_bar = multi_bar.add(
                 ProgressBar::new(file.table_count() as u64).with_style(table_bar_style.clone()),
             );
 
-            let mut schema = (!args.no_schema).then(|| {
-                FileSchema::new(
-                    path.file_stem()
-                        .and_then(OsStr::to_str)
-                        .map(ToString::to_string)
-                        .unwrap(),
-                    args.untyped,
-                )
-            });
+            let out_dir = out_dir.join(
+                path.strip_prefix(&base_path)
+                    .unwrap()
+                    .parent()
+                    .unwrap_or_else(|| Path::new("")),
+            );
+            let tables_dir = out_dir.join(&file_name);
+            std::fs::create_dir_all(&tables_dir)?;
+
+            let mut schema = (!args.no_schema)
+                .then(|| FileSchema::new(file_name, BdatVersion::Modern, args.untyped));
 
             for mut table in file.get_tables().with_context(|| {
                 format!("Could not parse BDAT tables ({})", path.to_string_lossy())
@@ -194,7 +204,7 @@ pub fn run_serialization(
 
                 // {:+} displays hashed names without brackets (<>)
                 let out_file =
-                    File::create(out_dir.join(serializer.get_file_name(&name.as_file_name())))
+                    File::create(tables_dir.join(serializer.get_file_name(&name.as_file_name())))
                         .context("Could not create output file")?;
                 let mut writer = BufWriter::new(out_file);
                 serializer
@@ -281,11 +291,10 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
                     let mut reader = BufReader::new(table_file);
 
                     table_bar.inc(1);
-                    // TODO check force hash
                     Ok(deserializer.read_table(
                         Some(Label::parse(
                             table.file_stem().unwrap().to_string_lossy().to_string(),
-                            true,
+                            schema_file.version.are_labels_hashed(),
                         )),
                         &schema_file,
                         &mut reader,
@@ -297,7 +306,7 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
 
             let out_file =
                 File::create(Path::new("/tmp/").join(&format!("{}.bdat", schema_file.file_name)))?;
-            let mut out_file = SwitchBdatFile::new(out_file, BdatVersion::Modern);
+            let mut out_file = SwitchBdatFile::new(out_file, schema_file.version);
             out_file.write_all_tables(tables.into_iter().flatten().collect::<Vec<_>>())?; // TODO handle
                                                                                           // errors
 

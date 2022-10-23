@@ -6,7 +6,10 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use bdat::types::{Label, RawTable, ValueType};
+use bdat::{
+    io::BdatVersion,
+    types::{Label, RawTable, ValueType},
+};
 use serde::{Deserialize, Serialize};
 
 /// Defines the structure of a BDAT file, so it can
@@ -14,6 +17,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize)]
 pub struct FileSchema {
     pub file_name: String,
+    pub version: BdatVersion,
     tables: Vec<String>,
     type_overrides: Option<HashMap<ColumnPath, ValueType>>,
 }
@@ -30,9 +34,10 @@ pub trait AsFileName {
 }
 
 impl FileSchema {
-    pub fn new(file_name: String, calc_types: bool) -> Self {
+    pub fn new(file_name: String, version: BdatVersion, calc_types: bool) -> Self {
         Self {
             file_name,
+            version,
             tables: Vec::new(),
             type_overrides: calc_types.then(|| HashMap::default()),
         }

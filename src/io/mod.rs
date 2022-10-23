@@ -19,6 +19,7 @@ pub struct BdatFile<S, E> {
 }
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BdatVersion {
     /// Used in XC1/XCX/XC2/XCDE
     Legacy,
@@ -96,5 +97,11 @@ where
             BdatIo::Writer(w) => w.write_file(tables),
             _ => panic!("unsupported write"),
         }
+    }
+}
+
+impl BdatVersion {
+    pub fn are_labels_hashed(&self) -> bool {
+        *self == BdatVersion::Modern
     }
 }
