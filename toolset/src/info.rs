@@ -41,7 +41,7 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
         {
             let name = match table.name {
                 Some(ref mut n) => {
-                    if !table_filter.contains(&n) {
+                    if !table_filter.contains(n) {
                         continue;
                     }
                     n

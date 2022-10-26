@@ -192,7 +192,7 @@ pub fn run_serialization(
 
                 let name = match table.name {
                     Some(ref n) => {
-                        if !table_filter.contains(&n) {
+                        if !table_filter.contains(n) {
                             continue;
                         }
                         n
@@ -317,14 +317,14 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
                     let mut reader = BufReader::new(table_file);
 
                     table_bar.inc(1);
-                    Ok(deserializer.read_table(
+                    deserializer.read_table(
                         Some(Label::parse(
                             table.file_stem().unwrap().to_string_lossy().to_string(),
                             schema_file.version.are_labels_hashed(),
                         )),
                         &schema_file,
                         &mut reader,
-                    )?)
+                    )
                 })
                 .collect::<Result<Vec<_>>>()?;
 

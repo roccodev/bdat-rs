@@ -127,7 +127,7 @@ where
         let mut primary_keys = vec![];
         let mut label_table = LabelTable::default();
         // Table name should be the first label in the table
-        label_table.get(Cow::Owned(table.name.unwrap_or_else(|| Label::Hash(0))));
+        label_table.get(Cow::Owned(table.name.unwrap_or(Label::Hash(0))));
 
         // List of column definitions
         let column_table: Vec<u8> = {
@@ -136,7 +136,6 @@ where
             for col in &table.columns {
                 data.write_u8(col.ty as u8)?;
                 data.write_u16::<E>(u16::try_from(label_table.get(Cow::Borrowed(&col.label)))?)?;
-                // TODO use cow
             }
 
             data

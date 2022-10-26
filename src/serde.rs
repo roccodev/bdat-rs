@@ -43,7 +43,7 @@ impl Serialize for Value {
             Value::Float(f) => serializer.serialize_f32(*f),
             Value::HashRef(h) => {
                 if serializer.is_human_readable() {
-                    serializer.serialize_str(&format!("{:+}", Label::Hash(*h).to_string()))
+                    serializer.serialize_str(&format!("{:+}", Label::Hash(*h)))
                 } else {
                     serializer.serialize_u32(*h)
                 }
@@ -99,19 +99,19 @@ impl<'de> Visitor<'de> for HexVisitor {
     where
         E: de::Error,
     {
-        Ok(v.try_into()
-            .map_err(|_| de::Error::invalid_value(de::Unexpected::Unsigned(v), &self))?)
+        v.try_into()
+            .map_err(|_| de::Error::invalid_value(de::Unexpected::Unsigned(v), &self))
     }
 
     fn visit_str<E>(self, v: &str) -> Result<Self::Value, E>
     where
         E: de::Error,
     {
-        Ok(match v.len() {
+        match v.len() {
             10 if v.as_bytes()[0] == b'<' => u32::from_str_radix(&v[1..=8], 16), // <XXXXXXXX>
             _ => u32::from_str_radix(v, 16),
         }
-        .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))?)
+        .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))
     }
 }
 
@@ -151,12 +151,6 @@ impl<'de> Deserialize<'de> for ValueWithType {
                 let ty: ValueType = seq
                     .next_element()?
                     .ok_or_else(|| serde::de::Error::invalid_length(0, &self))?;
-                let ty = ValueType::try_from(ty).map_err(|_| {
-                    serde::de::Error::invalid_value(
-                        serde::de::Unexpected::Unsigned(ty as u64),
-                        &self,
-                    )
-                })?;
 
                 let value = seq
                     .next_element_seed(ty)?

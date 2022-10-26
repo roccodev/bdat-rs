@@ -116,14 +116,14 @@ impl HashNameTable {
     /// Writes the table into a format that can be deserialized
     /// with [`HashNameTable::read`].
     pub fn write(&self, writer: &mut impl Write) -> std::io::Result<()> {
-        writer.write(&self.file_name_hash.to_le_bytes())?;
-        writer.write(&self.inner.len().to_le_bytes())?;
+        writer.write_all(&self.file_name_hash.to_le_bytes())?;
+        writer.write_all(&self.inner.len().to_le_bytes())?;
         for (k, v) in &self.inner {
-            writer.write(&k.to_le_bytes())?;
+            writer.write_all(&k.to_le_bytes())?;
 
             let bytes = v.as_bytes();
-            writer.write(&(bytes.len() as u16).to_le_bytes())?;
-            writer.write(bytes)?;
+            writer.write_all(&(bytes.len() as u16).to_le_bytes())?;
+            writer.write_all(bytes)?;
         }
         Ok(())
     }

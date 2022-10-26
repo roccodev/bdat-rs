@@ -79,6 +79,7 @@ where
         let offset_col = self.r_u32()? as usize;
         let offset_hash = self.r_u32()? as usize;
         let offset_row = self.r_u32()? as usize;
+        #[allow(clippy::needless_late_init)]
         let offset_string;
 
         let row_length = self.r_u32()? as usize;

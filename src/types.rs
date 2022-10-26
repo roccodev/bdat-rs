@@ -299,6 +299,12 @@ impl Display for Label {
     }
 }
 
+impl Default for TableBuilder {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl From<ValueType> for u8 {
     fn from(t: ValueType) -> Self {
         t as u8
@@ -319,7 +325,7 @@ macro_rules! default_display {
 impl Display for Value {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::Unknown => return Ok(()),
+            Self::Unknown => Ok(()),
             Self::HashRef(h) => Label::Hash(*h).fmt(f),
             Self::Percent(v) => write!(f, "{}%", v),
             v => {
