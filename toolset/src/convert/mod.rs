@@ -35,8 +35,8 @@ pub struct ConvertArgs {
     /// Specifies the file type for the output file (when serializing) and input files (when deserializing).
     #[arg(short, long)]
     file_type: Option<String>,
-    /// (Serialization only) If this is set, types are not included in the serialized files. Instead, they will be placed
-    /// inside the schema file.
+    /// (Serialization only) If this is set, types are not included in the serialized files. Note: the serialized output
+    /// cannot be deserialized without type information
     #[arg(short, long)]
     untyped: bool,
     /// (Serialization only) If this is set, a schema file is not generated. Note: the serialized output cannot be

@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::types::{Cell, ColumnDef, Label, RawTable, Row, ValueType};
+use bdat::types::{Cell, ColumnDef, Label, RawTable, Row, TableBuilder, ValueType};
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
@@ -63,8 +63,7 @@ impl BdatSerialize for JsonConverter {
     fn write_table(&self, table: RawTable, writer: &mut dyn Write) -> Result<()> {
         let schema = (!self.untyped).then(|| {
             table
-                .columns
-                .iter()
+                .columns()
                 .map(|c| ColumnSchema {
                     name: c.label.to_string(),
                     ty: c.ty,
@@ -73,22 +72,23 @@ impl BdatSerialize for JsonConverter {
                 .collect::<Vec<_>>()
         });
 
+        let columns = table.columns().cloned().collect::<Vec<_>>();
+
         let rows = table
-            .rows
-            .into_iter()
+            .into_rows()
             .map(|mut row| {
-                let cells = table
-                    .columns
+                let id = row.id;
+                let cells = columns
                     .iter()
                     .map(|col| {
                         (
                             col.label.to_string(),
-                            serde_json::to_value(&row.cells.remove(0)).unwrap(),
+                            serde_json::to_value(&row.cells().next().unwrap()).unwrap(),
                         )
                     })
                     .collect();
 
-                TableRow { id: row.id, cells }
+                TableRow { id, cells }
             })
             .collect::<Vec<_>>();
 
@@ -151,15 +151,15 @@ impl BdatDeserialize for JsonConverter {
                 if cells.len() != old_len {
                     panic!("rows must have all cells");
                 }
-                Row { id, cells }
+                Row::new(id, cells)
             })
             .collect();
 
-        Ok(RawTable {
-            name,
-            rows,
-            columns,
-        })
+        Ok(TableBuilder::new()
+            .set_name(name)
+            .set_columns(columns)
+            .set_rows(rows)
+            .build())
     }
 
     fn get_table_extension(&self) -> &'static str {

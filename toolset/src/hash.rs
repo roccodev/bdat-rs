@@ -88,10 +88,11 @@ impl HashNameTable {
         if self.inner.is_empty() {
             return;
         }
-        if let Some(label) = &mut table.name {
-            self.convert_label(label);
+        if let Some(mut label) = table.name().cloned() {
+            self.convert_label(&mut label);
+            table.set_name(Some(label));
         }
-        for col in &mut table.columns {
+        for col in table.columns_mut() {
             self.convert_label(&mut col.label);
         }
     }

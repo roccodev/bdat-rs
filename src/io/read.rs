@@ -73,7 +73,7 @@ where
         let rows = self.r_u32()? as usize;
         let base_id = self.r_u32()? as usize;
         if self.r_u32()? != 0 {
-            panic!("Found unknown value that was not 0");
+            panic!("Found unknown value at index 0x14 that was not 0");
         }
 
         let offset_col = self.r_u32()? as usize;
@@ -91,7 +91,10 @@ where
             offset_row + row_length * rows,
             offset_string + str_length,
         ];
-        let table_len = lengths.iter().max_by_key(|&i| i).expect("todo");
+        let table_len = lengths
+            .iter()
+            .max_by_key(|&i| i)
+            .expect("could not determine table length");
         let mut table_raw = vec![0u8; *table_len];
         self.stream.seek(SeekFrom::Start(base_offset))?;
         self.stream.read_exact(&mut table_raw)?;
@@ -242,18 +245,17 @@ impl<'r> TableData<'r> {
         E: ByteOrder,
     {
         if self.are_labels_hashed() {
-            Ok(Label::String(
-                self.get_string(offset, usize::MAX)?.to_string(),
-            ))
-        } else {
             Ok(Label::Hash(
                 (&self.data[self.string_table_offset + offset..]).read_u32::<E>()?,
+            ))
+        } else {
+            Ok(Label::String(
+                self.get_string(offset, usize::MAX)?.to_string(),
             ))
         }
     }
 
     fn are_labels_hashed(&self) -> bool {
-        // TODO its the opposite
-        self.data[self.string_table_offset] != 0
+        self.data[self.string_table_offset] == 0
     }
 }

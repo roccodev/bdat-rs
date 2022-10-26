@@ -51,15 +51,14 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
             println!("Table {}", format_unhashed_label(name, &hash_table));
             println!(
                 "  Columns: {} / Rows: {}",
-                table.columns.len(),
-                table.rows.len()
+                table.column_count(),
+                table.row_count()
             );
 
-            if !table.columns.is_empty() {
+            if table.column_count() != 0 {
                 println!("  Columns:");
                 for mut col in table
-                    .columns
-                    .into_iter()
+                    .into_columns()
                     .filter(|c| column_filter.contains(&c.label))
                 {
                     println!(

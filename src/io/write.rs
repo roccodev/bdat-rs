@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     collections::HashMap,
     io::{Cursor, Seek, SeekFrom, Write},
     marker::PhantomData,
@@ -113,7 +114,6 @@ where
     fn write_table_v2(&mut self, table: RawTable) -> Result<()> {
         let table_offset = self.stream.stream_position()?;
 
-        // todo make priv
         let column_count = table.columns.len().try_into()?;
         let row_count = table.rows.len().try_into()?;
         let base_id = table
@@ -127,7 +127,7 @@ where
         let mut primary_keys = vec![];
         let mut label_table = LabelTable::default();
         // Table name should be the first label in the table
-        label_table.get(table.name.unwrap_or_else(|| Label::Hash(0)));
+        label_table.get(Cow::Owned(table.name.unwrap_or_else(|| Label::Hash(0))));
 
         // List of column definitions
         let column_table: Vec<u8> = {
@@ -135,7 +135,7 @@ where
 
             for col in &table.columns {
                 data.write_u8(col.ty as u8)?;
-                data.write_u16::<E>(u16::try_from(label_table.get(col.label.clone()))?)?;
+                data.write_u16::<E>(u16::try_from(label_table.get(Cow::Borrowed(&col.label)))?)?;
                 // TODO use cow
             }
 
@@ -160,7 +160,7 @@ where
                             }
                             Self::write_value_v2(&mut data, v, &mut label_table)?
                         }
-                        _ => todo!("list/flag value"),
+                        _ => panic!("flag/list cells are not supported by modern BDAT"),
                     }
                 }
                 if row_len == 0 {
@@ -195,13 +195,13 @@ where
         // Build tables. Order probably doesn't matter, but we stick to the order the game uses:
         // columns, hashes, row, strings
         let mut base_offset = (self.stream.stream_position()? - table_offset) as u32 + 4 * 6;
-        self.w_u32(base_offset)?; // TODO column offset, relative to the start of the table
+        self.w_u32(base_offset)?; // column offset, relative to the start of the table
         base_offset += u32::try_from(column_table.len())?;
-        self.w_u32(base_offset)?; // TODO hash table offset, relative to the start of the table
+        self.w_u32(base_offset)?; // hash table offset, relative to the start of the table
         base_offset += u32::try_from(primary_key_table.len())?;
-        self.w_u32(base_offset)?; // TODO rows offset, relative to the start of the table
+        self.w_u32(base_offset)?; // rows offset, relative to the start of the table
         base_offset += u32::try_from(row_table.len())?;
-        self.w_u32(row_len.try_into()?)?; // TODO data length of a single row
+        self.w_u32(row_len.try_into()?)?; // data length of a single row
         self.w_u32(base_offset)?;
         self.w_u32(ser_strings_table.len().try_into()?)?;
 
@@ -228,7 +228,7 @@ where
             Value::SignedByte(b) => writer.write_i8(b),
             Value::SignedShort(s) => writer.write_i16::<E>(s),
             Value::SignedInt(i) => writer.write_i32::<E>(i),
-            Value::String(s) => writer.write_u32::<E>(string_map.get(Label::String(s))),
+            Value::String(s) => writer.write_u32::<E>(string_map.get(Cow::Owned(Label::String(s)))),
             Value::Float(f) => writer.write_f32::<E>(f),
         }
     }
@@ -240,8 +240,8 @@ where
 }
 
 impl LabelTable {
-    pub fn get(&mut self, label: Label) -> u32 {
-        let existing = self.map.get(&label);
+    pub fn get(&mut self, label: Cow<Label>) -> u32 {
+        let existing = self.map.get(label.as_ref());
         if let Some(existing) = existing {
             return *existing;
         }
@@ -253,7 +253,7 @@ impl LabelTable {
             self.offset += 4;
         }
 
-        let label = Rc::new(label);
+        let label = Rc::new(label.into_owned());
         let offset = self.offset;
         self.map.insert(label.clone(), offset);
         self.pairs.push((label.clone(), offset));

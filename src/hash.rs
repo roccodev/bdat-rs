@@ -45,11 +45,11 @@ fn murmur3_scramble(mut k: u32) -> u32 {
 
 #[cfg(test)]
 mod tests {
-    use super::murmur3;
+    use super::murmur3_str;
 
     #[test]
     fn test_murmur3() {
-        assert_eq!(murmur3("FLD_EnemyData"), 0x2521C473);
-        assert_eq!(murmur3("EVT_listEv"), 0x23EE284B);
+        assert_eq!(murmur3_str("FLD_EnemyData"), 0x2521C473);
+        assert_eq!(murmur3_str("EVT_listEv"), 0x23EE284B);
     }
 }

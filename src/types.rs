@@ -3,12 +3,6 @@ use std::{fmt::Display, marker::PhantomData, ops::Index};
 use enum_kinds::EnumKind;
 use num_enum::TryFromPrimitive;
 
-/// A deserialized Bdat table
-pub struct Table<R> {
-    rows: Vec<R>,
-    columns: usize,
-}
-
 /// A memory-mapped Bdat table
 pub struct MappedTable<'b, I, R> {
     buffer: &'b I,
@@ -20,12 +14,15 @@ pub struct MappedTable<'b, I, R> {
 /// ## Accessing cells
 /// The [`RowRef`] struct provides an easy interface to access cells.  
 /// For example, to access the cell at row 1 and column "Param1", you can use `table.row(1)["Param1".into()]`.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct RawTable {
     pub name: Option<Label>,
-    pub columns: Vec<ColumnDef>,
-    pub rows: Vec<Row>,
+    pub(crate) columns: Vec<ColumnDef>,
+    pub(crate) rows: Vec<Row>,
 }
+
+/// A builder interface for [`RawTable`].
+pub struct TableBuilder(RawTable);
 
 /// A column definition from a Bdat table
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -39,7 +36,7 @@ pub struct ColumnDef {
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row {
     pub id: usize,
-    pub cells: Vec<Cell>,
+    pub(crate) cells: Vec<Cell>,
 }
 
 /// A cell from a Bdat row
@@ -113,17 +110,26 @@ impl Label {
     }
 }
 
-impl<R> Table<R> {
-    pub fn len(&self) -> usize {
-        self.rows.len()
-    }
-
-    pub fn columns(&self) -> usize {
-        self.columns
-    }
-}
-
 impl RawTable {
+    pub fn new(name: Option<Label>, columns: Vec<ColumnDef>, rows: Vec<Row>) -> Self {
+        Self {
+            name,
+            columns,
+            rows,
+        }
+    }
+
+    /// Returns the table's name, or [`None`] if the table has no
+    /// name associated to it.
+    pub fn name(&self) -> Option<&Label> {
+        self.name.as_ref()
+    }
+
+    /// Updates the table's name.
+    pub fn set_name(&mut self, name: Option<Label>) {
+        self.name = name;
+    }
+
     /// Gets a row by its ID
     ///
     /// # Panics
@@ -139,6 +145,100 @@ impl RawTable {
             index: id,
             table: self,
         })
+    }
+
+    /// Gets an iterator that visits this table's rows
+    pub fn rows(&self) -> impl Iterator<Item = &Row> {
+        self.rows.iter()
+    }
+
+    /// Gets an iterator over mutable references to this table's
+    /// rows.
+    pub fn rows_mut(&mut self) -> impl Iterator<Item = &mut Row> {
+        self.rows.iter_mut()
+    }
+
+    /// Gets an owning iterator over this table's rows
+    pub fn into_rows(self) -> impl Iterator<Item = Row> {
+        self.rows.into_iter()
+    }
+
+    /// Gets an iterator that visits this table's column definitions
+    pub fn columns(&self) -> impl Iterator<Item = &ColumnDef> {
+        self.columns.iter()
+    }
+
+    /// Gets an iterator over mutable references to this table's
+    /// column definitions.
+    pub fn columns_mut(&mut self) -> impl Iterator<Item = &mut ColumnDef> {
+        self.columns.iter_mut()
+    }
+
+    /// Gets an owning iterator over this table's column definitions
+    pub fn into_columns(self) -> impl Iterator<Item = ColumnDef> {
+        self.columns.into_iter()
+    }
+
+    /// Gets the number of rows in the table
+    pub fn row_count(&self) -> usize {
+        self.rows.len()
+    }
+
+    /// Gets the number of columns in the table
+    pub fn column_count(&self) -> usize {
+        self.columns.len()
+    }
+}
+
+impl TableBuilder {
+    pub fn new() -> Self {
+        Self(RawTable::default())
+    }
+
+    pub fn set_name(&mut self, name: impl Into<Option<Label>>) -> &mut Self {
+        self.0.set_name(name.into());
+        self
+    }
+
+    pub fn add_column(&mut self, column: ColumnDef) -> &mut Self {
+        self.0.columns.push(column);
+        self
+    }
+
+    pub fn add_row(&mut self, row: Row) -> &mut Self {
+        self.0.rows.push(row);
+        self
+    }
+
+    pub fn set_rows(&mut self, rows: Vec<Row>) -> &mut Self {
+        self.0.rows = rows;
+        self
+    }
+
+    pub fn set_columns(&mut self, columns: Vec<ColumnDef>) -> &mut Self {
+        self.0.columns = columns;
+        self
+    }
+
+    pub fn build(&mut self) -> RawTable {
+        std::mem::take(&mut self.0)
+    }
+}
+
+impl Row {
+    /// Creates a new [`Row`].
+    pub fn new(id: usize, cells: Vec<Cell>) -> Self {
+        Self { id, cells }
+    }
+
+    /// Gets an owning iterator over this row's cells
+    pub fn into_cells(self) -> impl Iterator<Item = Cell> {
+        self.cells.into_iter()
+    }
+
+    /// Gets an iterator over this row's cells
+    pub fn cells(&self) -> impl Iterator<Item = &Cell> {
+        self.cells.iter()
     }
 }
 

@@ -53,16 +53,14 @@ impl CsvConverter {
 impl BdatSerialize for CsvConverter {
     fn write_table(&self, table: RawTable, writer: &mut dyn Write) -> Result<()> {
         let header = table
-            .columns
-            .iter()
+            .columns()
             .map(|c| format!("{}@{}", c.ty as u8, c.label))
             .collect::<Vec<_>>()
             .join(&self.separator);
         writeln!(writer, "{}", header).context("Failed to write header")?;
-        for row in table.rows {
+        for row in table.rows() {
             let formatted = row
-                .cells
-                .iter()
+                .cells()
                 .map(|c| match c {
                     Cell::Single(v) => self.escape(v.to_string()),
                     Cell::Flag(f) => self.escape(f.to_string()),
