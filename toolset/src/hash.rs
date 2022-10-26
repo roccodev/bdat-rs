@@ -50,16 +50,16 @@ impl HashNameTable {
 
     pub fn load_from_names(reader: impl Read) -> std::io::Result<Self> {
         let reader = BufReader::new(reader);
-        let (lines, hasher) = reader.lines().try_fold(
-            (Vec::new(), fasthash::Murmur3Hasher::default()),
-            |(mut lines, mut hasher), line| {
-                let line = line?;
-                hasher.write(line.as_bytes());
-                lines.push(line);
-                Ok::<_, std::io::Error>((lines, hasher))
-            },
-        )?;
-        let hash = hasher.finish();
+        let (lines, bytes) =
+            reader
+                .lines()
+                .try_fold((Vec::new(), Vec::new()), |(mut lines, mut bytes), line| {
+                    let line = line?;
+                    bytes.extend_from_slice(line.as_bytes());
+                    lines.push(line);
+                    Ok::<_, std::io::Error>((lines, bytes))
+                })?;
+        let hash = bdat::hash::murmur3(&bytes) as u64;
 
         let mut cached = OpenOptions::new()
             .create(true)
@@ -75,7 +75,7 @@ impl HashNameTable {
         let mut res = Self::empty();
         res.file_name_hash = hash;
         for line in lines {
-            res.inner.insert(fasthash::murmur3::hash32(&line), line);
+            res.inner.insert(bdat::hash::murmur3_str(&line), line);
         }
 
         cached.rewind()?;

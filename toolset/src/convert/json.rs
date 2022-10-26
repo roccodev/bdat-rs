@@ -161,4 +161,8 @@ impl BdatDeserialize for JsonConverter {
             columns,
         })
     }
+
+    fn get_table_extension(&self) -> &'static str {
+        "json"
+    }
 }

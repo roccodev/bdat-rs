@@ -20,7 +20,7 @@ impl Filter {
     }
 
     fn hash(key: &str) -> u32 {
-        fasthash::murmur3::hash32(key)
+        bdat::hash::murmur3_str(key)
     }
 }
 

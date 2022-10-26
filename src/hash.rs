@@ -1,8 +1,7 @@
 const MURMUR3_SEED: u32 = 0;
 
-pub fn murmur3(src: &str) -> u32 {
-    let len = src.len() as u32;
-    let bytes = src.as_bytes();
+pub fn murmur3(bytes: &[u8]) -> u32 {
+    let len = bytes.len() as u32;
 
     let mut hash = MURMUR3_SEED;
     let mut buf = [0u8; 4];
@@ -29,6 +28,11 @@ pub fn murmur3(src: &str) -> u32 {
     hash = hash.wrapping_mul(0xc2b2ae35);
     hash ^= hash.wrapping_shr(16);
     hash
+}
+
+#[inline]
+pub fn murmur3_str(src: &str) -> u32 {
+    murmur3(src.as_bytes())
 }
 
 #[inline]

@@ -106,7 +106,7 @@ impl Label {
             }
         }
         if force_hash {
-            Label::Hash(crate::hash::murmur3(&text))
+            Label::Hash(crate::hash::murmur3_str(&text))
         } else {
             Label::String(text)
         }

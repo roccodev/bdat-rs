@@ -19,14 +19,6 @@ pub struct FileSchema {
     pub file_name: String,
     pub version: BdatVersion,
     tables: Vec<String>,
-    type_overrides: Option<HashMap<ColumnPath, ValueType>>,
-}
-
-#[derive(Serialize, Deserialize, PartialEq, Eq, Hash, Clone)]
-#[serde(into = "String")]
-struct ColumnPath {
-    table: Option<Label>,
-    column: Label,
 }
 
 pub trait AsFileName {
@@ -34,12 +26,11 @@ pub trait AsFileName {
 }
 
 impl FileSchema {
-    pub fn new(file_name: String, version: BdatVersion, calc_types: bool) -> Self {
+    pub fn new(file_name: String, version: BdatVersion) -> Self {
         Self {
             file_name,
             version,
             tables: Vec::new(),
-            type_overrides: calc_types.then(|| HashMap::default()),
         }
     }
 
@@ -51,17 +42,6 @@ impl FileSchema {
     pub fn feed_table(&mut self, table: &RawTable) {
         self.tables
             .extend(table.name.clone().map(|l| l.as_file_name().to_string()));
-        if let Some(type_map) = &mut self.type_overrides {
-            for col in &table.columns {
-                type_map.insert(
-                    ColumnPath {
-                        table: table.name.clone(),
-                        column: col.label.clone(),
-                    },
-                    col.ty,
-                );
-            }
-        }
     }
 
     /// Attempts to find all deserialized table files, from the paths defined by the
@@ -87,27 +67,6 @@ impl FileSchema {
         }
 
         files
-    }
-
-    /// Returns the stored type for a column. If the schema doesn't have an entry for it,
-    /// the column's original type (as defined by the table data) is returned instead.
-    /// If no column type was stored in table data, [`None`] is returned.
-    pub fn get_column_type(
-        &self,
-        table_name: Option<Label>,
-        col_name: Label,
-        default: Option<ValueType>,
-    ) -> Option<ValueType> {
-        self.type_overrides
-            .as_ref()
-            .and_then(|m| {
-                m.get(&ColumnPath {
-                    table: table_name,
-                    column: col_name,
-                })
-            })
-            .copied()
-            .or(default)
     }
 
     /// Returns the number of tables defined in this file.
@@ -139,21 +98,5 @@ impl AsFileName for Label {
             l @ Label::Hash(_) => Cow::Owned(format!("{:+}", l)),
             Label::String(s) | Label::Unhashed(s) => Cow::Borrowed(s),
         }
-    }
-}
-
-impl From<ColumnPath> for String {
-    fn from(path: ColumnPath) -> Self {
-        format!(
-            "{}/{:+}",
-            path.table.map(|l| format!("{:+}", l)).unwrap_or_default(),
-            path.column
-        )
-    }
-}
-
-impl From<String> for ColumnPath {
-    fn from(s: String) -> Self {
-        todo!()
     }
 }

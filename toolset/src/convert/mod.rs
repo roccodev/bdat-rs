@@ -32,8 +32,7 @@ pub struct ConvertArgs {
     /// should contain the serialization result.
     #[arg(short, long)]
     out_file: Option<String>,
-    /// Forces a specific file type for the output file (when serializing) and input files (when deserializing).
-    /// When deserializing, the file type will be detected automatically if this is missing.
+    /// Specifies the file type for the output file (when serializing) and input files (when deserializing).
     #[arg(short, long)]
     file_type: Option<String>,
     /// (Serialization only) If this is set, types are not included in the serialized files. Instead, they will be placed
@@ -62,8 +61,10 @@ pub struct ConvertArgs {
 }
 
 pub trait BdatSerialize {
+    /// Writes a converted BDAT table to a [`Write`] implementation.
     fn write_table(&self, table: RawTable, writer: &mut dyn Write) -> Result<()>;
 
+    /// Formats the file name for a converted BDAT table.
     fn get_file_name(&self, table_name: &str) -> String;
 }
 
@@ -75,6 +76,9 @@ pub trait BdatDeserialize {
         schema: &FileSchema,
         reader: &mut dyn Read,
     ) -> Result<RawTable>;
+
+    /// Returns the file extension used in converted table files
+    fn get_table_extension(&self) -> &'static str;
 }
 
 pub fn run_conversions(input: InputData, args: ConvertArgs, is_extracting: bool) -> Result<()> {
@@ -174,8 +178,8 @@ pub fn run_serialization(
             let tables_dir = out_dir.join(&file_name);
             std::fs::create_dir_all(&tables_dir)?;
 
-            let mut schema = (!args.no_schema)
-                .then(|| FileSchema::new(file_name, BdatVersion::Modern, args.untyped));
+            let mut schema =
+                (!args.no_schema).then(|| FileSchema::new(file_name, BdatVersion::Modern));
 
             for mut table in file.get_tables().with_context(|| {
                 format!("Could not parse BDAT tables ({})", path.to_string_lossy())
@@ -236,15 +240,26 @@ pub fn run_serialization(
 }
 
 fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
-    let schema_files = input.list_files("bschema").into_iter().collect::<Vec<_>>();
+    let schema_files = input
+        .list_files("bschema")
+        .into_iter()
+        .collect::<walkdir::Result<Vec<_>>>()?;
     if schema_files.is_empty() {
         todo!("no schema files found; schema files are required for deserialization");
     }
+    let base_path = crate::util::get_common_denominator(&schema_files);
+
+    let out_dir = args
+        .out_file
+        .as_ref()
+        .ok_or_else(|| Error::raw(ErrorKind::MissingRequiredArgument, "out dir is required"))?;
+    let out_dir = Path::new(&out_dir);
+    std::fs::create_dir(out_dir).context("Could not create output directory")?;
 
     let deserializer: Box<dyn BdatDeserialize + Send + Sync> = match args
         .file_type
         .as_ref()
-        .ok_or_else(|| Error::raw(ErrorKind::MissingRequiredArgument, "file type is required"))? // TODO
+        .ok_or_else(|| Error::raw(ErrorKind::MissingRequiredArgument, "file type is required"))?
         .as_str()
     {
         "json" => Box::new(json::JsonConverter::new(&args)),
@@ -276,15 +291,26 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
     schema_files
         .into_par_iter()
         .map(|schema_path| {
-            let schema_path = schema_path?;
             let schema_file = FileSchema::read(File::open(&schema_path)?)?;
+
+            // The relative path to the tables (we mimic the original file structure in the output)
+            let relative_path = schema_path
+                .strip_prefix(&base_path)
+                .unwrap()
+                .parent()
+                .unwrap_or_else(|| Path::new(""));
+
             let table_bar = multi_bar.add(
                 ProgressBar::new(schema_file.table_count() as u64)
                     .with_style(table_bar_style.clone()),
             );
 
+            // Tables are stored at <relative root>/<file name>
             let tables = schema_file
-                .find_table_files(schema_path.parent().unwrap(), "json")
+                .find_table_files(
+                    &schema_path.parent().unwrap().join(&schema_file.file_name),
+                    deserializer.get_table_extension(),
+                )
                 .into_par_iter()
                 .map(|table| {
                     let table_file = File::open(&table)?;
@@ -300,18 +326,17 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
                         &mut reader,
                     )?)
                 })
-                .collect::<Vec<Result<_>>>();
+                .collect::<Result<Vec<_>>>()?;
 
             multi_bar.remove(&table_bar);
 
-            let out_file =
-                File::create(Path::new("/tmp/").join(&format!("{}.bdat", schema_file.file_name)))?;
+            let out_dir = out_dir.join(relative_path);
+            std::fs::create_dir_all(&out_dir)?;
+            let out_file = File::create(out_dir.join(&format!("{}.bdat", schema_file.file_name)))?;
             let mut out_file = SwitchBdatFile::new(out_file, schema_file.version);
-            out_file.write_all_tables(tables.into_iter().flatten().collect::<Vec<_>>())?; // TODO handle
-                                                                                          // errors
+            out_file.write_all_tables(tables)?;
 
             file_bar.inc(1);
-
             Ok(())
         })
         .find_any(|r: &anyhow::Result<()>| r.is_err());
