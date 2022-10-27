@@ -10,7 +10,7 @@ use byteorder::{ByteOrder, WriteBytesExt};
 
 use crate::{
     error::Result,
-    types::{Cell, Label, RawTable, Value},
+    types::{Cell, Label, RawTable, Row, Value},
 };
 
 use super::{BdatVersion, FileHeader};
@@ -119,7 +119,7 @@ where
         let base_id = table
             .rows
             .iter()
-            .map(|r| r.id)
+            .map(Row::id)
             .min()
             .unwrap_or_default()
             .try_into()?;
@@ -312,44 +312,40 @@ mod tests {
 
     use crate::{
         io::read::BdatReader,
-        types::{Cell, ColumnDef, Label, RawTable, Row, Value, ValueType},
+        types::{Cell, ColumnDef, Label, Row, Value, ValueType},
+        TableBuilder,
     };
 
     use super::BdatWriter;
 
     #[test]
     fn table_write_back() {
-        let table = RawTable {
-            name: Some(Label::Hash(0xca_fe_ba_be)),
-            columns: vec![
-                ColumnDef {
-                    ty: ValueType::HashRef,
-                    label: Label::Hash(0xde_ad_be_ef),
-                    offset: 0,
-                },
-                ColumnDef {
-                    ty: ValueType::UnsignedInt,
-                    label: Label::Hash(0xca_fe_ca_fe),
-                    offset: 4,
-                },
-            ],
-            rows: vec![
-                Row {
-                    id: 1,
-                    cells: vec![
-                        Cell::Single(Value::HashRef(0x00_00_00_01)),
-                        Cell::Single(Value::UnsignedInt(10)),
-                    ],
-                },
-                Row {
-                    id: 2,
-                    cells: vec![
-                        Cell::Single(Value::HashRef(0x01_00_00_01)),
-                        Cell::Single(Value::UnsignedInt(100)),
-                    ],
-                },
-            ],
-        };
+        let table = TableBuilder::new()
+            .set_name(Some(Label::Hash(0xca_fe_ba_be)))
+            .add_column(ColumnDef::new(
+                ValueType::HashRef,
+                Label::Hash(0xde_ad_be_ef),
+            ))
+            .add_column(ColumnDef {
+                ty: ValueType::UnsignedInt,
+                label: Label::Hash(0xca_fe_ca_fe),
+                offset: 4,
+            })
+            .add_row(Row::new(
+                1,
+                vec![
+                    Cell::Single(Value::HashRef(0x00_00_00_01)),
+                    Cell::Single(Value::UnsignedInt(10)),
+                ],
+            ))
+            .add_row(Row::new(
+                2,
+                vec![
+                    Cell::Single(Value::HashRef(0x01_00_00_01)),
+                    Cell::Single(Value::UnsignedInt(100)),
+                ],
+            ))
+            .build();
 
         let mut written = vec![];
         let mut cursor = Cursor::new(&mut written);

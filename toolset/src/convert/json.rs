@@ -77,7 +77,7 @@ impl BdatSerialize for JsonConverter {
         let rows = table
             .into_rows()
             .map(|mut row| {
-                let id = row.id;
+                let id = row.id();
                 let cells = columns
                     .iter()
                     .map(|col| {

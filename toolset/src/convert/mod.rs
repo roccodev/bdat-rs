@@ -156,8 +156,7 @@ pub fn run_serialization(
         .into_par_iter()
         .map(|path| {
             let file = BufReader::new(File::open(&path)?);
-            let mut file =
-                BdatFile::<_, LittleEndian>::read(file).context("Failed to read BDAT file")?;
+            let mut file = SwitchBdatFile::new_read(file).context("Failed to read BDAT file")?;
             let file_name = path
                 .file_stem()
                 .and_then(OsStr::to_str)
@@ -333,7 +332,7 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
             let out_dir = out_dir.join(relative_path);
             std::fs::create_dir_all(&out_dir)?;
             let out_file = File::create(out_dir.join(&format!("{}.bdat", schema_file.file_name)))?;
-            let mut out_file = SwitchBdatFile::new(out_file, schema_file.version);
+            let mut out_file = SwitchBdatFile::new_write(out_file, schema_file.version);
             out_file.write_all_tables(tables)?;
 
             file_bar.inc(1);

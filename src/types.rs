@@ -31,6 +31,7 @@ use crate::io::BdatVersion;
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RawTable {
     pub name: Option<Label>,
+    pub(crate) base_id: usize,
     pub(crate) columns: Vec<ColumnDef>,
     pub(crate) rows: Vec<Row>,
 }
@@ -49,7 +50,7 @@ pub struct ColumnDef {
 /// A row from a Bdat table
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row {
-    pub id: usize,
+    pub(crate) id: usize,
     pub(crate) cells: Vec<Cell>,
 }
 
@@ -144,6 +145,7 @@ impl RawTable {
         Self {
             name,
             columns,
+            base_id: rows.iter().map(|r| r.id).min().unwrap_or_default(),
             rows,
         }
     }
@@ -159,7 +161,16 @@ impl RawTable {
         self.name = name;
     }
 
+    /// Gets the minimum row ID in the table.
+    pub fn base_id(&self) -> usize {
+        self.base_id
+    }
+
     /// Gets a row by its ID
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
     ///
     /// # Panics
     /// If there is no row for the given ID
@@ -169,11 +180,13 @@ impl RawTable {
 
     /// Attempts to get a row by its ID.  
     /// If there is no row for the given ID, this returns [`None`].
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
     pub fn get_row(&self, id: usize) -> Option<RowRef<'_>> {
-        self.rows.get(id).map(|_| RowRef {
-            index: id,
-            table: self,
-        })
+        let index = id - self.base_id;
+        self.rows.get(index).map(|_| RowRef { index, table: self })
     }
 
     /// Gets an iterator that visits this table's rows
@@ -235,11 +248,15 @@ impl TableBuilder {
     }
 
     pub fn add_row(&mut self, row: Row) -> &mut Self {
+        if self.0.base_id == 0 || self.0.base_id > row.id {
+            self.0.base_id = row.id;
+        }
         self.0.rows.push(row);
         self
     }
 
     pub fn set_rows(&mut self, rows: Vec<Row>) -> &mut Self {
+        self.0.base_id = rows.iter().map(|r| r.id).min().unwrap_or_default();
         self.0.rows = rows;
         self
     }
@@ -256,8 +273,17 @@ impl TableBuilder {
 
 impl Row {
     /// Creates a new [`Row`].
+    ///
+    /// ## Panics
+    /// If the ID is less than 1.
     pub fn new(id: usize, cells: Vec<Cell>) -> Self {
+        assert!(id > 0, "ID must not be less than 1");
         Self { id, cells }
+    }
+
+    /// Gets the row's ID
+    pub fn id(&self) -> usize {
+        self.id
     }
 
     /// Gets an owning iterator over this row's cells

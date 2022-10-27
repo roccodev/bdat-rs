@@ -142,6 +142,7 @@ where
 
         Ok(RawTable {
             name,
+            base_id,
             columns: col_data,
             rows: row_data,
         })

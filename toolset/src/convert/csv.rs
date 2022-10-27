@@ -69,7 +69,7 @@ impl BdatSerialize for CsvConverter {
                 .collect::<Vec<_>>()
                 .join(&self.separator);
             writeln!(writer, "{}", formatted)
-                .with_context(|| format!("Failed to write row {}", row.id))?;
+                .with_context(|| format!("Failed to write row {}", row.id()))?;
         }
         Ok(())
     }
