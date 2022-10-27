@@ -38,8 +38,8 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
             .get_tables()
             .with_context(|| format!("Could not parse BDAT tables ({})", path.to_string_lossy()))?
         {
-            let name = match table.name {
-                Some(ref mut n) => {
+            let name = match table.name() {
+                Some(n) => {
                     if !table_filter.contains(n) {
                         continue;
                     }
@@ -74,14 +74,13 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
     Ok(())
 }
 
-fn format_unhashed_label(label: &mut Label, hash_table: &HashNameTable) -> String {
+fn format_unhashed_label(label: &Label, hash_table: &HashNameTable) -> String {
     let previous_hash = match label {
         Label::Hash(h) => Some(*h),
         _ => None,
     };
 
-    hash_table.convert_label(label);
-    match (label, previous_hash) {
+    match (hash_table.convert_label_cow(label).as_ref(), previous_hash) {
         (l @ Label::Unhashed(_), Some(hash)) => format!("{l} (<{hash:08X}>)"),
         (l, _) => l.to_string(),
     }

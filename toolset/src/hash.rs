@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     collections::HashMap,
     fs::OpenOptions,
     hash::{BuildHasher, Hasher},
@@ -110,6 +111,21 @@ impl HashNameTable {
     pub fn convert_label(&self, label: &mut Label) {
         if let Label::Hash(hash) = label {
             *label = self.get_label(*hash);
+        }
+    }
+
+    //   _____
+    // < label >
+    //   -----
+    //          \   ^__^
+    //           \  (oo)\_______
+    //              (__)\       )\/\
+    //                  ||----w |
+    //                  ||     ||
+    pub fn convert_label_cow<'moo>(&self, label: &'moo Label) -> Cow<'moo, Label> {
+        match label {
+            Label::Hash(h) => Cow::Owned(self.get_label(*h)),
+            l => Cow::Borrowed(l),
         }
     }
 

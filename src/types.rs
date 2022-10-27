@@ -30,7 +30,7 @@ use crate::io::BdatVersion;
 /// ```
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RawTable {
-    pub name: Option<Label>,
+    pub(crate) name: Option<Label>,
     pub(crate) base_id: usize,
     pub(crate) columns: Vec<ColumnDef>,
     pub(crate) rows: Vec<Row>,
@@ -96,6 +96,8 @@ pub enum Value {
     /// [`BdatVersion::Modern`] unknown type (0xc)
     Unknown2(u8),
     /// [`BdatVersion::Modern`] unknown type (0xd)
+    /// It seems to be some sort of translation index, mostly used for
+    /// `Name` and `Caption` fields.
     Unknown3(u16),
 }
 

@@ -189,8 +189,8 @@ pub fn run_serialization(
                     schema.feed_table(&table);
                 }
 
-                let name = match table.name {
-                    Some(ref n) => {
+                let name = match table.name() {
+                    Some(n) => {
                         if !table_filter.contains(n) {
                             continue;
                         }
