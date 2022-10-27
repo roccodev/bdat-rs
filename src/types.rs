@@ -1,19 +1,33 @@
-use std::{fmt::Display, marker::PhantomData, ops::Index};
-
 use enum_kinds::EnumKind;
 use num_enum::TryFromPrimitive;
+use std::{fmt::Display, ops::Index};
 
-/// A memory-mapped Bdat table
-pub struct MappedTable<'b, I, R> {
-    buffer: &'b I,
-    _ty: PhantomData<R>,
-}
+// doc imports
+#[allow(unused_imports)]
+use crate::io::BdatVersion;
 
 /// A Bdat table
 ///
 /// ## Accessing cells
-/// The [`RowRef`] struct provides an easy interface to access cells.  
+/// The [`RawTable::row`] function provides an easy interface to access cells.  
 /// For example, to access the cell at row 1 and column "Param1", you can use `table.row(1)["Param1".into()]`.
+///
+/// ## Example
+///
+/// ```
+/// use bdat::{RawTable, TableBuilder, Cell, ColumnDef, Row, Value, ValueType, Label};
+///
+/// let table: RawTable = TableBuilder::new()
+///     .add_column(ColumnDef::new(ValueType::UnsignedInt, Label::Hash(0xCAFEBABE)))
+///     .add_row(Row::new(1, vec![Cell::Single(Value::UnsignedInt(10))]))
+///     .build();
+///
+/// assert_eq!(table.row_count(), 1);
+/// assert_eq!(
+///     *table.row(1)[Label::Hash(0xCAFEBABE)].as_single().unwrap(),
+///     Value::UnsignedInt(10)
+/// );
+/// ```
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RawTable {
     pub name: Option<Label>,
@@ -43,8 +57,12 @@ pub struct Row {
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize), serde(untagged))]
 pub enum Cell {
+    /// The cell only contains a single [`Value`]. This is the only supported type
+    /// in [`BdatVersion::Modern`] BDATs.
     Single(Value),
+    /// The cell contains a list of [`Value`]s
     List(Vec<Value>),
+    /// The cell acts as a bit flag
     Flag(bool),
 }
 
@@ -67,18 +85,29 @@ pub enum Value {
     SignedInt(i32),
     String(String),
     Float(f32),
+    /// A hash referencing a row in the same or some other table
     HashRef(u32),
     Percent(u8),
+    /// [`BdatVersion::Modern`] unknown type (0xb)  
+    /// It seems to be some sort of index, it's mostly used for
+    /// `DebugName` fields.
     Unknown1(u32),
+    /// [`BdatVersion::Modern`] unknown type (0xc)
     Unknown2(u8),
+    /// [`BdatVersion::Modern`] unknown type (0xd)
     Unknown3(u16),
 }
 
+/// A name for a BDAT element (table, column, ID, etc.)
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Label {
+    /// 32-bit hash, notably used in [`BdatVersion::Modern`] BDATs.
     Hash(u32),
+    /// Plain-text string, used in older BDAT formats.
     String(String),
+    /// Equivalent to [`Label::String`], but it is made explicit that the label
+    /// was originally hashed.
     Unhashed(String),
 }
 
@@ -239,6 +268,46 @@ impl Row {
     /// Gets an iterator over this row's cells
     pub fn cells(&self) -> impl Iterator<Item = &Cell> {
         self.cells.iter()
+    }
+}
+
+impl ColumnDef {
+    /// Creates a new [`ColumnDef`].
+    pub fn new(ty: ValueType, label: Label) -> Self {
+        Self {
+            ty,
+            label,
+            offset: 0,
+        }
+    }
+}
+
+impl Cell {
+    /// Gets the cell's value, if it is a [`Cell::Single`].
+    ///
+    /// ## Panics
+    /// If the cell is not a [`Cell::Single`].
+    pub fn unwrap_single(self) -> Value {
+        self.into_single().expect("Cell::Single")
+    }
+
+    /// Gets a reference to the cell's value, if it
+    /// is a [`Cell::Single`], and returns [`None`]
+    /// if it is not.
+    pub fn as_single(&self) -> Option<&Value> {
+        match self {
+            Self::Single(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// Gets the cell's value, if it is a [`Cell::Single`], and
+    /// returns [`None`] if it is not.
+    pub fn into_single(self) -> Option<Value> {
+        match self {
+            Self::Single(v) => Some(v),
+            _ => None,
+        }
     }
 }
 

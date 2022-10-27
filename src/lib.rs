@@ -4,3 +4,5 @@ pub mod io;
 #[cfg(feature = "serde")]
 mod serde;
 pub mod types;
+
+pub use types::*;
