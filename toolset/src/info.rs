@@ -20,9 +20,6 @@ pub struct InfoArgs {
     /// Only print these columns. If absent, prints all columns.
     #[arg(short, long)]
     columns: Vec<String>,
-    /// If this is set, saves a copy of the file's schema in the specified directory.
-    #[arg(short, long)]
-    out_schema: Option<String>,
 }
 
 pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {

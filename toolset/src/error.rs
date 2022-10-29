@@ -7,6 +7,10 @@ pub struct OptLabel(Option<Label>);
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
+    #[error("Missing required argument: {0}")]
+    MissingRequiredArgument(&'static str),
+    #[error("Unsupported file type '{0}'")]
+    UnknownFileType(String),
     #[error("No schema files found, please run 'extract' without '--no-schema'")]
     DeserMissingSchema,
     #[error("Table {0} is missing type information, please run 'extract' without '-u', or add types manually")]

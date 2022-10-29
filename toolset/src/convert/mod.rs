@@ -10,11 +10,12 @@ use bdat::{
     io::{BdatFile, BdatVersion, LittleEndian, SwitchBdatFile},
     types::{Label, RawTable},
 };
-use clap::{error::ErrorKind, Args, Error};
+use clap::Args;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 
 use crate::{
+    error::Error,
     filter::{Filter, FilterArg},
     hash::HashNameTable,
     InputData,
@@ -28,19 +29,18 @@ mod schema;
 
 #[derive(Args)]
 pub struct ConvertArgs {
-    /// When deserializing, this is the BDAT file to be generated. When serializing, this is the output file or directory that
-    /// should contain the serialization result.
+    /// The output directory that should contain the conversion result.
     #[arg(short, long)]
-    out_file: Option<String>,
-    /// Specifies the file type for the output file (when serializing) and input files (when deserializing).
+    out_dir: Option<String>,
+    /// Specifies the file type for the output file (when extracting) and input files (when packing).
     #[arg(short, long)]
     file_type: Option<String>,
-    /// (Serialization only) If this is set, types are not included in the serialized files. Note: the serialized output
-    /// cannot be deserialized without type information
+    /// (Extract only) If this is set, types are not included in the serialized files. Note: the extracted output
+    /// cannot be repacked without type information
     #[arg(short, long)]
     untyped: bool,
-    /// (Serialization only) If this is set, a schema file is not generated. Note: the serialized output cannot be
-    /// deserialized without a schema
+    /// (Extract only) If this is set, a schema file is not generated. Note: the extracted output cannot be
+    /// repacked without a schema
     #[arg(short = 's', long)]
     no_schema: bool,
     /// Only convert these tables. If absent, converts all tables from all files.
@@ -105,27 +105,21 @@ pub fn run_serialization(
     hash_table: HashNameTable,
 ) -> Result<()> {
     let out_dir = args
-        .out_file
+        .out_dir
         .as_ref()
-        .ok_or_else(|| Error::raw(ErrorKind::MissingRequiredArgument, "out dir is required"))?;
+        .ok_or_else(|| Error::MissingRequiredArgument("out-dir"))?;
     let out_dir = Path::new(&out_dir);
     std::fs::create_dir_all(out_dir).context("Could not create output directory")?;
 
     let serializer: Box<dyn BdatSerialize + Send + Sync> = match args
         .file_type
         .as_ref()
-        .ok_or_else(|| Error::raw(ErrorKind::MissingRequiredArgument, "file type is required"))?
+        .ok_or_else(|| Error::MissingRequiredArgument("file-type"))?
         .as_str()
     {
         "csv" => Box::new(csv::CsvConverter::new(&args)),
         "json" => Box::new(json::JsonConverter::new(&args)),
-        t => {
-            return Err(Error::raw(
-                ErrorKind::ValueValidation,
-                format!("unknown file type '{}'", t),
-            )
-            .into())
-        }
+        t => return Err(Error::UnknownFileType(t.to_string()).into()),
     };
 
     let table_filter: Filter = args.tables.into_iter().map(FilterArg).collect();
@@ -144,6 +138,7 @@ pub fn run_serialization(
 
     let res = files
         .into_par_iter()
+        .panic_fuse()
         .map(|path| {
             let file = BufReader::new(File::open(&path)?);
             let mut file = SwitchBdatFile::new_read(file).context("Failed to read BDAT file")?;
@@ -234,31 +229,25 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
         .into_iter()
         .collect::<walkdir::Result<Vec<_>>>()?;
     if schema_files.is_empty() {
-        return Err(crate::error::Error::DeserMissingSchema.into());
+        return Err(Error::DeserMissingSchema.into());
     }
     let base_path = crate::util::get_common_denominator(&schema_files);
 
     let out_dir = args
-        .out_file
+        .out_dir
         .as_ref()
-        .ok_or_else(|| Error::raw(ErrorKind::MissingRequiredArgument, "out dir is required"))?;
+        .ok_or_else(|| Error::MissingRequiredArgument("out-dir"))?;
     let out_dir = Path::new(&out_dir);
     std::fs::create_dir_all(out_dir).context("Could not create output directory")?;
 
     let deserializer: Box<dyn BdatDeserialize + Send + Sync> = match args
         .file_type
         .as_ref()
-        .ok_or_else(|| Error::raw(ErrorKind::MissingRequiredArgument, "file type is required"))?
+        .ok_or_else(|| Error::MissingRequiredArgument("file-type"))?
         .as_str()
     {
         "json" => Box::new(json::JsonConverter::new(&args)),
-        t => {
-            return Err(Error::raw(
-                ErrorKind::ValueValidation,
-                format!("unknown file type '{}'", t),
-            )
-            .into())
-        }
+        t => return Err(Error::UnknownFileType(t.to_string()).into()),
     };
 
     let multi_bar = MultiProgress::new();
@@ -270,6 +259,7 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
     file_bar.inc(0);
     let res = schema_files
         .into_par_iter()
+        .panic_fuse()
         .map(|schema_path| {
             let schema_file = FileSchema::read(File::open(&schema_path)?)?;
 
@@ -292,6 +282,7 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
                     deserializer.get_table_extension(),
                 )
                 .into_par_iter()
+                .panic_fuse()
                 .map(|table| {
                     let table_file = File::open(&table)?;
                     let mut reader = BufReader::new(table_file);

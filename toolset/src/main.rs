@@ -28,7 +28,7 @@ struct Cli {
 enum Commands {
     /// Extract tables from BDAT files
     Extract(ConvertArgs),
-    /// Convert from deserialized data to BDAT files
+    /// Convert from extracted data to BDAT files
     Pack(ConvertArgs),
     /// Print info about the structure of the BDAT file and the tables contained within
     Info(InfoArgs),

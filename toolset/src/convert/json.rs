@@ -130,7 +130,7 @@ impl BdatDeserialize for JsonConverter {
                 },
             );
 
-        let rows: Vec<_> = table
+        let rows = table
             .rows
             .into_iter()
             .map(|r| {
@@ -143,11 +143,11 @@ impl BdatDeserialize for JsonConverter {
                 let old_len = cells.len();
                 let cells: Vec<Cell> = cells.into_iter().flatten().collect();
                 if cells.len() != old_len {
-                    panic!("rows must have all cells"); // TODO
+                    return Err(Error::DeserIncompleteRow(id).into());
                 }
-                Row::new(id, cells)
+                Ok(Row::new(id, cells))
             })
-            .collect();
+            .collect::<Result<Vec<_>>>()?;
 
         Ok(TableBuilder::new()
             .set_name(name)
