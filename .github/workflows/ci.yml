@@ -1,0 +1,86 @@
+name: Test API & Build toolset
+
+on:
+  push:
+    branches: [master]
+    tags: ["*.*.*"]
+  pull_request:
+
+jobs:
+  clippy:
+    name: Check/Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+          profile: minimal
+          override: true
+
+      - name: Run clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features
+  
+  test:
+    name: Run tests
+    needs: [clippy]
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        build: [stable, beta]
+        include:
+          - build: beta
+            rust: beta
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: ${{ matrix.rust || 'stable' }}
+          profile: minimal
+          override: true
+
+      - name: Test
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all-features
+  
+  build-toolset:
+    name: Build & package toolset
+    needs: [test]
+    if: github.ref == 'refs/heads/master'
+    runs-on: ${{ matrix.builds.os }}
+    strategy:
+      matrix:
+        builds:
+          - os: ubuntu-latest
+            file: linux-x86_64
+            out: bdat-toolset
+          - os: windows-2019
+            file: win64.exe
+            out: bdat-toolset.exe
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+      - name: Build
+        run: cd toolset && cargo build --release
+      - name: Upload executable
+        uses: actions/upload-artifact@v3
+        with:
+          name: bdat-toolset-${{ matrix.builds.file }}
+          path: toolset/target/release/${{ matrix.builds.out }}
+    
