@@ -109,7 +109,7 @@ pub fn run_serialization(
         .as_ref()
         .ok_or_else(|| Error::raw(ErrorKind::MissingRequiredArgument, "out dir is required"))?;
     let out_dir = Path::new(&out_dir);
-    std::fs::create_dir(out_dir).context("Could not create output directory")?;
+    std::fs::create_dir_all(out_dir).context("Could not create output directory")?;
 
     let serializer: Box<dyn BdatSerialize + Send + Sync> = match args
         .file_type
@@ -138,19 +138,9 @@ pub fn run_serialization(
     let base_path = crate::util::get_common_denominator(&files);
 
     let multi_bar = MultiProgress::new();
-    let file_bar = multi_bar.add(
-        ProgressBar::new(files.len() as u64).with_style(
-            ProgressStyle::with_template(
-                "{spinner:.green} Files: {human_pos}/{human_len} ({percent}%) [{bar}] ETA: {eta}",
-            )
-            .unwrap(),
-        ),
-    );
-
-    let table_bar_style = ProgressStyle::with_template(
-        "{spinner:.green} Tables: {human_pos}/{human_len} ({percent}%) [{bar}]",
-    )
-    .unwrap();
+    let file_bar = multi_bar
+        .add(ProgressBar::new(files.len() as u64).with_style(build_progress_style("Files", true)));
+    let table_bar_style = build_progress_style("Tables", false);
 
     let res = files
         .into_par_iter()
@@ -197,10 +187,10 @@ pub fn run_serialization(
                         n
                     }
                     None => {
-                        eprintln!(
+                        multi_bar.println(format!(
                             "[Warn] Found unnamed table in {}",
-                            path.file_name().unwrap().to_string_lossy()
-                        );
+                            path.file_name().unwrap().to_string_lossy(),
+                        ))?;
                         continue;
                     }
                 };
@@ -253,7 +243,7 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
         .as_ref()
         .ok_or_else(|| Error::raw(ErrorKind::MissingRequiredArgument, "out dir is required"))?;
     let out_dir = Path::new(&out_dir);
-    std::fs::create_dir(out_dir).context("Could not create output directory")?;
+    std::fs::create_dir_all(out_dir).context("Could not create output directory")?;
 
     let deserializer: Box<dyn BdatDeserialize + Send + Sync> = match args
         .file_type
@@ -273,21 +263,12 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
 
     let multi_bar = MultiProgress::new();
     let file_bar = multi_bar.add(
-        ProgressBar::new(schema_files.len() as u64).with_style(
-            ProgressStyle::with_template(
-                "{spinner:.green} Files: {human_pos}/{human_len} ({percent}%) [{bar}] ETA: {eta}",
-            )
-            .unwrap(),
-        ),
+        ProgressBar::new(schema_files.len() as u64).with_style(build_progress_style("Files", true)),
     );
-
-    let table_bar_style = ProgressStyle::with_template(
-        "{spinner:.green} Tables: {human_pos}/{human_len} ({percent}%) [{bar}]",
-    )
-    .unwrap();
+    let table_bar_style = build_progress_style("Tables", false);
 
     file_bar.inc(0);
-    schema_files
+    let res = schema_files
         .into_par_iter()
         .map(|schema_path| {
             let schema_file = FileSchema::read(File::open(&schema_path)?)?;
@@ -327,6 +308,13 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
                 })
                 .collect::<Result<Vec<_>>>()?;
 
+            if tables.is_empty() {
+                multi_bar.println(format!(
+                    "[Warn] File {} has no tables",
+                    schema_path.display()
+                ))?;
+            }
+
             multi_bar.remove(&table_bar);
 
             let out_dir = out_dir.join(relative_path);
@@ -340,6 +328,18 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
         })
         .find_any(|r: &anyhow::Result<()>| r.is_err());
 
+    if let Some(r) = res {
+        r?;
+    }
+
     file_bar.finish();
     Ok(())
+}
+
+fn build_progress_style(label: &str, with_time: bool) -> ProgressStyle {
+    ProgressStyle::with_template(&match with_time {
+        true => format!("{{spinner:.cyan}} [{{elapsed_precise:.cyan}}] {label}: {{human_pos}}/{{human_len}} ({{percent}}%) [{{bar:.cyan/blue}}] ETA: {{eta}}"),
+        false => format!("{{spinner:.green}} {label}: {{human_pos}}/{{human_len}} ({{percent}}%) [{{bar}}]"),
+    })
+    .unwrap()
 }

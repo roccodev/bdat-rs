@@ -82,12 +82,8 @@ impl BdatSerialize for JsonConverter {
                 let id = row.id();
                 let cells = columns
                     .iter()
-                    .map(|col| {
-                        (
-                            col.label.to_string(),
-                            serde_json::to_value(&row.cells().next().unwrap()).unwrap(),
-                        )
-                    })
+                    .zip(row.cells())
+                    .map(|(col, cell)| (col.label.to_string(), serde_json::to_value(cell).unwrap()))
                     .collect();
 
                 TableRow { id, cells }

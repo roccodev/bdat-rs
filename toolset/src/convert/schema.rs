@@ -57,12 +57,6 @@ impl FileSchema {
             let path = base_dir.join(format!("{}.{extension}", label));
             if path.is_file() {
                 files.push(path);
-            } else {
-                eprintln!(
-                    "[Warn] Table file {} (required for {}) not found.",
-                    path.to_string_lossy(),
-                    self.file_name
-                );
             }
         }
 

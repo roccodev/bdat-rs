@@ -275,11 +275,7 @@ impl TableBuilder {
 
 impl Row {
     /// Creates a new [`Row`].
-    ///
-    /// ## Panics
-    /// If the ID is less than 1.
     pub fn new(id: usize, cells: Vec<Cell>) -> Self {
-        assert!(id > 0, "ID must not be less than 1");
         Self { id, cells }
     }
 
