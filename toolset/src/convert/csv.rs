@@ -1,9 +1,13 @@
 use anyhow::{Context, Result};
-use bdat::types::{Cell, RawTable};
+use bdat::{
+    types::{Cell, RawTable},
+    ColumnDef,
+};
 use clap::Args;
+use csv::WriterBuilder;
 use std::io::Write;
 
-use super::BdatSerialize;
+use super::{BdatSerialize, ConvertArgs};
 
 #[derive(Args)]
 pub struct CsvOptions {
@@ -12,63 +16,40 @@ pub struct CsvOptions {
 }
 
 pub struct CsvConverter {
-    separator: String,
     separator_ch: char,
+    untyped: bool,
 }
 
 impl CsvConverter {
-    pub fn new(opts: CsvOptions) -> Self {
-        let separator_ch = opts.csv_separator.unwrap_or(',');
+    pub fn new(args: &ConvertArgs) -> Self {
         Self {
-            separator_ch,
-            separator: separator_ch.to_string(),
+            separator_ch: args.csv_opts.csv_separator.unwrap_or(','),
+            untyped: args.untyped,
         }
     }
 
-    fn escape(&self, val: String) -> String {
-        // If a field contains a field separator, new line, or double quotes, the field
-        // is escaped by wrapping it in double quotes.
-        if val
-            .chars()
-            .any(|c| c == self.separator_ch || c == '"' || c == '\n')
-        {
-            let mut escaped = String::with_capacity(val.len() * 2);
-            escaped.push('"');
-            for c in val.chars() {
-                if c == '"' {
-                    // Additionally, any double quotes inside the field should be
-                    // escaped with extra double quotes.
-                    escaped.push('"');
-                }
-                escaped.push(c);
-            }
-            escaped.push('"');
-            escaped
+    fn format_column(&self, column: &ColumnDef) -> String {
+        if self.untyped {
+            column.label.to_string()
         } else {
-            val
+            format!("{}@{}", column.ty as u8, column.label)
         }
     }
 }
 
 impl BdatSerialize for CsvConverter {
     fn write_table(&self, table: RawTable, writer: &mut dyn Write) -> Result<()> {
+        let mut writer = WriterBuilder::new()
+            .delimiter(self.separator_ch as u8)
+            .from_writer(writer);
         let header = table
             .columns()
-            .map(|c| format!("{}@{}", c.ty as u8, c.label))
-            .collect::<Vec<_>>()
-            .join(&self.separator);
-        writeln!(writer, "{}", header).context("Failed to write header")?;
+            .map(|c| self.format_column(c))
+            .collect::<Vec<_>>();
+        writer.serialize(header).context("Failed to write header")?;
         for row in table.rows() {
-            let formatted = row
-                .cells()
-                .map(|c| match c {
-                    Cell::Single(v) => self.escape(v.to_string()),
-                    Cell::Flag(f) => self.escape(f.to_string()),
-                    Cell::List(_) => todo!(),
-                })
-                .collect::<Vec<_>>()
-                .join(&self.separator);
-            writeln!(writer, "{}", formatted)
+            writer
+                .serialize(row.cells().collect::<Vec<_>>())
                 .with_context(|| format!("Failed to write row {}", row.id()))?;
         }
         Ok(())

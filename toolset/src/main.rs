@@ -8,6 +8,7 @@ use info::InfoArgs;
 use walkdir::WalkDir;
 
 mod convert;
+pub mod error;
 pub mod filter;
 pub mod hash;
 mod info;

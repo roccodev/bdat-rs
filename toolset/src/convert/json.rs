@@ -9,6 +9,8 @@ use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
 use serde_json::{json, Map, Value};
 
+use crate::error::Error;
+
 use super::{schema::FileSchema, BdatDeserialize, BdatSerialize, ConvertArgs};
 
 #[derive(Args)]
@@ -118,23 +120,19 @@ impl BdatDeserialize for JsonConverter {
         let table: JsonTable =
             serde_json::from_reader(reader).context("failed to read JSON table")?;
 
+        let schema = table
+            .schema
+            .ok_or_else(|| Error::DeserMissingTypeInfo(name.clone().into()))?;
+
         let (columns, column_map, _): (Vec<ColumnDef>, HashMap<String, (usize, ValueType)>, _) =
-            table
-                .schema
-                .expect("TODO, no column schema")
-                .into_iter()
-                .fold(
-                    (Vec::new(), HashMap::default(), 0),
-                    |(mut cols, mut map, idx), col| {
-                        map.insert(col.name.clone(), (idx, col.ty));
-                        cols.push(ColumnDef {
-                            ty: col.ty,
-                            label: Label::parse(col.name, col.hashed),
-                            offset: 0, // only used when reading bdats
-                        });
-                        (cols, map, idx + 1)
-                    },
-                );
+            schema.into_iter().fold(
+                (Vec::new(), HashMap::default(), 0),
+                |(mut cols, mut map, idx), col| {
+                    map.insert(col.name.clone(), (idx, col.ty));
+                    cols.push(ColumnDef::new(col.ty, Label::parse(col.name, col.hashed)));
+                    (cols, map, idx + 1)
+                },
+            );
 
         let rows: Vec<_> = table
             .rows
@@ -149,7 +147,7 @@ impl BdatDeserialize for JsonConverter {
                 let old_len = cells.len();
                 let cells: Vec<Cell> = cells.into_iter().flatten().collect();
                 if cells.len() != old_len {
-                    panic!("rows must have all cells");
+                    panic!("rows must have all cells"); // TODO
                 }
                 Row::new(id, cells)
             })

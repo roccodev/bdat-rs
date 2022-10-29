@@ -269,7 +269,10 @@ impl LabelTable {
         let mut cursor = Cursor::new(&mut data);
         let mut written = 1;
 
-        cursor.write_u8(0)?; // TODO: are labels hashed?
+        // TODO: if LabelTable is only used for Modern BDATs, this can be
+        // left hardcoded.
+        // (whether labels are hashed)
+        cursor.write_u8(0)?;
 
         for (label, offset) in self.pairs {
             if written != offset {

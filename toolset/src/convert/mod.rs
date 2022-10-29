@@ -117,7 +117,7 @@ pub fn run_serialization(
         .ok_or_else(|| Error::raw(ErrorKind::MissingRequiredArgument, "file type is required"))?
         .as_str()
     {
-        "csv" => Box::new(csv::CsvConverter::new(args.csv_opts)),
+        "csv" => Box::new(csv::CsvConverter::new(&args)),
         "json" => Box::new(json::JsonConverter::new(&args)),
         t => {
             return Err(Error::raw(
@@ -244,7 +244,7 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
         .into_iter()
         .collect::<walkdir::Result<Vec<_>>>()?;
     if schema_files.is_empty() {
-        todo!("no schema files found; schema files are required for deserialization");
+        return Err(crate::error::Error::DeserMissingSchema.into());
     }
     let base_path = crate::util::get_common_denominator(&schema_files);
 

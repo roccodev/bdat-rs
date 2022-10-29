@@ -43,7 +43,7 @@ impl Serialize for Value {
             Value::Float(f) => serializer.serialize_f32(*f),
             Value::HashRef(h) => {
                 if serializer.is_human_readable() {
-                    serializer.serialize_str(&format!("{:+}", Label::Hash(*h)))
+                    serializer.serialize_str(&format!("{}", Label::Hash(*h)))
                 } else {
                     serializer.serialize_u32(*h)
                 }
@@ -377,6 +377,11 @@ mod tests {
             ty.deser_value(&mut serde_json::Deserializer::from_str("\"FFFFFFFF\""))
                 .unwrap(),
             Value::HashRef(u32::MAX)
+        );
+        assert_eq!(
+            ty.deser_value(&mut serde_json::Deserializer::from_str("\"<01ABCDEF>\""))
+                .unwrap(),
+            Value::HashRef(0x01abcdef)
         );
     }
 
