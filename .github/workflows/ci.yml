@@ -49,11 +49,14 @@ jobs:
           profile: minimal
           override: true
 
-      - name: Test
+      - name: Test API
         uses: actions-rs/cargo@v1
         with:
           command: test
           args: --all-features
+
+      - name: Test toolset
+        run: cd toolset && cargo test --all-features
   
   build-toolset:
     name: Build & package toolset
