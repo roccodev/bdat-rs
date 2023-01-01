@@ -140,6 +140,14 @@ impl Label {
             Label::String(text)
         }
     }
+
+    /// If needed, turns the label into a hashed label.
+    pub fn into_hash(self) -> Self {
+        match self {
+            l @ Self::Hash(_) => l,
+            Self::String(s) | Self::Unhashed(s) => Self::Hash(crate::hash::murmur3_str(&s)),
+        }
+    }
 }
 
 impl RawTable {

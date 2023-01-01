@@ -41,12 +41,12 @@ impl FileSchema {
     /// Registers a table in the file schema
     pub fn feed_table(&mut self, table: &RawTable) {
         self.tables
-            .extend(table.name().clone().map(|l| l.as_file_name().to_string()));
+            .extend(table.name().clone().map(|l| l.to_string()));
     }
 
     /// Attempts to find all deserialized table files, from the paths defined by the
     /// file schema.
-    pub fn find_table_files(&self, base_dir: &Path, extension: &str) -> Vec<PathBuf> {
+    pub fn find_table_files(&self, base_dir: &Path, extension: &str) -> Vec<(Label, PathBuf)> {
         let mut files = Vec::with_capacity(self.tables.len());
 
         for label in self
@@ -54,9 +54,10 @@ impl FileSchema {
             .iter()
             .chain(std::iter::once(&self.file_name.clone()))
         {
-            let path = base_dir.join(format!("{}.{extension}", label));
+            let label = Label::parse(label.clone(), false);
+            let path = base_dir.join(format!("{}.{extension}", label.as_file_name()));
             if path.is_file() {
-                files.push(path);
+                files.push((label, path));
             }
         }
 

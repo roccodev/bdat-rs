@@ -209,6 +209,12 @@ where
         self.stream.write_all(&row_table)?;
         self.stream.write_all(&ser_strings_table)?;
 
+        let written = self.stream.stream_position()? - table_offset;
+        let padding = (4 - written % 4) % 4;
+        for _ in 0..padding {
+            self.stream.write_u8(0)?;
+        }
+
         Ok(())
     }
 
@@ -221,9 +227,8 @@ where
             Value::Unknown => panic!("tried to serialize unknown value"),
             Value::UnsignedByte(b) | Value::Percent(b) | Value::Unknown2(b) => writer.write_u8(b),
             Value::UnsignedShort(s) | Value::Unknown3(s) => writer.write_u16::<E>(s),
-            Value::UnsignedInt(i) | Value::HashRef(i) | Value::Unknown1(i) => {
-                writer.write_u32::<E>(i)
-            }
+            Value::UnsignedInt(i) | Value::HashRef(i) => writer.write_u32::<E>(i),
+            Value::Unknown1(i) => writer.write_u32::<E>(i),
             Value::SignedByte(b) => writer.write_i8(b),
             Value::SignedShort(s) => writer.write_i16::<E>(s),
             Value::SignedInt(i) => writer.write_i32::<E>(i),
@@ -240,6 +245,13 @@ where
 
 impl LabelTable {
     pub fn get(&mut self, label: Cow<Label>) -> u32 {
+        if let Label::String(s) = &*label {
+            if s.is_empty() {
+                // The game often uses the 0 at the start of the table for an empty string
+                return 0;
+            }
+        }
+
         let existing = self.map.get(label.as_ref());
         if let Some(existing) = existing {
             return *existing;
@@ -247,7 +259,8 @@ impl LabelTable {
 
         // Add a new label
         if self.offset == 5 {
-            // Game BDATs leave the string hash at index 5 empty (it's possibly a debug name).
+            // Language BDATs leave the string hash at index 5 empty, but it is populated
+            // in game BDATs (it's possibly a debug name).
             // Probably doesn't matter, but we mimic that behavior nonetheless.
             self.offset += 4;
         }

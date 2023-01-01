@@ -283,19 +283,12 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
                 )
                 .into_par_iter()
                 .panic_fuse()
-                .map(|table| {
+                .map(|(label, table)| {
                     let table_file = File::open(&table)?;
                     let mut reader = BufReader::new(table_file);
 
                     table_bar.inc(1);
-                    deserializer.read_table(
-                        Some(Label::parse(
-                            table.file_stem().unwrap().to_string_lossy().to_string(),
-                            schema_file.version.are_labels_hashed(),
-                        )),
-                        &schema_file,
-                        &mut reader,
-                    )
+                    deserializer.read_table(Some(label.into_hash()), &schema_file, &mut reader)
                 })
                 .collect::<Result<Vec<_>>>()?;
 
