@@ -228,11 +228,12 @@ where
             Value::UnsignedByte(b) | Value::Percent(b) | Value::Unknown2(b) => writer.write_u8(b),
             Value::UnsignedShort(s) | Value::Unknown3(s) => writer.write_u16::<E>(s),
             Value::UnsignedInt(i) | Value::HashRef(i) => writer.write_u32::<E>(i),
-            Value::Unknown1(i) => writer.write_u32::<E>(i),
             Value::SignedByte(b) => writer.write_i8(b),
             Value::SignedShort(s) => writer.write_i16::<E>(s),
             Value::SignedInt(i) => writer.write_i32::<E>(i),
-            Value::String(s) => writer.write_u32::<E>(string_map.get(Cow::Owned(Label::String(s)))),
+            Value::String(s) | Value::Unknown1(s) => {
+                writer.write_u32::<E>(string_map.get(Cow::Owned(Label::String(s))))
+            }
             Value::Float(f) => writer.write_f32::<E>(f),
         }
     }

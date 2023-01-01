@@ -169,7 +169,11 @@ where
             ValueType::Float => Value::Float(buf.read_f32::<E>()?),
             ValueType::Percent => Value::Percent(buf.read_u8()?),
             ValueType::HashRef => Value::HashRef(buf.read_u32::<E>()?),
-            ValueType::Unknown1 => Value::Unknown1(buf.read_u32::<E>()?),
+            ValueType::Unknown1 => Value::Unknown1(
+                table_data
+                    .get_string(buf.read_u32::<E>()? as usize, usize::MAX)?
+                    .to_string(),
+            ),
             ValueType::Unknown2 => Value::Unknown2(buf.read_u8()?),
             ValueType::Unknown3 => Value::Unknown3(buf.read_u16::<E>()?),
         })

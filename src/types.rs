@@ -90,9 +90,9 @@ pub enum Value {
     HashRef(u32),
     Percent(u8),
     /// [`BdatVersion::Modern`] unknown type (0xb)  
-    /// It seems to be some sort of index, it's mostly used for
-    /// `DebugName` fields.
-    Unknown1(u32),
+    /// It points to a (generally empty) string in the string table,
+    /// mostly used for `DebugName` fields.
+    Unknown1(String),
     /// [`BdatVersion::Modern`] unknown type (0xc)
     Unknown2(u8),
     /// [`BdatVersion::Modern`] unknown type (0xd)
