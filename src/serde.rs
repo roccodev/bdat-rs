@@ -357,11 +357,11 @@ mod tests {
 
     #[test]
     fn deser_external() {
-        let ty = ValueType::Unknown1;
+        let ty = ValueType::Unknown3;
         let value = ty
             .deser_value(&mut serde_json::Deserializer::from_str("1024"))
             .unwrap();
-        assert_eq!(value, Value::Unknown1(1024));
+        assert_eq!(value, Value::Unknown3(1024));
     }
 
     #[test]
