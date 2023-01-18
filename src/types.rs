@@ -435,3 +435,46 @@ impl Display for Value {
         }
     }
 }
+
+impl Value {
+    /// Returns the integer representation of this value.
+    /// For signed values, this is the unsigned representation.
+    ///
+    /// # Panics
+    /// If the value is not stored as an integer.
+    /// Do not use this for floats, use [`Value::into_float`] instead.
+    pub fn into_integer(self) -> u32 {
+        match self {
+            Self::SignedByte(b) => b as u32,
+            Self::Percent(b) | Self::UnsignedByte(b) | Self::Unknown2(b) => b as u32,
+            Self::SignedShort(s) => s as u32,
+            Self::UnsignedShort(s) | Self::Unknown3(s) => s as u32,
+            Self::SignedInt(i) => i as u32,
+            Self::UnsignedInt(i) | Self::HashRef(i) => i,
+            _ => panic!("value is not an integer"),
+        }
+    }
+
+    /// Returns the floating point representation of this value.
+    ///
+    /// # Panics
+    /// If the value is not stored as a float.
+    pub fn into_float(self) -> f32 {
+        match self {
+            Self::Float(f) => f,
+            _ => panic!("value is not a float"),
+        }
+    }
+
+    /// Returns the underlying string value.
+    /// This does **not** format other values, use the Display trait for that.
+    ///
+    /// # Panics
+    /// If the value is not stored as a string.
+    pub fn into_string(self) -> String {
+        match self {
+            Self::String(s) | Self::Unknown1(s) => s,
+            _ => panic!("value is not a string"),
+        }
+    }
+}
