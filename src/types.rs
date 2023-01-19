@@ -405,6 +405,17 @@ impl<'t> RowRef<'t> {
     pub fn id(&self) -> usize {
         self.id
     }
+
+    /// Returns a reference to the cell at the given column.
+    pub fn get(&self, column: impl AsRef<Label>) -> Option<&'t Cell> {
+        let label = column.as_ref();
+        let index = self
+            .table
+            .columns
+            .iter()
+            .position(|col| col.label == *label)?;
+        self.table.rows[self.index].cells.get(index)
+    }
 }
 
 impl<'t, S> Index<S> for RowRef<'t>
