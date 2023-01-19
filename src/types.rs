@@ -1,6 +1,6 @@
 use enum_kinds::EnumKind;
 use num_enum::TryFromPrimitive;
-use std::{fmt::Display, ops::Index};
+use std::{borrow::Borrow, fmt::Display, ops::Index};
 
 use crate::hash::PreHashedMap;
 // doc imports
@@ -407,8 +407,8 @@ impl<'t> RowRef<'t> {
     }
 
     /// Returns a reference to the cell at the given column.
-    pub fn get(&self, column: impl AsRef<Label>) -> Option<&'t Cell> {
-        let label = column.as_ref();
+    pub fn get(&self, column: impl Borrow<Label>) -> Option<&'t Cell> {
+        let label = column.borrow();
         let index = self
             .table
             .columns
