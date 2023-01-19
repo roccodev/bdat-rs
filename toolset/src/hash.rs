@@ -6,20 +6,19 @@ use std::{
     io::{BufRead, BufReader, Read, Seek, Write},
 };
 
-use bdat::types::{Label, RawTable};
-
-/// A [`Hasher`] implementation for pre-hashed keys.
-#[derive(Clone, Copy)]
-struct IdentityHasher(u64);
+use bdat::{
+    hash::{IdentityHasher, PreHashedMap},
+    types::{Label, RawTable},
+};
 
 pub struct HashNameTable {
     file_name_hash: u64,
-    inner: HashMap<u32, String, IdentityHasher>,
+    inner: PreHashedMap<u32, String>,
 }
 
 impl HashNameTable {
     pub fn empty() -> Self {
-        let map = HashMap::with_hasher(IdentityHasher(0));
+        let map = HashMap::with_hasher(IdentityHasher::default());
         Self {
             inner: map,
             file_name_hash: 0,
@@ -142,27 +141,5 @@ impl HashNameTable {
             writer.write_all(bytes)?;
         }
         Ok(())
-    }
-}
-
-impl BuildHasher for IdentityHasher {
-    type Hasher = Self;
-
-    fn build_hasher(&self) -> Self::Hasher {
-        *self
-    }
-}
-
-impl Hasher for IdentityHasher {
-    fn finish(&self) -> u64 {
-        self.0
-    }
-
-    fn write(&mut self, bytes: &[u8]) {
-        let mut int = [0u8; 4];
-        int.copy_from_slice(bytes);
-
-        let int = u32::from_le_bytes(int) as u64;
-        self.0 = int | (int << 31);
     }
 }

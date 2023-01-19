@@ -2,6 +2,7 @@ use enum_kinds::EnumKind;
 use num_enum::TryFromPrimitive;
 use std::{fmt::Display, ops::Index};
 
+use crate::hash::PreHashedMap;
 // doc imports
 #[allow(unused_imports)]
 use crate::io::BdatVersion;
@@ -34,6 +35,8 @@ pub struct RawTable {
     pub(crate) base_id: usize,
     pub(crate) columns: Vec<ColumnDef>,
     pub(crate) rows: Vec<Row>,
+    #[cfg(feature = "hash-table")]
+    row_hash_table: PreHashedMap<u32, usize>,
 }
 
 /// A builder interface for [`RawTable`].
@@ -116,6 +119,7 @@ pub enum Label {
 
 pub struct RowRef<'t> {
     index: usize,
+    id: usize,
     table: &'t RawTable,
 }
 
@@ -157,6 +161,8 @@ impl RawTable {
             columns,
             base_id: rows.iter().map(|r| r.id).min().unwrap_or_default(),
             rows,
+            #[cfg(feature = "hash-table")]
+            row_hash_table: Default::default(),
         }
     }
 
@@ -196,7 +202,11 @@ impl RawTable {
     /// BDAT tables can have arbitrary start IDs.
     pub fn get_row(&self, id: usize) -> Option<RowRef<'_>> {
         let index = id - self.base_id;
-        self.rows.get(index).map(|_| RowRef { index, table: self })
+        self.rows.get(index).map(|_| RowRef {
+            index,
+            id,
+            table: self,
+        })
     }
 
     /// Gets an iterator that visits this table's rows
@@ -240,6 +250,18 @@ impl RawTable {
     pub fn column_count(&self) -> usize {
         self.columns.len()
     }
+
+    /// Attempts to get a row by its hashed 32-bit ID.
+    /// If there is no row for the given ID, this returns [`None`].
+    ///
+    /// This requires the `hash-table` feature flag, which is enabled
+    /// by default.
+    #[cfg(feature = "hash-table")]
+    pub fn get_row_by_hash(&self, hash_id: u32) -> Option<RowRef<'_>> {
+        self.row_hash_table
+            .get(&hash_id)
+            .and_then(|&id| self.get_row(id))
+    }
 }
 
 impl TableBuilder {
@@ -261,11 +283,25 @@ impl TableBuilder {
         if self.0.base_id == 0 || self.0.base_id > row.id {
             self.0.base_id = row.id;
         }
+        #[cfg(feature = "hash-table")]
+        {
+            if let Some(id) = row.id_hash() {
+                self.0.row_hash_table.insert(id, row.id);
+            }
+        }
         self.0.rows.push(row);
         self
     }
 
     pub fn set_rows(&mut self, rows: Vec<Row>) -> &mut Self {
+        #[cfg(feature = "hash-table")]
+        {
+            for row in &rows {
+                if let Some(id) = row.id_hash() {
+                    self.0.row_hash_table.insert(id, row.id);
+                }
+            }
+        }
         self.0.base_id = rows.iter().map(|r| r.id).min().unwrap_or_default();
         self.0.rows = rows;
         self
@@ -300,6 +336,15 @@ impl Row {
     /// Gets an iterator over this row's cells
     pub fn cells(&self) -> impl Iterator<Item = &Cell> {
         self.cells.iter()
+    }
+
+    /// Searches the row's cells for a ID hash field, returning the ID
+    /// of this row if found.
+    pub fn id_hash(&self) -> Option<u32> {
+        self.cells.iter().find_map(|cell| match cell {
+            Cell::Single(Value::HashRef(id)) => Some(*id),
+            _ => None,
+        })
     }
 }
 
@@ -352,6 +397,13 @@ impl ValueType {
             UnsignedShort | SignedShort | Unknown3 => 2,
             UnsignedInt | SignedInt | String | Float | HashRef | Unknown1 => 4,
         }
+    }
+}
+
+impl<'t> RowRef<'t> {
+    /// Returns the row's original ID
+    pub fn id(&self) -> usize {
+        self.id
     }
 }
 
@@ -476,5 +528,51 @@ impl Value {
             Self::String(s) | Self::Unknown1(s) => s,
             _ => panic!("value is not a string"),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "hash-table")]
+    #[test]
+    fn test_hash_table() {
+        use crate::{Cell, ColumnDef, Label, Row, TableBuilder, Value, ValueType};
+
+        let table = TableBuilder::new()
+            .add_column(ColumnDef::new(ValueType::HashRef, 0.into()))
+            .add_column(ColumnDef::new(ValueType::UnsignedInt, 1.into()))
+            .add_row(Row::new(
+                1,
+                vec![
+                    Cell::Single(Value::HashRef(0xabcdef01)),
+                    Cell::Single(Value::UnsignedInt(256)),
+                ],
+            ))
+            .add_row(Row::new(
+                2,
+                vec![
+                    Cell::Single(Value::HashRef(0xdeadbeef)),
+                    Cell::Single(Value::UnsignedInt(100)),
+                ],
+            ))
+            .build();
+        assert_eq!(1, table.get_row_by_hash(0xabcdef01).unwrap().id());
+        assert_eq!(2, table.get_row_by_hash(0xdeadbeef).unwrap().id());
+        assert_eq!(
+            256,
+            table.get_row_by_hash(0xabcdef01).unwrap()[Label::Hash(1)]
+                .as_single()
+                .unwrap()
+                .clone()
+                .into_integer()
+        );
+        assert_eq!(
+            100,
+            table.get_row_by_hash(0xdeadbeef).unwrap()[Label::Hash(1)]
+                .as_single()
+                .unwrap()
+                .clone()
+                .into_integer()
+        );
     }
 }

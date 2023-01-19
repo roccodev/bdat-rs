@@ -10,6 +10,7 @@ use byteorder::{ByteOrder, ReadBytesExt};
 use crate::{
     error::{BdatError, Result, Scope},
     types::{Cell, ColumnDef, Label, RawTable, Row, Value, ValueType},
+    TableBuilder,
 };
 
 use super::{BdatVersion, FileHeader};
@@ -140,12 +141,11 @@ where
             });
         }
 
-        Ok(RawTable {
-            name,
-            base_id,
-            columns: col_data,
-            rows: row_data,
-        })
+        Ok(TableBuilder::new()
+            .set_name(name)
+            .set_columns(col_data)
+            .set_rows(row_data)
+            .build())
     }
 
     fn read_value_v2(

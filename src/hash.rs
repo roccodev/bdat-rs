@@ -1,5 +1,41 @@
 const MURMUR3_SEED: u32 = 0;
 
+#[cfg(feature = "hash-table")]
+pub use table::{IdentityHasher, PreHashedMap};
+
+#[cfg(feature = "hash-table")]
+mod table {
+    use std::hash::{BuildHasher, Hasher};
+
+    /// A [`Hasher`] implementation for pre-hashed keys.
+    #[derive(Clone, Copy, Default)]
+    pub struct IdentityHasher(u64);
+
+    pub type PreHashedMap<K, V> = std::collections::HashMap<K, V, IdentityHasher>;
+
+    impl BuildHasher for IdentityHasher {
+        type Hasher = Self;
+
+        fn build_hasher(&self) -> Self::Hasher {
+            *self
+        }
+    }
+
+    impl Hasher for IdentityHasher {
+        fn finish(&self) -> u64 {
+            self.0
+        }
+
+        fn write(&mut self, bytes: &[u8]) {
+            let mut int = [0u8; 4];
+            int.copy_from_slice(bytes);
+
+            let int = u32::from_le_bytes(int) as u64;
+            self.0 = int | (int << 31);
+        }
+    }
+}
+
 pub fn murmur3(bytes: &[u8]) -> u32 {
     let len = bytes.len() as u32;
 

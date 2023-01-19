@@ -19,7 +19,9 @@ num_enum = "0.5.7"
 serde-value = { version = "0.7.0", optional = true }
 
 [features]
+default = ["hash-table"]
 serde = ["dep:serde", "serde-value"]
+hash-table = []
 
 [dev-dependencies]
 serde_json = "1.0"
