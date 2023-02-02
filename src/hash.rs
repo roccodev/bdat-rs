@@ -36,46 +36,70 @@ mod table {
     }
 }
 
-pub fn murmur3(bytes: &[u8]) -> u32 {
-    let len = bytes.len() as u32;
-
+// MIT-licensed const version of murmur3, adapted from
+// https://github.com/Reboare/const-murmur3
+pub const fn murmur3(data: &[u8]) -> u32 {
+    let slice_size: usize = data.len();
     let mut hash = MURMUR3_SEED;
-    let mut buf = [0u8; 4];
-    let mut start = 0;
-    for _ in 0..(len as usize >> 2) {
-        buf.copy_from_slice(&bytes[start..(start + 4)]);
-        hash ^= murmur3_scramble(u32::from_le_bytes(buf));
+    let mut i = 0;
+    let iterator = slice_size / 4;
+    while i < iterator {
+        let data = [
+            data[i * 4],
+            data[i * 4 + 1],
+            data[i * 4 + 2],
+            data[i * 4 + 3],
+        ];
+        hash ^= murmur3_scramble(data);
         hash = (hash.wrapping_shl(13)) | (hash.wrapping_shr(19));
         hash = hash.wrapping_mul(5).wrapping_add(0xe6546b64);
-        start += 4;
+
+        i += 1;
+    }
+    match slice_size % 4 {
+        0 => (),
+        1 => {
+            let data = [data[i * 4], 0, 0, 0];
+            let k = murmur3_scramble(data);
+            hash = hash ^ k;
+        }
+        2 => {
+            let data = [data[i * 4], data[i * 4 + 1], 0, 0];
+            let k = murmur3_scramble(data);
+            hash = hash ^ k;
+        }
+        3 => {
+            let data = [data[i * 4], data[i * 4 + 1], data[i * 4 + 2], 0];
+            let k = murmur3_scramble(data);
+            hash = hash ^ k;
+        }
+        _ => unreachable!(),
     }
 
-    let mut k = 0;
-    for i in (0..(len as usize & 3)).rev() {
-        k <<= 8;
-        k |= bytes[start + i] as u32;
-    }
-
-    hash ^= murmur3_scramble(k);
-    hash ^= len;
-    hash ^= hash.wrapping_shr(16);
+    hash = hash ^ slice_size as u32;
+    hash = hash ^ (hash.wrapping_shr(16));
     hash = hash.wrapping_mul(0x85ebca6b);
-    hash ^= hash.wrapping_shr(13);
+    hash = hash ^ (hash.wrapping_shr(13));
     hash = hash.wrapping_mul(0xc2b2ae35);
-    hash ^= hash.wrapping_shr(16);
+    hash = hash ^ (hash.wrapping_shr(16));
+
     hash
 }
 
 #[inline]
-pub fn murmur3_str(src: &str) -> u32 {
+pub const fn murmur3_str(src: &str) -> u32 {
     murmur3(src.as_bytes())
 }
 
 #[inline]
-fn murmur3_scramble(mut k: u32) -> u32 {
-    k = k.wrapping_mul(0xcc9e2d51);
-    k = (k.wrapping_shl(15)) | (k.wrapping_shr(17));
-    k = k.wrapping_mul(0x1b873593);
+const fn murmur3_scramble(data: [u8; 4]) -> u32 {
+    let r1 = 15;
+    let c1: u32 = 0xcc9e2d51;
+    let c2: u32 = 0x1b873593;
+    let mut k = u32::from_le_bytes(data);
+    k = k.wrapping_mul(c1);
+    k = k.rotate_left(r1);
+    k = k.wrapping_mul(c2);
     k
 }
 
