@@ -123,6 +123,11 @@ pub struct RowRef<'t> {
     table: &'t RawTable,
 }
 
+pub struct RowIter<'t> {
+    table: &'t RawTable,
+    row_id: usize,
+}
+
 impl Label {
     /// Extracts a [`Label`] from a [`String`].
     ///
@@ -261,6 +266,11 @@ impl RawTable {
         self.row_hash_table
             .get(&hash_id)
             .and_then(|&id| self.get_row(id))
+    }
+
+    /// Returns an ergonomic iterator view over the table's rows and columns.
+    pub fn iter(&self) -> RowIter<'_> {
+        self.into_iter()
     }
 }
 
@@ -433,6 +443,28 @@ where
             .position(|col| col.label == index)
             .expect("no such column");
         &self.table.rows[self.index].cells[index]
+    }
+}
+
+impl<'t> Iterator for RowIter<'t> {
+    type Item = RowRef<'t>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let item = self.table.get_row(self.row_id)?;
+        self.row_id += 1;
+        Some(item)
+    }
+}
+
+impl<'t> IntoIterator for &'t RawTable {
+    type Item = RowRef<'t>;
+    type IntoIter = RowIter<'t>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        RowIter {
+            table: self,
+            row_id: self.base_id(),
+        }
     }
 }
 
