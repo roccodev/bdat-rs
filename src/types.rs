@@ -201,7 +201,7 @@ impl RawTable {
     /// from the index of the row in the table's row list. That is because
     /// BDAT tables can have arbitrary start IDs.
     pub fn get_row(&self, id: usize) -> Option<RowRef<'_>> {
-        let index = id - self.base_id;
+        let index = id.checked_sub(self.base_id)?;
         self.rows.get(index).map(|_| RowRef {
             index,
             id,
