@@ -1,13 +1,15 @@
 use std::{fs::File, path::PathBuf};
 
 use anyhow::{Context, Result};
-use clap::{Args, Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand};
 use convert::ConvertArgs;
+use diff::DiffArgs;
 use hash::HashNameTable;
 use info::InfoArgs;
 use walkdir::WalkDir;
 
 mod convert;
+mod diff;
 pub mod error;
 pub mod filter;
 pub mod hash;
@@ -15,7 +17,13 @@ mod info;
 pub mod util;
 
 #[derive(Parser)]
-#[command(author, version, about)]
+#[command(
+    author,
+    version,
+    about,
+    arg_required_else_help = true,
+    subcommand_required = true
+)]
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
@@ -32,6 +40,8 @@ enum Commands {
     Pack(ConvertArgs),
     /// Print info about the structure of the BDAT file and the tables contained within
     Info(InfoArgs),
+    /// Print the differences between two BDAT dumps
+    Diff(DiffArgs),
 }
 
 #[derive(Args)]
@@ -41,7 +51,7 @@ pub struct InputData {
     #[arg(long, global = true)]
     hashes: Option<String>,
 
-    /// The input files
+    /// The input files. For "bdat-toolset diff", these are the "new" BDAT files.
     #[arg(global = true)]
     files: Vec<String>,
 }
@@ -53,6 +63,7 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::Info(args)) => info::get_info(cli.input, args),
         Some(Commands::Extract(args)) => convert::run_conversions(cli.input, args, true),
         Some(Commands::Pack(args)) => convert::run_conversions(cli.input, args, false),
+        Some(Commands::Diff(args)) => diff::run_diff(cli.input, args),
         _ => Ok(()),
     }
 }

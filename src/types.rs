@@ -1,6 +1,6 @@
 use enum_kinds::EnumKind;
 use num_enum::TryFromPrimitive;
-use std::{borrow::Borrow, fmt::Display, ops::Index};
+use std::{borrow::Borrow, cmp::Ordering, fmt::Display, ops::Index};
 
 use crate::hash::PreHashedMap;
 // doc imports
@@ -155,6 +155,38 @@ impl Label {
         match self {
             l @ Self::Hash(_) => l,
             Self::String(s) | Self::Unhashed(s) => Self::Hash(crate::hash::murmur3_str(&s)),
+        }
+    }
+
+    /// Comparison function for the underlying values.
+    ///
+    /// Unlike a typical [`Ord`] implementation for enums, this only takes values into consideration
+    /// (though hashed labels are still considered separately), meaning the following holds:
+    ///
+    /// ```rs
+    /// use bdat::Label;
+    /// use std::cmp::Ordering;
+    ///
+    /// assert_eq!(Label::Hash(0x0).cmp_value(&Label::Hash(0x0)), Ordering::Equal);
+    /// assert_eq!(Label::String("Test".to_string()).cmp_value(&Label::String("Test".to_string())), Ordering::Equal);
+    /// // and...
+    /// assert_eq!(Label::String("Test".to_string()).cmp_value(&Label::Unhashed("Test".to_string())), Ordering::Equal);
+    /// // ...but not
+    /// assert_ne!(Label::String(String::new()).cmp_value(&Label::Hash(0x0)), Ordering::Equal);
+    /// ```
+    pub fn cmp_value(&self, other: &Self) -> Ordering {
+        match (self, other) {
+            (Self::Hash(slf), Self::Hash(oth)) => slf.cmp(oth),
+            (_, Self::Hash(_)) => Ordering::Less, // hashed IDs always come last
+            (Self::Hash(_), _) => Ordering::Greater,
+            (a, b) => a.as_str().cmp(b.as_str()),
+        }
+    }
+
+    fn as_str(&self) -> &str {
+        match self {
+            Self::String(s) | Self::Unhashed(s) => s.as_str(),
+            _ => panic!("label is not a string"),
         }
     }
 }
@@ -531,6 +563,25 @@ impl Display for Value {
     }
 }
 
+impl Display for Cell {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Single(val) => val.fmt(f),
+            Cell::List(list) => {
+                write!(f, "[")?;
+                for (i, value) in list.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    value.fmt(f)?;
+                }
+                write!(f, "]")
+            }
+            Cell::Flag(b) => b.fmt(f),
+        }
+    }
+}
+
 impl Value {
     /// Returns the integer representation of this value.
     /// For signed values, this is the unsigned representation.
@@ -571,6 +622,12 @@ impl Value {
             Self::String(s) | Self::Unknown1(s) => s,
             _ => panic!("value is not a string"),
         }
+    }
+}
+
+impl<'t> AsRef<Row> for RowRef<'t> {
+    fn as_ref(&self) -> &Row {
+        &self.table.rows[self.index]
     }
 }
 
