@@ -1,6 +1,7 @@
 use enum_kinds::EnumKind;
 use num_enum::TryFromPrimitive;
 use std::{borrow::Borrow, cmp::Ordering, fmt::Display, ops::Index};
+use std::borrow::Cow;
 
 use crate::hash::PreHashedMap;
 // doc imports
@@ -10,7 +11,7 @@ use crate::io::BdatVersion;
 /// A Bdat table
 ///
 /// ## Accessing cells
-/// The [`RawTable::row`] function provides an easy interface to access cells.  
+/// The [`RawTable::row`] function provides an easy interface to access cells.
 /// For example, to access the cell at row 1 and column "Param1", you can use `table.row(1)["Param1".into()]`.
 ///
 /// ## Example
@@ -30,17 +31,17 @@ use crate::io::BdatVersion;
 /// );
 /// ```
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct RawTable {
+pub struct RawTable<'b> {
     pub(crate) name: Option<Label>,
     pub(crate) base_id: usize,
     pub(crate) columns: Vec<ColumnDef>,
-    pub(crate) rows: Vec<Row>,
+    pub(crate) rows: Vec<Row<'b>>,
     #[cfg(feature = "hash-table")]
     row_hash_table: PreHashedMap<u32, usize>,
 }
 
 /// A builder interface for [`RawTable`].
-pub struct TableBuilder(RawTable);
+pub struct TableBuilder<'b>(RawTable<'b>);
 
 /// A column definition from a Bdat table
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -52,20 +53,20 @@ pub struct ColumnDef {
 
 /// A row from a Bdat table
 #[derive(Debug, Clone, PartialEq)]
-pub struct Row {
+pub struct Row<'b> {
     pub(crate) id: usize,
-    pub(crate) cells: Vec<Cell>,
+    pub(crate) cells: Vec<Cell<'b>>,
 }
 
 /// A cell from a Bdat row
 #[derive(Debug, Clone, PartialEq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize), serde(untagged))]
-pub enum Cell {
+pub enum Cell<'b> {
     /// The cell only contains a single [`Value`]. This is the only supported type
     /// in [`BdatVersion::Modern`] BDATs.
-    Single(Value),
+    Single(Value<'b>),
     /// The cell contains a list of [`Value`]s
-    List(Vec<Value>),
+    List(Vec<Value<'b>>),
     /// The cell acts as a bit flag
     Flag(bool),
 }
@@ -79,7 +80,7 @@ pub enum Cell {
     cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize)),
     cfg_attr(feature = "serde", serde(into = "u8", try_from = "u8"))
 )]
-pub enum Value {
+pub enum Value<'b> {
     Unknown,
     UnsignedByte(u8),
     UnsignedShort(u16),
@@ -87,7 +88,7 @@ pub enum Value {
     SignedByte(i8),
     SignedShort(i16),
     SignedInt(i32),
-    String(String),
+    String(Cow<'b, str>),
     Float(f32),
     /// A hash referencing a row in the same or some other table
     HashRef(u32),
@@ -95,7 +96,7 @@ pub enum Value {
     /// [`BdatVersion::Modern`] unknown type (0xb)  
     /// It points to a (generally empty) string in the string table,
     /// mostly used for `DebugName` fields.
-    Unknown1(String),
+    Unknown1(Cow<'b, str>),
     /// [`BdatVersion::Modern`] unknown type (0xc)
     Unknown2(u8),
     /// [`BdatVersion::Modern`] unknown type (0xd)
@@ -117,14 +118,14 @@ pub enum Label {
     Unhashed(String),
 }
 
-pub struct RowRef<'t> {
+pub struct RowRef<'t, 'tb> {
     index: usize,
     id: usize,
-    table: &'t RawTable,
+    table: &'t RawTable<'tb>,
 }
 
-pub struct RowIter<'t> {
-    table: &'t RawTable,
+pub struct RowIter<'t, 'tb> {
+    table: &'t RawTable<'tb>,
     row_id: usize,
 }
 
@@ -191,8 +192,8 @@ impl Label {
     }
 }
 
-impl RawTable {
-    pub fn new(name: Option<Label>, columns: Vec<ColumnDef>, rows: Vec<Row>) -> Self {
+impl<'b> RawTable<'b> {
+    pub fn new(name: Option<Label>, columns: Vec<ColumnDef>, rows: Vec<Row<'b>>) -> Self {
         Self {
             name,
             columns,
@@ -227,7 +228,7 @@ impl RawTable {
     ///
     /// # Panics
     /// If there is no row for the given ID
-    pub fn row(&self, id: usize) -> RowRef<'_> {
+    pub fn row(& self, id: usize) -> RowRef<'_, 'b> {
         self.get_row(id).expect("no such row")
     }
 
@@ -237,7 +238,7 @@ impl RawTable {
     /// Note: the ID is the row's numerical ID, which could be different
     /// from the index of the row in the table's row list. That is because
     /// BDAT tables can have arbitrary start IDs.
-    pub fn get_row(&self, id: usize) -> Option<RowRef<'_>> {
+    pub fn get_row(&self, id: usize) -> Option<RowRef<'_, 'b>> {
         let index = id.checked_sub(self.base_id)?;
         self.rows.get(index).map(|_| RowRef {
             index,
@@ -247,18 +248,18 @@ impl RawTable {
     }
 
     /// Gets an iterator that visits this table's rows
-    pub fn rows(&self) -> impl Iterator<Item = &Row> {
+    pub fn rows(&self) -> impl Iterator<Item = &Row<'b>> {
         self.rows.iter()
     }
 
     /// Gets an iterator over mutable references to this table's
     /// rows.
-    pub fn rows_mut(&mut self) -> impl Iterator<Item = &mut Row> {
+    pub fn rows_mut(&mut self) -> impl Iterator<Item = &mut Row<'b>> {
         self.rows.iter_mut()
     }
 
     /// Gets an owning iterator over this table's rows
-    pub fn into_rows(self) -> impl Iterator<Item = Row> {
+    pub fn into_rows(self) -> impl Iterator<Item = Row<'b>> {
         self.rows.into_iter()
     }
 
@@ -294,19 +295,19 @@ impl RawTable {
     /// This requires the `hash-table` feature flag, which is enabled
     /// by default.
     #[cfg(feature = "hash-table")]
-    pub fn get_row_by_hash(&self, hash_id: u32) -> Option<RowRef<'_>> {
+    pub fn get_row_by_hash(&self, hash_id: u32) -> Option<RowRef<'_, 'b>> {
         self.row_hash_table
             .get(&hash_id)
             .and_then(|&id| self.get_row(id))
     }
 
     /// Returns an ergonomic iterator view over the table's rows and columns.
-    pub fn iter(&self) -> RowIter<'_> {
+    pub fn iter(&self) -> RowIter {
         self.into_iter()
     }
 }
 
-impl TableBuilder {
+impl<'b> TableBuilder<'b> {
     pub fn new() -> Self {
         Self(RawTable::default())
     }
@@ -321,7 +322,7 @@ impl TableBuilder {
         self
     }
 
-    pub fn add_row(&mut self, row: Row) -> &mut Self {
+    pub fn add_row(&mut self, row: Row<'b>) -> &mut Self {
         if self.0.base_id == 0 || self.0.base_id > row.id {
             self.0.base_id = row.id;
         }
@@ -335,7 +336,7 @@ impl TableBuilder {
         self
     }
 
-    pub fn set_rows(&mut self, rows: Vec<Row>) -> &mut Self {
+    pub fn set_rows(&mut self, rows: Vec<Row<'b>>) -> &mut Self {
         #[cfg(feature = "hash-table")]
         {
             for row in &rows {
@@ -354,14 +355,14 @@ impl TableBuilder {
         self
     }
 
-    pub fn build(&mut self) -> RawTable {
+    pub fn build(&mut self) -> RawTable<'b> {
         std::mem::take(&mut self.0)
     }
 }
 
-impl Row {
+impl<'b> Row<'b> {
     /// Creates a new [`Row`].
-    pub fn new(id: usize, cells: Vec<Cell>) -> Self {
+    pub fn new(id: usize, cells: Vec<Cell<'b>>) -> Self {
         Self { id, cells }
     }
 
@@ -371,12 +372,12 @@ impl Row {
     }
 
     /// Gets an owning iterator over this row's cells
-    pub fn into_cells(self) -> impl Iterator<Item = Cell> {
+    pub fn into_cells(self) -> impl Iterator<Item = Cell<'b>> {
         self.cells.into_iter()
     }
 
     /// Gets an iterator over this row's cells
-    pub fn cells(&self) -> impl Iterator<Item = &Cell> {
+    pub fn cells(&self) -> impl Iterator<Item = &Cell<'b>> {
         self.cells.iter()
     }
 
@@ -401,12 +402,12 @@ impl ColumnDef {
     }
 }
 
-impl Cell {
+impl<'b> Cell<'b> {
     /// Gets the cell's value, if it is a [`Cell::Single`].
     ///
     /// ## Panics
     /// If the cell is not a [`Cell::Single`].
-    pub fn unwrap_single(self) -> Value {
+    pub fn unwrap_single(self) -> Value<'b> {
         self.into_single().expect("Cell::Single")
     }
 
@@ -422,7 +423,7 @@ impl Cell {
 
     /// Gets the cell's value, if it is a [`Cell::Single`], and
     /// returns [`None`] if it is not.
-    pub fn into_single(self) -> Option<Value> {
+    pub fn into_single(self) -> Option<Value<'b>> {
         match self {
             Self::Single(v) => Some(v),
             _ => None,
@@ -442,14 +443,14 @@ impl ValueType {
     }
 }
 
-impl<'t> RowRef<'t> {
+impl<'t, 'tb> RowRef<'t, 'tb> {
     /// Returns the row's original ID
     pub fn id(&self) -> usize {
         self.id
     }
 
     /// Returns a reference to the cell at the given column.
-    pub fn get(&self, column: impl Borrow<Label>) -> Option<&'t Cell> {
+    pub fn get(&self, column: impl Borrow<Label>) -> Option<&'t Cell<'tb>> {
         let label = column.borrow();
         let index = self
             .table
@@ -458,13 +459,18 @@ impl<'t> RowRef<'t> {
             .position(|col| col.label == *label)?;
         self.table.rows[self.index].cells.get(index)
     }
+
+    /// Returns the table this row belongs to.
+    pub fn table(&self) -> &'t RawTable<'tb> {
+        self.table
+    }
 }
 
-impl<'t, S> Index<S> for RowRef<'t>
+impl<'t, 'tb, S> Index<S> for RowRef<'t, 'tb>
 where
     S: Into<Label>,
 {
-    type Output = Cell;
+    type Output = Cell<'tb>;
 
     fn index(&self, index: S) -> &Self::Output {
         let index = index.into();
@@ -478,8 +484,8 @@ where
     }
 }
 
-impl<'t> Iterator for RowIter<'t> {
-    type Item = RowRef<'t>;
+impl<'t, 'tb> Iterator for RowIter<'t, 'tb> {
+    type Item = RowRef<'t, 'tb>;
 
     fn next(&mut self) -> Option<Self::Item> {
         let item = self.table.get_row(self.row_id)?;
@@ -488,9 +494,9 @@ impl<'t> Iterator for RowIter<'t> {
     }
 }
 
-impl<'t> IntoIterator for &'t RawTable {
-    type Item = RowRef<'t>;
-    type IntoIter = RowIter<'t>;
+impl<'t, 'tb> IntoIterator for &'t RawTable<'tb> {
+    type Item = RowRef<'t, 'tb>;
+    type IntoIter = RowIter<'t, 'tb>;
 
     fn into_iter(self) -> Self::IntoIter {
         RowIter {
@@ -527,7 +533,7 @@ impl Display for Label {
     }
 }
 
-impl Default for TableBuilder {
+impl<'b> Default for TableBuilder<'b> {
     fn default() -> Self {
         Self::new()
     }
@@ -550,7 +556,7 @@ macro_rules! default_display {
     };
 }
 
-impl Display for Value {
+impl<'b> Display for Value<'b> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Unknown => Ok(()),
@@ -563,7 +569,7 @@ impl Display for Value {
     }
 }
 
-impl Display for Cell {
+impl<'b> Display for Cell<'b> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Single(val) => val.fmt(f),
@@ -582,7 +588,7 @@ impl Display for Cell {
     }
 }
 
-impl Value {
+impl<'b> Value<'b> {
     /// Returns the integer representation of this value.
     /// For signed values, this is the unsigned representation.
     ///
@@ -619,14 +625,19 @@ impl Value {
     /// If the value is not stored as a string.
     pub fn into_string(self) -> String {
         match self {
-            Self::String(s) | Self::Unknown1(s) => s,
+            Self::String(s) | Self::Unknown1(s) => s.to_string(),
             _ => panic!("value is not a string"),
         }
     }
+
+    /*
+    pub fn as_str_unwrap() {
+       // TODO
+    }*/
 }
 
-impl<'t> AsRef<Row> for RowRef<'t> {
-    fn as_ref(&self) -> &Row {
+impl<'t, 'tb> AsRef<Row<'tb>> for RowRef<'t, 'tb> {
+    fn as_ref(&self) -> &'t Row<'tb> {
         &self.table.rows[self.index]
     }
 }

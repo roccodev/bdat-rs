@@ -14,7 +14,7 @@ use indicatif::ProgressBar;
 use itertools::Itertools;
 use rayon::{iter::Either, prelude::*};
 
-use bdat::{Cell, io::SwitchBdatFile, Label, RawTable, RowRef};
+use bdat::{Cell, io::SwitchBdatFile, Label, RawTable, RowRef, SwitchEndian};
 
 use crate::{hash::MurmurHashSet, InputData};
 
@@ -33,8 +33,8 @@ pub struct DiffArgs {
     no_file_names: bool,
 }
 
-struct TableWithSource<'f> {
-    table: RawTable,
+struct TableWithSource<'f, 't> {
+    table: RawTable<'t>,
     source_file: &'f Path,
 }
 
@@ -44,17 +44,17 @@ struct PathDiff<'p> {
     new: &'p Path,
 }
 
-struct RowChanges<'t> {
+struct RowChanges<'t, 'tb> {
     row_id: usize,
     old_hash: Option<Label>,
     new_hash: Option<Label>,
-    changes: Vec<ColumnChange<'t>>,
+    changes: Vec<ColumnChange<'t, 'tb>>,
 }
 
-struct ColumnChange<'t> {
+struct ColumnChange<'t, 'tb> {
     label: &'t Label,
     added: bool,
-    value: &'t Cell,
+    value: &'t Cell<'tb>,
 }
 
 struct ValueOrderedLabel(Label);
@@ -87,7 +87,8 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
         .par_iter()
         .flat_map(|(file, new)| {
             let reader = BufReader::new(File::open(file)?);
-            let mut tables = SwitchBdatFile::new_read(reader).and_then(|mut f| {
+            let mut tables = bdat::from_reader::<_, SwitchEndian>(reader)
+                .and_then(|mut f| {
                 Ok(f.get_tables()?
                     .into_iter()
                     .map(|table| TableWithSource {
@@ -188,8 +189,8 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
                         .and_then(|t| t.as_ref().id_hash())
                         .map(Label::Hash),
                     new_row.id_hash().map(Label::Hash),
-                    old_row.map(|row| (&new_table.table, row)),
-                    Some((&new_table.table, new_table.table.get_row(id).unwrap())),
+                    old_row.map(|row| row),
+                    Some(new_table.table.get_row(id).unwrap()),
                 )
             })
             .collect_vec();
@@ -214,24 +215,25 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
     Ok(())
 }
 
-impl<'t> RowChanges<'t> {
+impl<'t, 'tb> RowChanges<'t, 'tb> {
     fn diff(
         row_id: usize,
         old_hash: Option<Label>,
         new_hash: Option<Label>,
-        old: Option<(&'t RawTable, RowRef<'t>)>,
-        new: Option<(&'t RawTable, RowRef<'t>)>,
+        old: Option<RowRef<'t, 'tb>>,
+        new: Option<RowRef<'t, 'tb>>,
     ) -> Option<Self> {
         let changed_cols: Vec<ColumnChange> = match (old, new) {
-            (None, Some((new_table, new_row))) => new_table
+            (None, Some(new_row)) => new_row.table()
                 .columns()
                 .map(|col| (&col.label, true, new_row.get(&col.label).unwrap()).into())
                 .collect(),
-            (Some((old_table, old_row)), None) => old_table
+            (Some(old_row), None) => old_row.table()
                 .columns()
                 .map(|col| (&col.label, false, old_row.get(&col.label).unwrap()).into())
                 .collect(),
-            (Some((old_table, old_row)), Some((new_table, new_row))) => {
+            (Some(old_row), Some(new_row)) => {
+                let (old_table, new_table) = (old_row.table(), new_row.table());
                 let old_cols: MurmurHashSet<_> =
                     old_table.columns().map(|col| &col.label).collect();
                 let new_cols: MurmurHashSet<_> =
@@ -323,8 +325,8 @@ impl<'t> RowChanges<'t> {
     }
 }
 
-impl<'f> TableWithSource<'f> {
-    fn get_path_diff(&self, new: &TableWithSource<'f>) -> PathDiff<'f> {
+impl<'f, 't> TableWithSource<'f, 't> {
+    fn get_path_diff(&self, new: &TableWithSource<'f, 't>) -> PathDiff<'f> {
         PathDiff {
             old: self.source_file,
             new: new.source_file,
@@ -361,8 +363,8 @@ impl<'p> PathDiff<'p> {
     }
 }
 
-impl<'t> From<(&'t Label, bool, &'t Cell)> for ColumnChange<'t> {
-    fn from(value: (&'t Label, bool, &'t Cell)) -> Self {
+impl<'t, 'tb> From<(&'t Label, bool, &'t Cell<'tb>)> for ColumnChange<'t, 'tb> {
+    fn from(value: (&'t Label, bool, &'t Cell<'tb>)) -> Self {
         Self {
             label: value.0,
             added: value.1,

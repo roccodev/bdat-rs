@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use serde::{
     de::{self, DeserializeSeed, IntoDeserializer, Visitor},
     Deserialize, Deserializer, Serialize,
@@ -8,10 +9,10 @@ use crate::types::{Cell, Label, Value, ValueType};
 /// A wrapper struct that associates a [`Value`] with its type,
 /// allowing deserialization.
 #[derive(serde::Serialize)]
-pub struct ValueWithType {
+pub struct ValueWithType<'b> {
     #[serde(rename = "type")]
     pub ty: ValueType,
-    pub value: Value,
+    pub value: Value<'b>,
 }
 
 enum ValueTypeFields {
@@ -24,7 +25,7 @@ struct HexVisitor;
 /// An implementation of [`DeserializeSeed`] for [`Cell`]s.
 pub struct CellSeed(ValueType);
 
-impl Serialize for Value {
+impl<'b> Serialize for Value<'b> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
@@ -54,7 +55,7 @@ impl Serialize for Value {
 
 impl ValueType {
     /// Deserializes the corresponding [`Value`] based on the type defined by self.
-    pub fn deser_value<'de, D>(&self, deserializer: D) -> Result<Value, D::Error>
+    pub fn deser_value<'de, D>(&self, deserializer: D) -> Result<Value<'de>, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
@@ -66,11 +67,11 @@ impl ValueType {
             Self::SignedInt => Value::SignedInt(i32::deserialize(deserializer)?),
             Self::SignedShort => Value::SignedShort(i16::deserialize(deserializer)?),
             Self::SignedByte => Value::SignedByte(i8::deserialize(deserializer)?),
-            Self::String => Value::String(String::deserialize(deserializer)?),
+            Self::String => Value::String(Cow::deserialize(deserializer)?),
             Self::Float => Value::Float(f32::deserialize(deserializer)?),
             Self::HashRef => Value::HashRef(deserializer.deserialize_any(HexVisitor)?),
             Self::Percent => Value::Percent(u8::deserialize(deserializer)?),
-            Self::Unknown1 => Value::Unknown1(String::deserialize(deserializer)?),
+            Self::Unknown1 => Value::Unknown1(Cow::deserialize(deserializer)?),
             Self::Unknown2 => Value::Unknown2(u8::deserialize(deserializer)?),
             Self::Unknown3 => Value::Unknown3(u16::deserialize(deserializer)?),
         })
@@ -115,8 +116,8 @@ impl<'de> Visitor<'de> for HexVisitor {
     }
 }
 
-impl From<Value> for ValueWithType {
-    fn from(v: Value) -> Self {
+impl<'b> From<Value<'b>> for ValueWithType<'b> {
+    fn from(v: Value<'b>) -> Self {
         Self {
             ty: ValueType::from(&v),
             value: v,
@@ -124,13 +125,13 @@ impl From<Value> for ValueWithType {
     }
 }
 
-impl From<ValueWithType> for Value {
-    fn from(vt: ValueWithType) -> Self {
+impl<'b> From<ValueWithType<'b>> for Value<'b> {
+    fn from(vt: ValueWithType<'b>) -> Self {
         vt.value
     }
 }
 
-impl<'de> Deserialize<'de> for ValueWithType {
+impl<'de> Deserialize<'de> for ValueWithType<'de> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
@@ -138,7 +139,7 @@ impl<'de> Deserialize<'de> for ValueWithType {
         struct ValueWithTypeVisitor;
 
         impl<'de> Visitor<'de> for ValueWithTypeVisitor {
-            type Value = ValueWithType;
+            type Value = ValueWithType<'de>;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("struct ValueWithType")
@@ -234,7 +235,7 @@ impl<'de> Deserialize<'de> for ValueTypeFields {
 }
 
 impl<'de> DeserializeSeed<'de> for ValueType {
-    type Value = Value;
+    type Value = Value<'de>;
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
@@ -245,7 +246,7 @@ impl<'de> DeserializeSeed<'de> for ValueType {
 }
 
 impl<'de> DeserializeSeed<'de> for CellSeed {
-    type Value = Cell;
+    type Value = Cell<'de>;
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
@@ -254,7 +255,7 @@ impl<'de> DeserializeSeed<'de> for CellSeed {
         struct CellVisitor(ValueType);
 
         impl<'de> Visitor<'de> for CellVisitor {
-            type Value = Cell;
+            type Value = Cell<'de>;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("Value, bool, or sequence of Values")

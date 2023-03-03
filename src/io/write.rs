@@ -40,7 +40,7 @@ where
         }
     }
 
-    pub fn write_file(&mut self, tables: impl IntoIterator<Item = RawTable>) -> Result<()> {
+    pub fn write_file<'t>(&mut self, tables: impl IntoIterator<Item = RawTable<'t>>) -> Result<()> {
         let (table_bytes, table_offsets, total_len, table_count) = tables
             .into_iter()
             .map(|table| {
@@ -232,7 +232,8 @@ where
             Value::SignedShort(s) => writer.write_i16::<E>(s),
             Value::SignedInt(i) => writer.write_i32::<E>(i),
             Value::String(s) | Value::Unknown1(s) => {
-                writer.write_u32::<E>(string_map.get(Cow::Owned(Label::String(s))))
+                // TODO to_string necessary?
+                writer.write_u32::<E>(string_map.get(Cow::Owned(Label::String(s.to_string()))))
             }
             Value::Float(f) => writer.write_f32::<E>(f),
         }

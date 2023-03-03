@@ -1,17 +1,21 @@
 use self::{read::BdatReader, write::BdatWriter};
 use crate::{error::Result, types::RawTable};
 use byteorder::ByteOrder;
-use std::io::{Read, Seek, SeekFrom, Write};
+use std::io::{Read, Seek, Write};
 
 mod read;
 mod write;
 
 pub use byteorder::{BigEndian, LittleEndian, NativeEndian, NetworkEndian};
+use crate::io::read::{BdatSlice, FileReader};
 
 /// A little-endian [`BdatFile`] for the Nintendo Switch and Wii games
 pub type SwitchBdatFile<R> = BdatFile<R, LittleEndian>;
 /// A big-endian [`BdatFile`] for Xenoblade X (Wii U)
 pub type WiiUBdatFile<R> = BdatFile<R, BigEndian>;
+
+pub type SwitchEndian = LittleEndian;
+pub type WiiEndian = BigEndian;
 
 /// An interface over a stream ([`Read`] or [`Write`]) to read and write BDAT files.
 ///
@@ -38,7 +42,6 @@ pub(crate) struct FileHeader {
 }
 
 enum BdatIo<S, E> {
-    Reader(BdatReader<S, E>),
     Writer(BdatWriter<S, E>),
 }
 
@@ -47,19 +50,6 @@ where
     R: Read + Seek,
     E: ByteOrder,
 {
-    /// Creates a file interface for reading.
-    /// This function also attempts to read the file header.
-    ///
-    /// If write access is desired, use [`BdatFile::new_write`] instead.
-    pub fn new_read(input: R) -> Result<Self> {
-        let mut reader = BdatReader::read_file(input)?;
-        let header = reader.read_header()?;
-        Ok(Self {
-            stream: BdatIo::Reader(reader),
-            header: Some(header),
-        })
-    }
-
     /// Gets the number of tables in the file.
     ///
     /// This requires the file to be opened with [`BdatFile::new_read`], but this
@@ -75,6 +65,7 @@ where
     ///
     /// This requires the file to be opened with [`BdatFile::new_read`].
     pub fn get_tables(&mut self) -> Result<Vec<RawTable>> {
+        /*
         let (reader, header) = match (&mut self.stream, &self.header) {
             (BdatIo::Reader(r), Some(header)) => (r, header),
             _ => panic!("unsupported read"),
@@ -91,7 +82,8 @@ where
             tables.push(table);
         }
 
-        Ok(tables)
+        Ok(tables)*/
+        todo!()
     }
 }
 
@@ -114,12 +106,20 @@ where
     /// Writes all the tables, in order, to the stream. When the write is complete, the stream is flushed.
     ///
     /// This is only available if the file interface was created with [`BdatFile::new_write`].
-    pub fn write_all_tables(&mut self, tables: impl IntoIterator<Item = RawTable>) -> Result<()> {
+    pub fn write_all_tables<'t>(&mut self, tables: impl IntoIterator<Item = RawTable<'t>>) -> Result<()> {
         match &mut self.stream {
             BdatIo::Writer(w) => w.write_file(tables),
             _ => panic!("unsupported write"),
         }
     }
+}
+
+pub fn from_reader<R: Read + Seek, E: ByteOrder>(reader: R) -> Result<FileReader<BdatReader<R, E>, E>> {
+    FileReader::read_file(BdatReader::new(reader))
+}
+
+pub fn from_bytes<'b, E: ByteOrder>(bytes: &'b [u8]) -> Result<FileReader<BdatSlice<'b, E>, E>> {
+    FileReader::read_file(BdatSlice::new(bytes))
 }
 
 impl BdatVersion {
