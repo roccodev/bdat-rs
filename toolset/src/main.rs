@@ -1,7 +1,10 @@
 use std::{fs::File, path::PathBuf};
+use std::borrow::Cow;
+use std::path::Path;
 
 use anyhow::{Context, Result};
 use clap::{Args, CommandFactory, Parser, Subcommand};
+use itertools::Itertools;
 use convert::ConvertArgs;
 use diff::DiffArgs;
 use hash::HashNameTable;
@@ -72,9 +75,18 @@ impl InputData {
     pub fn list_files<'a, 'b: 'a, E: Into<Option<&'b str>>>(
         &'a self,
         extension: E,
-    ) -> impl IntoIterator<Item = walkdir::Result<PathBuf>> + 'a {
+        canonical_paths: bool,
+    ) -> Result<impl IntoIterator<Item = walkdir::Result<PathBuf>> + 'a> {
         let extension = extension.into();
-        self.files.iter().flat_map(move |name| {
+        let paths: Vec<_> = self.files.iter().map(|name| {
+            let mut root = Cow::Borrowed(Path::new(name));
+            if canonical_paths {
+                root = Cow::Owned(root.canonicalize()?);
+            }
+            Ok::<_, anyhow::Error>(root)
+        }).try_collect()?;
+
+        Ok(paths.into_iter().flat_map(move |name| {
             WalkDir::new(name)
                 .into_iter()
                 .filter_map(move |p| match (p, extension) {
@@ -90,7 +102,7 @@ impl InputData {
                         None
                     }
                 })
-        })
+        }))
     }
 
     pub fn load_hashes(&self) -> Result<HashNameTable> {

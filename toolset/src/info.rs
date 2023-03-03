@@ -27,7 +27,7 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
     let table_filter: Filter = args.tables.into_iter().map(FilterArg).collect();
     let column_filter: Filter = args.columns.into_iter().map(FilterArg).collect();
 
-    for file in input.list_files("bdat") {
+    for file in input.list_files("bdat", false)? {
         let path = file?;
         let file = BufReader::new(File::open(&path)?);
         let mut file = SwitchBdatFile::new_read(file).context("Failed to read BDAT file")?;

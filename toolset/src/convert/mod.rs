@@ -126,7 +126,7 @@ pub fn run_serialization(
     let column_filter: Filter = args.columns.into_iter().map(FilterArg).collect();
 
     let files = input
-        .list_files("bdat")
+        .list_files("bdat", false)?
         .into_iter()
         .collect::<walkdir::Result<Vec<_>>>()?;
     let base_path = crate::util::get_common_denominator(&files);
@@ -225,7 +225,7 @@ pub fn run_serialization(
 
 fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
     let schema_files = input
-        .list_files("bschema")
+        .list_files("bschema", false)?
         .into_iter()
         .collect::<walkdir::Result<Vec<_>>>()?;
     if schema_files.is_empty() {
@@ -320,10 +320,10 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
     Ok(())
 }
 
-fn build_progress_style(label: &str, with_time: bool) -> ProgressStyle {
+pub fn build_progress_style(label: &str, with_time: bool) -> ProgressStyle {
     ProgressStyle::with_template(&match with_time {
-        true => format!("{{spinner:.cyan}} [{{elapsed_precise:.cyan}}] {label}: {{human_pos}}/{{human_len}} ({{percent}}%) [{{bar:.cyan/blue}}] ETA: {{eta}}"),
-        false => format!("{{spinner:.green}} {label}: {{human_pos}}/{{human_len}} ({{percent}}%) [{{bar}}]"),
+        true => format!("{{spinner:.cyan}} [{{elapsed_precise:.cyan}}] {label}{{msg}}: {{human_pos}}/{{human_len}} ({{percent}}%) [{{bar:.cyan/blue}}] ETA: {{eta}}"),
+        false => format!("{{spinner:.green}} {label}{{msg}}: {{human_pos}}/{{human_len}} ({{percent}}%) [{{bar}}]"),
     })
     .unwrap()
 }

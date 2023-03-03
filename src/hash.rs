@@ -39,8 +39,12 @@ mod table {
 // MIT-licensed const version of murmur3, adapted from
 // https://github.com/Reboare/const-murmur3
 pub const fn murmur3(data: &[u8]) -> u32 {
+    murmur3_with_seed(data, MURMUR3_SEED)
+}
+
+pub const fn murmur3_with_seed(data: &[u8], seed: u32) -> u32 {
     let slice_size: usize = data.len();
-    let mut hash = MURMUR3_SEED;
+    let mut hash = seed;
     let mut i = 0;
     let iterator = slice_size / 4;
     while i < iterator {

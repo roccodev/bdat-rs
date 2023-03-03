@@ -1,18 +1,22 @@
 use std::{
     borrow::Cow,
     cmp::Ordering,
-    collections::{BTreeMap, HashSet},
+    collections::BTreeMap,
     fs::File,
     io::BufReader,
     path::{Path, PathBuf},
 };
+use std::hash::{Hash, Hasher};
 
-use crate::InputData;
 use anyhow::Result;
-use bdat::{io::SwitchBdatFile, Cell, Label, RawTable, RowRef};
 use clap::Args;
+use indicatif::ProgressBar;
 use itertools::Itertools;
 use rayon::{iter::Either, prelude::*};
+
+use bdat::{Cell, io::SwitchBdatFile, Label, RawTable, RowRef};
+
+use crate::{hash::MurmurHashSet, InputData};
 
 #[derive(Args)]
 pub struct DiffArgs {
@@ -53,22 +57,28 @@ struct ColumnChange<'t> {
     value: &'t Cell,
 }
 
-#[derive(Hash)]
 struct ValueOrderedLabel(Label);
 
 pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
-    let new_files = input.list_files("bdat").into_iter();
+    let progress = ProgressBar::new(3)
+        .with_style(crate::convert::build_progress_style("Diff", true))
+        .with_message(" (Reading files)");
+    let new_files = input.list_files("bdat",
+                                     !args.no_file_names)?.into_iter();
     let old_files = InputData {
         files: args.old_files,
         hashes: None,
     };
-    let old_files = old_files.list_files("bdat").into_iter();
+    let old_files = old_files.list_files("bdat",
+                                         !args.no_file_names)?.into_iter();
     let hash_table = input.load_hashes()?;
 
     let files_to_read = new_files
         .map(|f| f.map(|f| (f, true)))
-        .chain(old_files.map(|f| f.map(|f| (f.canonicalize().unwrap(), false))))
+        .chain(old_files.map(|f| f.map(|f| (f, false))))
         .collect::<walkdir::Result<Vec<_>>>()?;
+    progress.inc(1);
+    progress.set_message(" (Parsing tables)");
 
     let working_directory = std::env::current_dir()?;
 
@@ -82,7 +92,7 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
                     .into_iter()
                     .map(|table| TableWithSource {
                         table,
-                        source_file: &file,
+                        source_file: file,
                     })
                     .collect_vec())
             })?;
@@ -112,13 +122,17 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
             .map_ok(|t| (ValueOrderedLabel(t.table.name().unwrap().clone()), t))
             .try_collect()?,
     );
+    progress.inc(1);
 
     let added = new_tables
         .iter()
-        .filter_map(|(name, table)| (!old_tables.contains_key(name)).then(|| table));
+        .filter_map(|(name, table)| (!old_tables.contains_key(name)).then_some(table));
     let removed = old_tables
         .iter()
-        .filter_map(|(name, table)| (!new_tables.contains_key(name)).then(|| table));
+        .filter_map(|(name, table)| (!new_tables.contains_key(name)).then_some(table));
+
+    progress.inc(1);
+    progress.set_message(" (Processing result)");
 
     println!("------------\nAdded Tables\n------------");
     added.for_each(|table| {
@@ -131,7 +145,7 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
                 table
                     .source_file
                     .strip_prefix(&working_directory)
-                    .unwrap_or(&table.source_file)
+                    .unwrap_or(table.source_file)
                     .display()
             )
         }
@@ -148,7 +162,7 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
                 table
                     .source_file
                     .strip_prefix(&working_directory)
-                    .unwrap_or(&table.source_file)
+                    .unwrap_or(table.source_file)
                     .display()
             )
         }
@@ -180,8 +194,8 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
             })
             .collect_vec();
         if !row_changes.is_empty() {
-            let path_diff = table.get_path_diff(&new_table);
-            let path_diff = path_diff.into_distinguishable();
+            let path_diff = table.get_path_diff(new_table);
+            let path_diff = path_diff.to_distinguishable();
             if args.no_file_names {
                 println!("\nTable \"{name}\"");
             } else {
@@ -218,13 +232,15 @@ impl<'t> RowChanges<'t> {
                 .map(|col| (&col.label, false, old_row.get(&col.label).unwrap()).into())
                 .collect(),
             (Some((old_table, old_row)), Some((new_table, new_row))) => {
-                let old_cols: HashSet<_> = old_table.columns().map(|col| &col.label).collect();
-                let new_cols: HashSet<_> = new_table.columns().map(|col| &col.label).collect();
+                let old_cols: MurmurHashSet<_> =
+                    old_table.columns().map(|col| &col.label).collect();
+                let new_cols: MurmurHashSet<_> =
+                    new_table.columns().map(|col| &col.label).collect();
 
                 let changed_cols = old_cols.intersection(&new_cols).filter_map(|col| {
                     let old_value = old_row.get(*col)?;
                     let new_value = new_row.get(*col)?;
-                    (old_value != new_value).then(|| (col, old_value, new_value))
+                    (old_value != new_value).then_some((col, old_value, new_value))
                 });
 
                 new_cols
@@ -247,7 +263,7 @@ impl<'t> RowChanges<'t> {
             _ => unreachable!(),
         };
 
-        (!changed_cols.is_empty()).then(|| Self {
+        (!changed_cols.is_empty()).then_some(Self {
             row_id,
             old_hash,
             new_hash,
@@ -326,7 +342,7 @@ impl<'p> PathDiff<'p> {
     /// * `/mnt/ver1/test.bdat` and `/mnt/ver2/test.bdat` can be distinguished as `ver1/test.bdat` and `ver2/test.bdat`.
     ///
     /// **Important:** the paths must be canonical. (i.e. they cannot contain identifiers like '.' and '..')
-    fn into_distinguishable(&'p self) -> Self {
+    fn to_distinguishable(&'p self) -> Self {
         let Self { old, new } = self;
         if old == new {
             return self.clone();
@@ -339,8 +355,8 @@ impl<'p> PathDiff<'p> {
             .collect::<PathBuf>();
 
         Self {
-            old: old.strip_prefix(&common).unwrap().into(),
-            new: new.strip_prefix(common).unwrap().into(),
+            old: old.strip_prefix(&common).unwrap(),
+            new: new.strip_prefix(common).unwrap(),
         }
     }
 }
@@ -374,3 +390,12 @@ impl PartialEq for ValueOrderedLabel {
 }
 
 impl Eq for ValueOrderedLabel {}
+
+impl Hash for ValueOrderedLabel {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        match &self.0 {
+            Label::Hash(h) => state.write_u32(*h),
+            Label::String(s) | Label::Unhashed(s) => state.write(s.as_bytes()),
+        }
+    }
+}

@@ -7,9 +7,33 @@ use std::{
 };
 
 use bdat::{
-    hash::{IdentityHasher, PreHashedMap},
+    hash::{murmur3, murmur3_with_seed, IdentityHasher, PreHashedMap},
     types::{Label, RawTable},
 };
+
+#[derive(Clone, Copy, Default)]
+pub struct MurmurHasher(u32);
+
+pub type MurmurHashMap<K, V> = std::collections::HashMap<K, V, MurmurHasher>;
+pub type MurmurHashSet<K> = std::collections::HashSet<K, MurmurHasher>;
+
+impl BuildHasher for MurmurHasher {
+    type Hasher = Self;
+
+    fn build_hasher(&self) -> Self::Hasher {
+        *self
+    }
+}
+
+impl Hasher for MurmurHasher {
+    fn finish(&self) -> u64 {
+        self.0 as u64
+    }
+
+    fn write(&mut self, bytes: &[u8]) {
+        self.0 = murmur3_with_seed(bytes, self.0);
+    }
+}
 
 pub struct HashNameTable {
     file_name_hash: u64,
