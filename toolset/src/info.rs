@@ -26,9 +26,10 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
 
     for file in input.list_files("bdat", false)? {
         let path = file?;
-        let file = BufReader::new(File::open(&path)?);
-        let mut file = bdat::from_reader::<_, SwitchEndian>(file).context("Failed to read BDAT file")?;
-        for mut table in file
+        let file = std::fs::read(&path)?;
+        let mut file = bdat::from_bytes
+            ::<SwitchEndian>(&file).context("Failed to read BDAT file")?;
+        for table in file
             .get_tables()
             .with_context(|| format!("Could not parse BDAT tables ({})", path.to_string_lossy()))?
         {
@@ -50,14 +51,14 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
 
             if table.column_count() != 0 {
                 println!("  Columns:");
-                for mut col in table
+                for col in table
                     .into_columns()
                     .filter(|c| column_filter.contains(&c.label))
                 {
                     println!(
                         "    - [{}] {}: {:?}",
                         col.offset,
-                        format_unhashed_label(&mut col.label, &hash_table),
+                        format_unhashed_label(&col.label, &hash_table),
                         col.ty
                     );
                 }

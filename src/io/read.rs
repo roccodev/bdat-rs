@@ -30,13 +30,13 @@ pub struct FileReader<R, E> {
 pub struct BdatReader<R, E> {
     stream: R,
     table_offset: usize,
-    table: Vec<u8>,
     _endianness: PhantomData<E>,
 }
 
 #[derive(Clone)]
 pub struct BdatSlice<'b, E> {
     data: Cursor<&'b [u8]>,
+    table_offset: usize,
     _endianness: PhantomData<E>,
 }
 
@@ -49,10 +49,13 @@ struct TableData<'r> {
 }
 
 pub trait BdatRead<'b> {
+    /// Read a single 32-bit unsigned integer at the current position.
     fn read_u32(&mut self) -> Result<u32>;
 
+    /// Get a slice (or buffer) to the full binary stream for a single table.
     fn read_table_data(&mut self, length: usize) -> Result<Cow<'b, [u8]>>;
 
+    /// Seek the current position to the next table at the given offset.
     fn seek_table(&mut self, offset: usize) -> Result<()>;
 }
 
@@ -117,6 +120,7 @@ impl<'b, E> BdatSlice<'b, E> {
     pub fn new(bytes: &'b [u8]) -> Self {
         Self {
             data: Cursor::new(bytes),
+            table_offset: 0,
             _endianness: PhantomData,
         }
     }
@@ -127,7 +131,6 @@ impl<R, E> BdatReader<R, E> {
         Self {
             stream: reader,
             table_offset: 0,
-            table: Vec::new(),
             _endianness: PhantomData,
         }
     }
@@ -346,8 +349,7 @@ impl<'r> TableData<'r> {
 
 impl<'b, E> BdatRead<'b> for BdatSlice<'b, E> where E: ByteOrder {
     fn read_table_data(&mut self, length: usize) -> Result<Cow<'b, [u8]>> {
-        // TODO probably need to save pos
-        Ok(Cow::Borrowed(&self.data.clone().into_inner()[..length]))
+        Ok(Cow::Borrowed(&self.data.clone().into_inner()[self.table_offset..self.table_offset+length]))
     }
 
     #[inline]
@@ -357,6 +359,7 @@ impl<'b, E> BdatRead<'b> for BdatSlice<'b, E> where E: ByteOrder {
 
     fn seek_table(&mut self, offset: usize) -> Result<()> {
         self.data.seek(SeekFrom::Start(offset as u64))?;
+        self.table_offset = offset;
         Ok(())
     }
 }

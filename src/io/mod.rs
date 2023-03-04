@@ -118,7 +118,7 @@ pub fn from_reader<R: Read + Seek, E: ByteOrder>(reader: R) -> Result<FileReader
     FileReader::read_file(BdatReader::new(reader))
 }
 
-pub fn from_bytes<'b, E: ByteOrder>(bytes: &'b [u8]) -> Result<FileReader<BdatSlice<'b, E>, E>> {
+pub fn from_bytes<E: ByteOrder>(bytes: &[u8]) -> Result<FileReader<BdatSlice<'_, E>, E>> {
     FileReader::read_file(BdatSlice::new(bytes))
 }
 
