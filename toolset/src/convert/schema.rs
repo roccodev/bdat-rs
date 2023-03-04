@@ -1,14 +1,13 @@
 use std::{
     borrow::Cow,
-    collections::HashMap,
-    fs::{File, OpenOptions},
+    fs::OpenOptions,
     io::{BufWriter, Read},
     path::{Path, PathBuf},
 };
 
 use bdat::{
     io::BdatVersion,
-    types::{Label, RawTable, ValueType},
+    types::{Label, RawTable},
 };
 use serde::{Deserialize, Serialize};
 

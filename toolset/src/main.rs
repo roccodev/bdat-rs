@@ -1,14 +1,14 @@
-use std::{fs::File, path::PathBuf};
 use std::borrow::Cow;
 use std::path::Path;
+use std::{fs::File, path::PathBuf};
 
 use anyhow::{Context, Result};
-use clap::{Args, CommandFactory, Parser, Subcommand};
-use itertools::Itertools;
+use clap::{Args, Parser, Subcommand};
 use convert::ConvertArgs;
 use diff::DiffArgs;
 use hash::HashNameTable;
 use info::InfoArgs;
+use itertools::Itertools;
 use walkdir::WalkDir;
 
 mod convert;
@@ -78,13 +78,17 @@ impl InputData {
         canonical_paths: bool,
     ) -> Result<impl IntoIterator<Item = walkdir::Result<PathBuf>> + 'a> {
         let extension = extension.into();
-        let paths: Vec<_> = self.files.iter().map(|name| {
-            let mut root = Cow::Borrowed(Path::new(name));
-            if canonical_paths {
-                root = Cow::Owned(root.canonicalize()?);
-            }
-            Ok::<_, anyhow::Error>(root)
-        }).try_collect()?;
+        let paths: Vec<_> = self
+            .files
+            .iter()
+            .map(|name| {
+                let mut root = Cow::Borrowed(Path::new(name));
+                if canonical_paths {
+                    root = Cow::Owned(root.canonicalize()?);
+                }
+                Ok::<_, anyhow::Error>(root)
+            })
+            .try_collect()?;
 
         Ok(paths.into_iter().flat_map(move |name| {
             WalkDir::new(name)

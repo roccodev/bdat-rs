@@ -1,8 +1,5 @@
 use anyhow::{Context, Result};
-use bdat::{
-    types::{Cell, RawTable},
-    ColumnDef,
-};
+use bdat::{types::RawTable, ColumnDef};
 use clap::Args;
 use csv::WriterBuilder;
 use std::io::Write;

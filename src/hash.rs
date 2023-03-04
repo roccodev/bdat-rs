@@ -65,22 +65,22 @@ pub const fn murmur3_with_seed(data: &[u8], seed: u32) -> u32 {
         1 => {
             let data = [data[i * 4], 0, 0, 0];
             let k = murmur3_scramble(data);
-            hash = hash ^ k;
+            hash ^= k;
         }
         2 => {
             let data = [data[i * 4], data[i * 4 + 1], 0, 0];
             let k = murmur3_scramble(data);
-            hash = hash ^ k;
+            hash ^= k;
         }
         3 => {
             let data = [data[i * 4], data[i * 4 + 1], data[i * 4 + 2], 0];
             let k = murmur3_scramble(data);
-            hash = hash ^ k;
+            hash ^= k;
         }
         _ => unreachable!(),
     }
 
-    hash = hash ^ slice_size as u32;
+    hash ^= slice_size as u32;
     hash = hash ^ (hash.wrapping_shr(16));
     hash = hash.wrapping_mul(0x85ebca6b);
     hash = hash ^ (hash.wrapping_shr(13));

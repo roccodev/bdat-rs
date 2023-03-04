@@ -2,7 +2,7 @@ use std::{
     ffi::OsStr,
     fs::File,
     io::{BufReader, BufWriter, Read, Write},
-    path::{Path, PathBuf},
+    path::Path,
 };
 
 use anyhow::{Context, Result};
@@ -108,14 +108,14 @@ pub fn run_serialization(
     let out_dir = args
         .out_dir
         .as_ref()
-        .ok_or_else(|| Error::MissingRequiredArgument("out-dir"))?;
+        .ok_or(Error::MissingRequiredArgument("out-dir"))?;
     let out_dir = Path::new(&out_dir);
     std::fs::create_dir_all(out_dir).context("Could not create output directory")?;
 
     let serializer: Box<dyn BdatSerialize + Send + Sync> = match args
         .file_type
         .as_ref()
-        .ok_or_else(|| Error::MissingRequiredArgument("file-type"))?
+        .ok_or(Error::MissingRequiredArgument("file-type"))?
         .as_str()
     {
         "csv" => Box::new(csv::CsvConverter::new(&args)),
@@ -124,7 +124,7 @@ pub fn run_serialization(
     };
 
     let table_filter: Filter = args.tables.into_iter().map(FilterArg).collect();
-    let column_filter: Filter = args.columns.into_iter().map(FilterArg).collect();
+    let _column_filter: Filter = args.columns.into_iter().map(FilterArg).collect();
 
     let files = input
         .list_files("bdat", false)?
@@ -238,14 +238,14 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
     let out_dir = args
         .out_dir
         .as_ref()
-        .ok_or_else(|| Error::MissingRequiredArgument("out-dir"))?;
+        .ok_or(Error::MissingRequiredArgument("out-dir"))?;
     let out_dir = Path::new(&out_dir);
     std::fs::create_dir_all(out_dir).context("Could not create output directory")?;
 
     let deserializer: Box<dyn BdatDeserialize + Send + Sync> = match args
         .file_type
         .as_ref()
-        .ok_or_else(|| Error::MissingRequiredArgument("file-type"))?
+        .ok_or(Error::MissingRequiredArgument("file-type"))?
         .as_str()
     {
         "json" => Box::new(json::JsonConverter::new(&args)),
@@ -286,7 +286,7 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
                 .into_par_iter()
                 .panic_fuse()
                 .map(|(label, table)| {
-                    let table_file = File::open(&table)?;
+                    let table_file = File::open(table)?;
                     let mut reader = BufReader::new(table_file);
 
                     table_bar.inc(1);
@@ -305,7 +305,7 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
 
             let out_dir = out_dir.join(relative_path);
             std::fs::create_dir_all(&out_dir)?;
-            let out_file = File::create(out_dir.join(&format!("{}.bdat", schema_file.file_name)))?;
+            let out_file = File::create(out_dir.join(format!("{}.bdat", schema_file.file_name)))?;
             bdat::to_writer::<_, SwitchEndian>(out_file, schema_file.version, tables)?;
             file_bar.inc(1);
             Ok(())

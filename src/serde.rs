@@ -1,6 +1,5 @@
-use serde::de::DeserializeOwned;
 use serde::{
-    de::{self, DeserializeSeed, IntoDeserializer, Visitor},
+    de::{self, DeserializeSeed, Visitor},
     Deserialize, Deserializer, Serialize,
 };
 use std::borrow::Cow;
@@ -437,7 +436,7 @@ mod tests {
                 .as_cell_seed()
                 .deserialize(&mut serde_json::Deserializer::from_str("3.14"))
                 .unwrap(),
-            Cell::Single(Value::Float(3.14))
+            Cell::Single(Value::Float(std::f32::consts::PI))
         );
     }
 }

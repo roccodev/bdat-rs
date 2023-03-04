@@ -7,7 +7,6 @@ use anyhow::{Context, Result};
 use bdat::types::{Cell, ColumnDef, Label, RawTable, Row, TableBuilder, ValueType};
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
-use serde_json::{json, Map, Value};
 
 use crate::error::Error;
 
@@ -55,10 +54,6 @@ impl JsonConverter {
             pretty: args.json_opts.pretty,
         }
     }
-
-    fn convert(&self, bdat: bdat::types::Value) -> Value {
-        serde_json::to_value(bdat).unwrap()
-    }
 }
 
 impl BdatSerialize for JsonConverter {
@@ -78,7 +73,7 @@ impl BdatSerialize for JsonConverter {
 
         let rows = table
             .into_rows()
-            .map(|mut row| {
+            .map(|row| {
                 let id = row.id();
                 let cells = columns
                     .iter()
@@ -110,7 +105,7 @@ impl BdatDeserialize for JsonConverter {
     fn read_table(
         &self,
         name: Option<Label>,
-        schema: &FileSchema,
+        _schema: &FileSchema,
         reader: &mut dyn Read,
     ) -> Result<RawTable> {
         let table: JsonTable =

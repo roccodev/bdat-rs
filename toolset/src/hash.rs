@@ -7,7 +7,7 @@ use std::{
 };
 
 use bdat::{
-    hash::{murmur3, murmur3_with_seed, IdentityHasher, PreHashedMap},
+    hash::{murmur3_with_seed, IdentityHasher, PreHashedMap},
     types::{Label, RawTable},
 };
 

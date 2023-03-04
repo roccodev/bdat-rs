@@ -1,5 +1,3 @@
-use std::{fs::File, io::BufReader};
-
 use crate::{
     filter::{Filter, FilterArg},
     hash::HashNameTable,

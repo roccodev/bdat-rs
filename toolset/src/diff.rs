@@ -188,7 +188,7 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
                         .and_then(|t| t.as_ref().id_hash())
                         .map(Label::Hash),
                     new_row.id_hash().map(Label::Hash),
-                    old_row.map(|row| row),
+                    old_row,
                     Some(new_table.table.get_row(id).unwrap()),
                 )
             })
