@@ -48,9 +48,9 @@ pub struct TableBuilder<'b>(Table<'b>);
 /// A column definition from a Bdat table
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ColumnDef {
-    pub ty: ValueType,
-    pub label: Label,
-    pub offset: usize,
+    pub(crate) value_type: ValueType,
+    pub(crate) label: Label,
+    pub(crate) offset: usize,
 }
 
 /// A row from a Bdat table
@@ -396,10 +396,30 @@ impl ColumnDef {
     /// Creates a new [`ColumnDef`].
     pub fn new(ty: ValueType, label: Label) -> Self {
         Self {
-            ty,
+            value_type: ty,
             label,
             offset: 0,
         }
+    }
+
+    /// Returns this column's type.
+    pub fn value_type(&self) -> ValueType {
+        self.value_type
+    }
+
+    /// Returns this column's name.
+    pub fn label(&self) -> &Label {
+        &self.label
+    }
+
+    /// Returns a mutable reference to this column's name.
+    pub fn label_mut(&mut self) -> &mut Label {
+        &mut self.label
+    }
+
+    /// Returns this column's data offset.
+    pub fn offset(&self) -> usize {
+        self.offset
     }
 }
 

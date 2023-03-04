@@ -222,7 +222,7 @@ impl<'b, R: BdatRead<'b>, E: ByteOrder> TableReader<R, E> {
             let label = table_data.get_label::<E>(name_offset as usize)?;
 
             col_data.push(ColumnDef {
-                ty,
+                value_type: ty,
                 label,
                 offset: data_offset,
             });
@@ -234,7 +234,7 @@ impl<'b, R: BdatRead<'b>, E: ByteOrder> TableReader<R, E> {
             let mut cells = Vec::with_capacity(col_data.len());
             let mut cursor = Cursor::new(row);
             for col in &col_data {
-                let value = Self::read_value_v2(&table_data, &mut cursor, col.ty)?;
+                let value = Self::read_value_v2(&table_data, &mut cursor, col.value_type)?;
                 cells.push(Cell::Single(value));
             }
             row_data.push(Row {

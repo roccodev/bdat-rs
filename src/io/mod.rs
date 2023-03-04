@@ -141,7 +141,7 @@ mod tests {
                 Label::Hash(0xde_ad_be_ef),
             ))
             .add_column(ColumnDef {
-                ty: ValueType::UnsignedInt,
+                value_type: ValueType::UnsignedInt,
                 label: Label::Hash(0xca_fe_ca_fe),
                 offset: 4,
             })

@@ -144,7 +144,7 @@ where
             let mut data = Vec::with_capacity(table.columns.len() * (1 + 4));
 
             for col in &table.columns {
-                data.write_u8(col.ty as u8)?;
+                data.write_u8(col.value_type as u8)?;
                 data.write_u16::<E>(u16::try_from(label_table.get(Cow::Borrowed(&col.label)))?)?;
             }
 

@@ -27,9 +27,9 @@ impl CsvConverter {
 
     fn format_column(&self, column: &ColumnDef) -> String {
         if self.untyped {
-            column.label.to_string()
+            column.label().to_string()
         } else {
-            format!("{}@{}", column.ty as u8, column.label)
+            format!("{}@{}", column.value_type() as u8, column.label())
         }
     }
 }

@@ -117,7 +117,7 @@ impl HashNameTable {
             table.set_name(Some(label));
         }
         for col in table.columns_mut() {
-            self.convert_label(&mut col.label);
+            self.convert_label(&mut col.label_mut());
         }
     }
 

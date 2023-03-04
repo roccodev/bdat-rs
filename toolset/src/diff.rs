@@ -226,19 +226,19 @@ impl<'t, 'tb> RowChanges<'t, 'tb> {
             (None, Some(new_row)) => new_row
                 .table()
                 .columns()
-                .map(|col| (&col.label, true, new_row.get(&col.label).unwrap()).into())
+                .map(|col| (col.label(), true, new_row.get(col.label()).unwrap()).into())
                 .collect(),
             (Some(old_row), None) => old_row
                 .table()
                 .columns()
-                .map(|col| (&col.label, false, old_row.get(&col.label).unwrap()).into())
+                .map(|col| (col.label(), false, old_row.get(col.label()).unwrap()).into())
                 .collect(),
             (Some(old_row), Some(new_row)) => {
                 let (old_table, new_table) = (old_row.table(), new_row.table());
                 let old_cols: MurmurHashSet<_> =
-                    old_table.columns().map(|col| &col.label).collect();
+                    old_table.columns().map(|col| col.label()).collect();
                 let new_cols: MurmurHashSet<_> =
-                    new_table.columns().map(|col| &col.label).collect();
+                    new_table.columns().map(|col| col.label()).collect();
 
                 let changed_cols = old_cols.intersection(&new_cols).filter_map(|col| {
                     let old_value = old_row.get(*col)?;

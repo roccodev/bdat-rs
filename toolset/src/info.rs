@@ -51,13 +51,13 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
                 println!("  Columns:");
                 for col in table
                     .into_columns()
-                    .filter(|c| column_filter.contains(&c.label))
+                    .filter(|c| column_filter.contains(c.label()))
                 {
                     println!(
                         "    - [{}] {}: {:?}",
-                        col.offset,
-                        format_unhashed_label(&col.label, &hash_table),
-                        col.ty
+                        col.offset(),
+                        format_unhashed_label(col.label(), &hash_table),
+                        col.value_type()
                     );
                 }
             }

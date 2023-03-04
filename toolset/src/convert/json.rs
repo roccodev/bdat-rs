@@ -62,9 +62,9 @@ impl BdatSerialize for JsonConverter {
             table
                 .columns()
                 .map(|c| ColumnSchema {
-                    name: c.label.to_string(),
-                    ty: c.ty,
-                    hashed: matches!(c.label, Label::Unhashed(_)),
+                    name: c.label().to_string(),
+                    ty: c.value_type(),
+                    hashed: matches!(c.label(), Label::Unhashed(_)),
                 })
                 .collect::<Vec<_>>()
         });
@@ -78,7 +78,9 @@ impl BdatSerialize for JsonConverter {
                 let cells = columns
                     .iter()
                     .zip(row.cells())
-                    .map(|(col, cell)| (col.label.to_string(), serde_json::to_value(cell).unwrap()))
+                    .map(|(col, cell)| {
+                        (col.label().to_string(), serde_json::to_value(cell).unwrap())
+                    })
                     .collect();
 
                 TableRow { id, cells }
