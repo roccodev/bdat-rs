@@ -8,7 +8,7 @@ use std::{
 
 use bdat::{
     hash::{murmur3_with_seed, IdentityHasher, PreHashedMap},
-    types::{Label, RawTable},
+    types::{Label, Table},
 };
 
 #[derive(Clone, Copy, Default)]
@@ -108,7 +108,7 @@ impl HashNameTable {
         Ok(res)
     }
 
-    pub fn convert_all(&self, table: &mut RawTable) {
+    pub fn convert_all(&self, table: &mut Table) {
         if self.inner.is_empty() {
             return;
         }

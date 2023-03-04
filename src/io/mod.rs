@@ -4,7 +4,7 @@ use std::io::{Cursor, Read, Seek, Write};
 use byteorder::ByteOrder;
 
 use crate::io::read::BdatSlice;
-use crate::{error::Result, types::RawTable};
+use crate::{error::Result, types::Table};
 
 use self::{read::BdatReader, write::BdatWriter};
 
@@ -79,9 +79,9 @@ pub fn from_bytes<E: ByteOrder>(bytes: &[u8]) -> Result<FileReader<BdatSlice<'_,
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, BdatVersion, RawTable, SwitchEndian};
+/// use bdat::{BdatResult, BdatVersion, Table, SwitchEndian};
 ///
-/// fn write_file(name: &str, tables: &[RawTable]) -> BdatResult<()> {
+/// fn write_file(name: &str, tables: &[Table]) -> BdatResult<()> {
 ///     let file = File::create(name)?;
 ///     bdat::to_writer::<_, SwitchEndian>(file, BdatVersion::Modern, tables)?;
 ///     Ok(())
@@ -90,7 +90,7 @@ pub fn from_bytes<E: ByteOrder>(bytes: &[u8]) -> Result<FileReader<BdatSlice<'_,
 pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
     writer: W,
     version: BdatVersion,
-    tables: impl IntoIterator<Item = impl Borrow<RawTable<'t>>>,
+    tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
 ) -> Result<()> {
     let mut writer = BdatWriter::<W, E>::new(writer, version);
     writer.write_file(tables)
@@ -100,16 +100,16 @@ pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, BdatVersion, RawTable, SwitchEndian};
+/// use bdat::{BdatResult, BdatVersion, Table, SwitchEndian};
 ///
-/// fn write_vec(tables: &[RawTable]) -> BdatResult<()> {
+/// fn write_vec(tables: &[Table]) -> BdatResult<()> {
 ///     let vec = bdat::to_vec::<SwitchEndian>(BdatVersion::Modern, tables)?;
 ///     Ok(())
 /// }
 /// ```
 pub fn to_vec<'t, E: ByteOrder>(
     version: BdatVersion,
-    tables: impl IntoIterator<Item = impl Borrow<RawTable<'t>>>,
+    tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
 ) -> Result<Vec<u8>> {
     let mut vec = Vec::new();
     to_writer::<_, E>(Cursor::new(&mut vec), version, tables)?;

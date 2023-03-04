@@ -8,7 +8,7 @@ use std::{
 use anyhow::{Context, Result};
 use bdat::{
     io::BdatVersion,
-    types::{Label, RawTable},
+    types::{Label, Table},
     SwitchEndian,
 };
 use clap::Args;
@@ -63,7 +63,7 @@ pub struct ConvertArgs {
 
 pub trait BdatSerialize {
     /// Writes a converted BDAT table to a [`Write`] implementation.
-    fn write_table(&self, table: RawTable, writer: &mut dyn Write) -> Result<()>;
+    fn write_table(&self, table: Table, writer: &mut dyn Write) -> Result<()>;
 
     /// Formats the file name for a converted BDAT table.
     fn get_file_name(&self, table_name: &str) -> String;
@@ -76,7 +76,7 @@ pub trait BdatDeserialize {
         name: Option<Label>,
         schema: &FileSchema,
         reader: &mut dyn Read,
-    ) -> Result<RawTable>;
+    ) -> Result<Table>;
 
     /// Returns the file extension used in converted table files
     fn get_table_extension(&self) -> &'static str;

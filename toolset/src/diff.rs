@@ -14,7 +14,7 @@ use indicatif::ProgressBar;
 use itertools::Itertools;
 use rayon::{iter::Either, prelude::*};
 
-use bdat::{Cell, Label, RawTable, RowRef, SwitchEndian};
+use bdat::{Cell, Label, RowRef, SwitchEndian, Table};
 
 use crate::{hash::MurmurHashSet, InputData};
 
@@ -34,7 +34,7 @@ pub struct DiffArgs {
 }
 
 struct TableWithSource<'f, 't> {
-    table: RawTable<'t>,
+    table: Table<'t>,
     source_file: &'f Path,
 }
 

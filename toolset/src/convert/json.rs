@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::types::{Cell, ColumnDef, Label, RawTable, Row, TableBuilder, ValueType};
+use bdat::types::{Cell, ColumnDef, Label, Row, Table, TableBuilder, ValueType};
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
 
@@ -57,7 +57,7 @@ impl JsonConverter {
 }
 
 impl BdatSerialize for JsonConverter {
-    fn write_table(&self, table: RawTable, writer: &mut dyn Write) -> Result<()> {
+    fn write_table(&self, table: Table, writer: &mut dyn Write) -> Result<()> {
         let schema = (!self.untyped).then(|| {
             table
                 .columns()
@@ -107,7 +107,7 @@ impl BdatDeserialize for JsonConverter {
         name: Option<Label>,
         _schema: &FileSchema,
         reader: &mut dyn Read,
-    ) -> Result<RawTable> {
+    ) -> Result<Table> {
         let table: JsonTable =
             serde_json::from_reader(reader).context("failed to read JSON table")?;
 

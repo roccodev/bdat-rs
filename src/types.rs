@@ -13,15 +13,15 @@ use crate::io::BdatVersion;
 /// or borrow from it.
 ///
 /// ## Accessing cells
-/// The [`RawTable::row`] function provides an easy interface to access cells.
+/// The [`Table::row`] function provides an easy interface to access cells.
 /// For example, to access the cell at row 1 and column "Param1", you can use `table.row(1)["Param1".into()]`.
 ///
 /// ## Example
 ///
 /// ```
-/// use bdat::{RawTable, TableBuilder, Cell, ColumnDef, Row, Value, ValueType, Label};
+/// use bdat::{Table, TableBuilder, Cell, ColumnDef, Row, Value, ValueType, Label};
 ///
-/// let table: RawTable = TableBuilder::new()
+/// let table: Table = TableBuilder::new()
 ///     .add_column(ColumnDef::new(ValueType::UnsignedInt, Label::Hash(0xCAFEBABE)))
 ///     .add_row(Row::new(1, vec![Cell::Single(Value::UnsignedInt(10))]))
 ///     .build();
@@ -33,7 +33,7 @@ use crate::io::BdatVersion;
 /// );
 /// ```
 #[derive(Debug, Clone, PartialEq, Default)]
-pub struct RawTable<'b> {
+pub struct Table<'b> {
     pub(crate) name: Option<Label>,
     pub(crate) base_id: usize,
     pub(crate) columns: Vec<ColumnDef>,
@@ -42,8 +42,8 @@ pub struct RawTable<'b> {
     row_hash_table: PreHashedMap<u32, usize>,
 }
 
-/// A builder interface for [`RawTable`].
-pub struct TableBuilder<'b>(RawTable<'b>);
+/// A builder interface for [`Table`].
+pub struct TableBuilder<'b>(Table<'b>);
 
 /// A column definition from a Bdat table
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -122,11 +122,11 @@ pub enum Label {
 pub struct RowRef<'t, 'tb> {
     index: usize,
     id: usize,
-    table: &'t RawTable<'tb>,
+    table: &'t Table<'tb>,
 }
 
 pub struct RowIter<'t, 'tb> {
-    table: &'t RawTable<'tb>,
+    table: &'t Table<'tb>,
     row_id: usize,
 }
 
@@ -193,7 +193,7 @@ impl Label {
     }
 }
 
-impl<'b> RawTable<'b> {
+impl<'b> Table<'b> {
     pub fn new(name: Option<Label>, columns: Vec<ColumnDef>, rows: Vec<Row<'b>>) -> Self {
         Self {
             name,
@@ -310,7 +310,7 @@ impl<'b> RawTable<'b> {
 
 impl<'b> TableBuilder<'b> {
     pub fn new() -> Self {
-        Self(RawTable::default())
+        Self(Table::default())
     }
 
     pub fn set_name(&mut self, name: impl Into<Option<Label>>) -> &mut Self {
@@ -356,7 +356,7 @@ impl<'b> TableBuilder<'b> {
         self
     }
 
-    pub fn build(&mut self) -> RawTable<'b> {
+    pub fn build(&mut self) -> Table<'b> {
         std::mem::take(&mut self.0)
     }
 }
@@ -462,7 +462,7 @@ impl<'t, 'tb> RowRef<'t, 'tb> {
     }
 
     /// Returns the table this row belongs to.
-    pub fn table(&self) -> &'t RawTable<'tb> {
+    pub fn table(&self) -> &'t Table<'tb> {
         self.table
     }
 }
@@ -495,7 +495,7 @@ impl<'t, 'tb> Iterator for RowIter<'t, 'tb> {
     }
 }
 
-impl<'t, 'tb> IntoIterator for &'t RawTable<'tb> {
+impl<'t, 'tb> IntoIterator for &'t Table<'tb> {
     type Item = RowRef<'t, 'tb>;
     type IntoIter = RowIter<'t, 'tb>;
 

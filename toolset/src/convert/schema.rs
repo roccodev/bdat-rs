@@ -7,7 +7,7 @@ use std::{
 
 use bdat::{
     io::BdatVersion,
-    types::{Label, RawTable},
+    types::{Label, Table},
 };
 use serde::{Deserialize, Serialize};
 
@@ -38,7 +38,7 @@ impl FileSchema {
     }
 
     /// Registers a table in the file schema
-    pub fn feed_table(&mut self, table: &RawTable) {
+    pub fn feed_table(&mut self, table: &Table) {
         self.tables.extend(table.name().map(|l| l.to_string()));
     }
 

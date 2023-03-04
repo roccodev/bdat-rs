@@ -11,7 +11,7 @@ use byteorder::{ByteOrder, WriteBytesExt};
 
 use crate::{
     error::Result,
-    types::{Cell, Label, RawTable, Row, Value},
+    types::{Cell, Label, Row, Table, Value},
 };
 
 use super::{BdatVersion, FileHeader};
@@ -43,7 +43,7 @@ where
 
     pub fn write_file<'t>(
         &mut self,
-        tables: impl IntoIterator<Item = impl Borrow<RawTable<'t>>>,
+        tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
     ) -> Result<()> {
         let (table_bytes, table_offsets, total_len, table_count) = tables
             .into_iter()
@@ -108,14 +108,14 @@ where
         Ok(())
     }
 
-    pub fn write_table(&mut self, table: &RawTable) -> Result<()> {
+    pub fn write_table(&mut self, table: &Table) -> Result<()> {
         match self.version {
             BdatVersion::Modern => self.write_table_v2(table),
             _ => todo!("legacy BDATs"),
         }
     }
 
-    fn write_table_v2(&mut self, table: &RawTable) -> Result<()> {
+    fn write_table_v2(&mut self, table: &Table) -> Result<()> {
         let table_offset = self.stream.stream_position()?;
 
         let column_count = table.columns.len().try_into()?;

@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use bdat::{types::RawTable, ColumnDef};
+use bdat::{types::Table, ColumnDef};
 use clap::Args;
 use csv::WriterBuilder;
 use std::io::Write;
@@ -35,7 +35,7 @@ impl CsvConverter {
 }
 
 impl BdatSerialize for CsvConverter {
-    fn write_table(&self, table: RawTable, writer: &mut dyn Write) -> Result<()> {
+    fn write_table(&self, table: Table, writer: &mut dyn Write) -> Result<()> {
         let mut writer = WriterBuilder::new()
             .delimiter(self.separator_ch as u8)
             .from_writer(writer);

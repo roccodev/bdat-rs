@@ -10,7 +10,7 @@ use byteorder::{ByteOrder, ReadBytesExt};
 
 use crate::{
     error::{BdatError, Result, Scope},
-    types::{Cell, ColumnDef, Label, RawTable, Row, Value, ValueType},
+    types::{Cell, ColumnDef, Label, Row, Table, Value, ValueType},
     TableBuilder,
 };
 
@@ -82,7 +82,7 @@ where
     }
 
     /// Reads all tables from the BDAT source.
-    pub fn get_tables(&mut self) -> Result<Vec<RawTable<'b>>> {
+    pub fn get_tables(&mut self) -> Result<Vec<Table<'b>>> {
         let mut tables = Vec::with_capacity(self.header.table_count);
 
         for i in 0..self.header.table_count {
@@ -101,7 +101,7 @@ where
         self.header.table_count
     }
 
-    fn read_table(&mut self) -> Result<RawTable<'b>> {
+    fn read_table(&mut self) -> Result<Table<'b>> {
         match self.version {
             BdatVersion::Legacy => todo!("legacy bdats"),
             BdatVersion::Modern => self.tables.read_table_v2(),
@@ -175,7 +175,7 @@ impl<'b, R: BdatRead<'b>, E: ByteOrder> TableReader<R, E> {
         }
     }
 
-    fn read_table_v2(&mut self) -> Result<RawTable<'b>> {
+    fn read_table_v2(&mut self) -> Result<Table<'b>> {
         if self.reader.read_u32()? != 0x54_41_44_42 || self.reader.read_u32()? != 0x3004 {
             return Err(BdatError::MalformedBdat(Scope::Table));
         }
