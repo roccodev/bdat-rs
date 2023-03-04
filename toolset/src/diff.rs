@@ -1,3 +1,4 @@
+use std::hash::{Hash, Hasher};
 use std::{
     borrow::Cow,
     cmp::Ordering,
@@ -6,7 +7,6 @@ use std::{
     io::BufReader,
     path::{Path, PathBuf},
 };
-use std::hash::{Hash, Hasher};
 
 use anyhow::Result;
 use clap::Args;
@@ -14,7 +14,7 @@ use indicatif::ProgressBar;
 use itertools::Itertools;
 use rayon::{iter::Either, prelude::*};
 
-use bdat::{Cell, io::SwitchBdatFile, Label, RawTable, RowRef, SwitchEndian};
+use bdat::{Cell, Label, RawTable, RowRef, SwitchEndian};
 
 use crate::{hash::MurmurHashSet, InputData};
 
@@ -63,14 +63,14 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
     let progress = ProgressBar::new(3)
         .with_style(crate::convert::build_progress_style("Diff", true))
         .with_message(" (Reading files)");
-    let new_files = input.list_files("bdat",
-                                     !args.no_file_names)?.into_iter();
+    let new_files = input.list_files("bdat", !args.no_file_names)?.into_iter();
     let old_files = InputData {
         files: args.old_files,
         hashes: None,
     };
-    let old_files = old_files.list_files("bdat",
-                                         !args.no_file_names)?.into_iter();
+    let old_files = old_files
+        .list_files("bdat", !args.no_file_names)?
+        .into_iter();
     let hash_table = input.load_hashes()?;
 
     let files_to_read = new_files
@@ -87,8 +87,7 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
         .par_iter()
         .flat_map(|(file, new)| {
             let reader = BufReader::new(File::open(file)?);
-            let mut tables = bdat::from_reader::<_, SwitchEndian>(reader)
-                .and_then(|mut f| {
+            let mut tables = bdat::from_reader::<_, SwitchEndian>(reader).and_then(|mut f| {
                 Ok(f.get_tables()?
                     .into_iter()
                     .map(|table| TableWithSource {
@@ -224,11 +223,13 @@ impl<'t, 'tb> RowChanges<'t, 'tb> {
         new: Option<RowRef<'t, 'tb>>,
     ) -> Option<Self> {
         let changed_cols: Vec<ColumnChange> = match (old, new) {
-            (None, Some(new_row)) => new_row.table()
+            (None, Some(new_row)) => new_row
+                .table()
                 .columns()
                 .map(|col| (&col.label, true, new_row.get(&col.label).unwrap()).into())
                 .collect(),
-            (Some(old_row), None) => old_row.table()
+            (Some(old_row), None) => old_row
+                .table()
                 .columns()
                 .map(|col| (&col.label, false, old_row.get(&col.label).unwrap()).into())
                 .collect(),

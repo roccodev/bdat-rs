@@ -1,3 +1,4 @@
+use std::borrow::Borrow;
 use std::{
     borrow::Cow,
     collections::HashMap,
@@ -40,7 +41,10 @@ where
         }
     }
 
-    pub fn write_file<'t>(&mut self, tables: impl IntoIterator<Item = RawTable<'t>>) -> Result<()> {
+    pub fn write_file<'t>(
+        &mut self,
+        tables: impl IntoIterator<Item = impl Borrow<RawTable<'t>>>,
+    ) -> Result<()> {
         let (table_bytes, table_offsets, total_len, table_count) = tables
             .into_iter()
             .map(|table| {
@@ -48,7 +52,7 @@ where
                 let cursor = Cursor::new(&mut data);
 
                 BdatWriter::<_, E>::new(cursor, self.version)
-                    .write_table(table)
+                    .write_table(table.borrow())
                     .map(|_| data)
             })
             .try_fold(
@@ -104,14 +108,14 @@ where
         Ok(())
     }
 
-    pub fn write_table(&mut self, table: RawTable) -> Result<()> {
+    pub fn write_table(&mut self, table: &RawTable) -> Result<()> {
         match self.version {
             BdatVersion::Modern => self.write_table_v2(table),
             _ => todo!("legacy BDATs"),
         }
     }
 
-    fn write_table_v2(&mut self, table: RawTable) -> Result<()> {
+    fn write_table_v2(&mut self, table: &RawTable) -> Result<()> {
         let table_offset = self.stream.stream_position()?;
 
         let column_count = table.columns.len().try_into()?;
@@ -127,7 +131,13 @@ where
         let mut primary_keys = vec![];
         let mut label_table = LabelTable::default();
         // Table name should be the first label in the table
-        label_table.get(Cow::Owned(table.name.unwrap_or(Label::Hash(0))));
+        label_table.get(
+            table
+                .name
+                .as_ref()
+                .map(Cow::Borrowed)
+                .unwrap_or(Cow::Owned(Label::Hash(0))),
+        );
 
         // List of column definitions
         let column_table: Vec<u8> = {
@@ -146,10 +156,10 @@ where
             let mut data = vec![];
             let mut row_len = 0;
 
-            for row in table.rows {
+            for row in &table.rows {
                 let mut found_primary = false;
 
-                for cell in row.cells {
+                for cell in &row.cells {
                     match cell {
                         Cell::Single(v) => {
                             if let (false, Value::HashRef(hash)) = (found_primary, &v) {
@@ -220,22 +230,22 @@ where
 
     fn write_value_v2(
         writer: &mut impl Write,
-        value: Value,
+        value: &Value,
         string_map: &mut LabelTable,
     ) -> std::io::Result<()> {
         match value {
             Value::Unknown => panic!("tried to serialize unknown value"),
-            Value::UnsignedByte(b) | Value::Percent(b) | Value::Unknown2(b) => writer.write_u8(b),
-            Value::UnsignedShort(s) | Value::Unknown3(s) => writer.write_u16::<E>(s),
-            Value::UnsignedInt(i) | Value::HashRef(i) => writer.write_u32::<E>(i),
-            Value::SignedByte(b) => writer.write_i8(b),
-            Value::SignedShort(s) => writer.write_i16::<E>(s),
-            Value::SignedInt(i) => writer.write_i32::<E>(i),
+            Value::UnsignedByte(b) | Value::Percent(b) | Value::Unknown2(b) => writer.write_u8(*b),
+            Value::UnsignedShort(s) | Value::Unknown3(s) => writer.write_u16::<E>(*s),
+            Value::UnsignedInt(i) | Value::HashRef(i) => writer.write_u32::<E>(*i),
+            Value::SignedByte(b) => writer.write_i8(*b),
+            Value::SignedShort(s) => writer.write_i16::<E>(*s),
+            Value::SignedInt(i) => writer.write_i32::<E>(*i),
             Value::String(s) | Value::Unknown1(s) => {
                 // TODO to_string necessary?
                 writer.write_u32::<E>(string_map.get(Cow::Owned(Label::String(s.to_string()))))
             }
-            Value::Float(f) => writer.write_f32::<E>(f),
+            Value::Float(f) => writer.write_f32::<E>(*f),
         }
     }
 
@@ -319,72 +329,5 @@ impl Default for LabelTable {
             pairs: Default::default(),
             offset: 1,
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::io::{Cursor, Seek};
-
-    use byteorder::LittleEndian;
-
-    use crate::{
-        io::read::BdatReader,
-        types::{Cell, ColumnDef, Label, Row, Value, ValueType},
-        TableBuilder,
-    };
-
-    use super::BdatWriter;
-
-    #[test]
-    fn table_write_back() {
-        let table = TableBuilder::new()
-            .set_name(Some(Label::Hash(0xca_fe_ba_be)))
-            .add_column(ColumnDef::new(
-                ValueType::HashRef,
-                Label::Hash(0xde_ad_be_ef),
-            ))
-            .add_column(ColumnDef {
-                ty: ValueType::UnsignedInt,
-                label: Label::Hash(0xca_fe_ca_fe),
-                offset: 4,
-            })
-            .add_row(Row::new(
-                1,
-                vec![
-                    Cell::Single(Value::HashRef(0x00_00_00_01)),
-                    Cell::Single(Value::UnsignedInt(10)),
-                ],
-            ))
-            .add_row(Row::new(
-                2,
-                vec![
-                    Cell::Single(Value::HashRef(0x01_00_00_01)),
-                    Cell::Single(Value::UnsignedInt(100)),
-                ],
-            ))
-            .build();
-
-        let mut written = vec![];
-        let mut cursor = Cursor::new(&mut written);
-        BdatWriter::<_, LittleEndian>::new(&mut cursor, crate::io::BdatVersion::Modern)
-            .write_table_v2(table.clone())
-            .unwrap();
-
-        cursor.rewind().unwrap();
-        let read_back =
-            BdatReader::<_, LittleEndian>::new(&mut cursor, crate::io::BdatVersion::Modern)
-                .read_table()
-                .unwrap();
-
-        assert_eq!(table, read_back);
-
-        let mut new_written = vec![];
-        let mut cursor = Cursor::new(&mut new_written);
-        BdatWriter::<_, LittleEndian>::new(&mut cursor, crate::io::BdatVersion::Modern)
-            .write_table_v2(read_back)
-            .unwrap();
-
-        assert_eq!(written, new_written);
     }
 }

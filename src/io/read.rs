@@ -1,10 +1,10 @@
+use std::borrow::Cow;
 use std::{
     convert::TryFrom,
     io::{Cursor, Read, Seek, SeekFrom},
     marker::PhantomData,
     num::NonZeroU32,
 };
-use std::borrow::Cow;
 
 use byteorder::{ByteOrder, ReadBytesExt};
 
@@ -43,9 +43,6 @@ pub struct BdatSlice<'b, E> {
 struct TableData<'r> {
     data: Cow<'r, [u8]>,
     string_table_offset: usize,
-    hash_table_offset: usize,
-    columns_offset: usize,
-    rows_offset: usize,
 }
 
 pub trait BdatRead<'b> {
@@ -69,7 +66,11 @@ struct TableReader<R, E> {
     _endianness: PhantomData<E>,
 }
 
-impl<'b, R, E> FileReader<R, E> where R: BdatRead<'b>, E: ByteOrder {
+impl<'b, R, E> FileReader<R, E>
+where
+    R: BdatRead<'b>,
+    E: ByteOrder,
+{
     pub fn read_file(mut reader: R) -> Result<Self> {
         if reader.read_u32()? == 0x54_41_44_42 {
             if reader.read_u32()? != 0x01_00_10_04 {
@@ -85,7 +86,9 @@ impl<'b, R, E> FileReader<R, E> where R: BdatRead<'b>, E: ByteOrder {
         let mut tables = Vec::with_capacity(self.header.table_count);
 
         for i in 0..self.header.table_count {
-            self.tables.reader.seek_table(self.header.table_offsets[i])?;
+            self.tables
+                .reader
+                .seek_table(self.header.table_offsets[i])?;
             let table = self.read_table()?;
             tables.push(table);
         }
@@ -100,7 +103,7 @@ impl<'b, R, E> FileReader<R, E> where R: BdatRead<'b>, E: ByteOrder {
     fn read_table(&mut self) -> Result<RawTable<'b>> {
         match self.version {
             BdatVersion::Legacy => todo!("legacy bdats"),
-            BdatVersion::Modern => self.tables.read_table_v2()
+            BdatVersion::Modern => self.tables.read_table_v2(),
         }
     }
 
@@ -140,7 +143,7 @@ impl<'b, R: BdatRead<'b>, E: ByteOrder> HeaderReader<R, E> {
     fn new(reader: R) -> Self {
         Self {
             reader,
-            _endianness: PhantomData
+            _endianness: PhantomData,
         }
     }
 
@@ -204,13 +207,7 @@ impl<'b, R: BdatRead<'b>, E: ByteOrder> TableReader<R, E> {
             .max_by_key(|&i| i)
             .expect("could not determine table length");
         let table_raw = self.reader.read_table_data(*table_len)?;
-        let table_data = TableData::new(
-            table_raw,
-            offset_string,
-            offset_hash,
-            offset_col,
-            offset_row,
-        );
+        let table_data = TableData::new(table_raw, offset_string);
 
         let name = table_data.get_name::<E>()?.map(|h| Label::Hash(h.into()));
         let mut col_data = Vec::with_capacity(columns);
@@ -265,17 +262,15 @@ impl<'b, R: BdatRead<'b>, E: ByteOrder> TableReader<R, E> {
             ValueType::SignedByte => Value::SignedByte(buf.read_i8()?),
             ValueType::SignedShort => Value::SignedShort(buf.read_i16::<E>()?),
             ValueType::SignedInt => Value::SignedInt(buf.read_i32::<E>()?),
-            ValueType::String => Value::String(
-                table_data
-                    .get_string(buf.read_u32::<E>()? as usize, usize::MAX)?,
-            ),
+            ValueType::String => {
+                Value::String(table_data.get_string(buf.read_u32::<E>()? as usize, usize::MAX)?)
+            }
             ValueType::Float => Value::Float(buf.read_f32::<E>()?),
             ValueType::Percent => Value::Percent(buf.read_u8()?),
             ValueType::HashRef => Value::HashRef(buf.read_u32::<E>()?),
-            ValueType::Unknown1 => Value::Unknown1(
-                table_data
-                    .get_string(buf.read_u32::<E>()? as usize, usize::MAX)?,
-            ),
+            ValueType::Unknown1 => {
+                Value::Unknown1(table_data.get_string(buf.read_u32::<E>()? as usize, usize::MAX)?)
+            }
             ValueType::Unknown2 => Value::Unknown2(buf.read_u8()?),
             ValueType::Unknown3 => Value::Unknown3(buf.read_u16::<E>()?),
         })
@@ -283,19 +278,10 @@ impl<'b, R: BdatRead<'b>, E: ByteOrder> TableReader<R, E> {
 }
 
 impl<'r> TableData<'r> {
-    fn new(
-        data: Cow<'r, [u8]>,
-        strings_offset: usize,
-        hashes_offset: usize,
-        columns_offset: usize,
-        rows_offset: usize,
-    ) -> TableData<'r> {
+    fn new(data: Cow<'r, [u8]>, strings_offset: usize) -> TableData<'r> {
         Self {
             data,
             string_table_offset: strings_offset,
-            hash_table_offset: hashes_offset,
-            columns_offset,
-            rows_offset,
         }
     }
 
@@ -318,10 +304,12 @@ impl<'r> TableData<'r> {
             .take(limit)
             .count();
         let str = match &self.data {
-            Cow::Borrowed(data) => Cow::Borrowed(
-                std::str::from_utf8(&data[str_ptr..str_ptr + len])?),
-            Cow::Owned(data) => Cow::Owned(
-                std::str::from_utf8(&data[str_ptr..str_ptr + len])?.to_string())
+            Cow::Borrowed(data) => {
+                Cow::Borrowed(std::str::from_utf8(&data[str_ptr..str_ptr + len])?)
+            }
+            Cow::Owned(data) => {
+                Cow::Owned(std::str::from_utf8(&data[str_ptr..str_ptr + len])?.to_string())
+            }
         };
         Ok(str)
     }
@@ -347,9 +335,14 @@ impl<'r> TableData<'r> {
     }
 }
 
-impl<'b, E> BdatRead<'b> for BdatSlice<'b, E> where E: ByteOrder {
+impl<'b, E> BdatRead<'b> for BdatSlice<'b, E>
+where
+    E: ByteOrder,
+{
     fn read_table_data(&mut self, length: usize) -> Result<Cow<'b, [u8]>> {
-        Ok(Cow::Borrowed(&self.data.clone().into_inner()[self.table_offset..self.table_offset+length]))
+        Ok(Cow::Borrowed(
+            &self.data.clone().into_inner()[self.table_offset..self.table_offset + length],
+        ))
     }
 
     #[inline]
@@ -364,10 +357,15 @@ impl<'b, E> BdatRead<'b> for BdatSlice<'b, E> where E: ByteOrder {
     }
 }
 
-impl<'b, R, E> BdatRead<'b> for BdatReader<R, E> where R: Read + Seek, E: ByteOrder {
+impl<'b, R, E> BdatRead<'b> for BdatReader<R, E>
+where
+    R: Read + Seek,
+    E: ByteOrder,
+{
     fn read_table_data(&mut self, length: usize) -> Result<Cow<'b, [u8]>> {
         let mut table_raw = vec![0u8; length];
-        self.stream.seek(SeekFrom::Start(self.table_offset as u64))?;
+        self.stream
+            .seek(SeekFrom::Start(self.table_offset as u64))?;
         self.stream.read_exact(&mut table_raw)?;
         Ok(table_raw.into())
     }

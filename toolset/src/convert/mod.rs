@@ -6,7 +6,11 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::{io::{BdatFile, BdatVersion, LittleEndian, SwitchBdatFile}, SwitchEndian, types::{Label, RawTable}};
+use bdat::{
+    io::BdatVersion,
+    types::{Label, RawTable},
+    SwitchEndian,
+};
 use clap::Args;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
@@ -138,7 +142,8 @@ pub fn run_serialization(
         .panic_fuse()
         .map(|path| {
             let file = BufReader::new(File::open(&path)?);
-            let mut file = bdat::from_reader::<_, SwitchEndian>(file).context("Failed to read BDAT file")?;
+            let mut file =
+                bdat::from_reader::<_, SwitchEndian>(file).context("Failed to read BDAT file")?;
             let file_name = path
                 .file_stem()
                 .and_then(OsStr::to_str)
@@ -301,9 +306,7 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
             let out_dir = out_dir.join(relative_path);
             std::fs::create_dir_all(&out_dir)?;
             let out_file = File::create(out_dir.join(&format!("{}.bdat", schema_file.file_name)))?;
-            let mut out_file = SwitchBdatFile::new_write(out_file, schema_file.version);
-            out_file.write_all_tables(tables)?;
-
+            bdat::to_writer::<_, SwitchEndian>(out_file, schema_file.version, tables)?;
             file_bar.inc(1);
             Ok(())
         })

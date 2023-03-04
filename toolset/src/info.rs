@@ -6,7 +6,7 @@ use crate::{
     InputData,
 };
 use anyhow::{Context, Result};
-use bdat::{io::{BdatFile, LittleEndian, SwitchBdatFile}, SwitchEndian, types::Label};
+use bdat::{types::Label, SwitchEndian};
 use clap::Args;
 
 #[derive(Args)]
@@ -27,8 +27,8 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
     for file in input.list_files("bdat", false)? {
         let path = file?;
         let file = std::fs::read(&path)?;
-        let mut file = bdat::from_bytes
-            ::<SwitchEndian>(&file).context("Failed to read BDAT file")?;
+        let mut file =
+            bdat::from_bytes::<SwitchEndian>(&file).context("Failed to read BDAT file")?;
         for table in file
             .get_tables()
             .with_context(|| format!("Could not parse BDAT tables ({})", path.to_string_lossy()))?

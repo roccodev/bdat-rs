@@ -1,8 +1,10 @@
-use std::borrow::Cow;
+use serde::de::DeserializeOwned;
 use serde::{
     de::{self, DeserializeSeed, IntoDeserializer, Visitor},
     Deserialize, Deserializer, Serialize,
 };
+use std::borrow::Cow;
+use std::marker::PhantomData;
 
 use crate::types::{Cell, Label, Value, ValueType};
 
@@ -131,15 +133,17 @@ impl<'b> From<ValueWithType<'b>> for Value<'b> {
     }
 }
 
-impl<'de> Deserialize<'de> for ValueWithType<'de> {
+impl<'de: 'tb, 'tb> Deserialize<'de> for ValueWithType<'tb> {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        struct ValueWithTypeVisitor;
+        struct ValueWithTypeVisitor<'tb> {
+            _marker: PhantomData<&'tb ()>,
+        }
 
-        impl<'de> Visitor<'de> for ValueWithTypeVisitor {
-            type Value = ValueWithType<'de>;
+        impl<'de: 'tb, 'tb> Visitor<'de> for ValueWithTypeVisitor<'tb> {
+            type Value = ValueWithType<'tb>;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
                 formatter.write_str("struct ValueWithType")
@@ -200,7 +204,13 @@ impl<'de> Deserialize<'de> for ValueWithType<'de> {
             }
         }
 
-        deserializer.deserialize_struct("ValueWithType", &["type", "value"], ValueWithTypeVisitor)
+        deserializer.deserialize_struct(
+            "ValueWithType",
+            &["type", "value"],
+            ValueWithTypeVisitor {
+                _marker: PhantomData,
+            },
+        )
     }
 }
 
@@ -296,6 +306,7 @@ impl<'de> DeserializeSeed<'de> for CellSeed {
 #[cfg(test)]
 mod tests {
     use serde::de::DeserializeSeed;
+    use serde::Deserialize;
 
     use crate::{
         serde::ValueWithType,
@@ -334,7 +345,7 @@ mod tests {
                 "value": 1.01
             }
         ]);
-        let values: Vec<Value> = serde_json::from_value::<Vec<ValueWithType>>(json)
+        let values: Vec<Value> = Vec::<ValueWithType>::deserialize(json)
             .unwrap()
             .into_iter()
             .map(Into::into)
@@ -343,7 +354,7 @@ mod tests {
             values,
             [
                 Value::UnsignedByte(82),
-                Value::String(String::from("Hello world")),
+                Value::String(String::from("Hello world").into()),
                 Value::Float(1.01)
             ]
         );
@@ -353,7 +364,7 @@ mod tests {
     #[should_panic]
     fn deser_overflow() {
         let json = serde_json::json!({ "type": ValueType::UnsignedByte, "value": 1000 });
-        serde_json::from_value::<ValueWithType>(json).unwrap();
+        ValueWithType::deserialize(json).unwrap();
     }
 
     #[test]
