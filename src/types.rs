@@ -95,10 +95,9 @@ pub enum Value<'b> {
     /// A hash referencing a row in the same or some other table
     HashRef(u32),
     Percent(u8),
-    /// [`BdatVersion::Modern`] unknown type (0xb)  
     /// It points to a (generally empty) string in the string table,
     /// mostly used for `DebugName` fields.
-    Unknown1(Cow<'b, str>),
+    DebugString(Cow<'b, str>),
     /// [`BdatVersion::Modern`] unknown type (0xc)
     Unknown2(u8),
     /// [`BdatVersion::Modern`] unknown type (0xd)
@@ -440,7 +439,7 @@ impl ValueType {
             Unknown => 0,
             UnsignedByte | SignedByte | Percent | Unknown2 => 1,
             UnsignedShort | SignedShort | Unknown3 => 2,
-            UnsignedInt | SignedInt | String | Float | HashRef | Unknown1 => 4,
+            UnsignedInt | SignedInt | String | Float | HashRef | DebugString => 4,
         }
     }
 }
@@ -565,7 +564,7 @@ impl<'b> Display for Value<'b> {
             Self::HashRef(h) => Label::Hash(*h).fmt(f),
             Self::Percent(v) => write!(f, "{}%", v),
             v => {
-                default_display!(f, v, SignedByte SignedShort SignedInt UnsignedByte UnsignedShort UnsignedInt Unknown1 Unknown2 Unknown3 String Float)
+                default_display!(f, v, SignedByte SignedShort SignedInt UnsignedByte UnsignedShort UnsignedInt DebugString Unknown2 Unknown3 String Float)
             }
         }
     }
@@ -630,7 +629,7 @@ impl<'b> Value<'b> {
     /// If the value is not stored as a string.
     pub fn into_string(self) -> String {
         match self {
-            Self::String(s) | Self::Unknown1(s) => s.to_string(),
+            Self::String(s) | Self::DebugString(s) => s.to_string(),
             _ => panic!("value is not a string"),
         }
     }
@@ -641,7 +640,7 @@ impl<'b> Value<'b> {
     /// If the value is not stored as a string.
     pub fn as_str(&self) -> &str {
         match self {
-            Self::String(s) | Self::Unknown1(s) => s.as_ref(),
+            Self::String(s) | Self::DebugString(s) => s.as_ref(),
             _ => panic!("value is not a string"),
         }
     }

@@ -41,7 +41,7 @@ impl<'b> Serialize for Value<'b> {
             Value::SignedByte(b) => serializer.serialize_i8(*b),
             Value::SignedShort(s) => serializer.serialize_i16(*s),
             Value::SignedInt(i) => serializer.serialize_i32(*i),
-            Value::String(s) | Value::Unknown1(s) => serializer.serialize_str(s),
+            Value::String(s) | Value::DebugString(s) => serializer.serialize_str(s),
             Value::Float(f) => serializer.serialize_f32(*f),
             Value::HashRef(h) => {
                 if serializer.is_human_readable() {
@@ -72,7 +72,7 @@ impl ValueType {
             Self::Float => Value::Float(f32::deserialize(deserializer)?),
             Self::HashRef => Value::HashRef(deserializer.deserialize_any(HexVisitor)?),
             Self::Percent => Value::Percent(u8::deserialize(deserializer)?),
-            Self::Unknown1 => Value::Unknown1(Cow::deserialize(deserializer)?),
+            Self::DebugString => Value::DebugString(Cow::deserialize(deserializer)?),
             Self::Unknown2 => Value::Unknown2(u8::deserialize(deserializer)?),
             Self::Unknown3 => Value::Unknown3(u16::deserialize(deserializer)?),
         })

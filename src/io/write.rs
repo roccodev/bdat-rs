@@ -241,7 +241,7 @@ where
             Value::SignedByte(b) => writer.write_i8(*b),
             Value::SignedShort(s) => writer.write_i16::<E>(*s),
             Value::SignedInt(i) => writer.write_i32::<E>(*i),
-            Value::String(s) | Value::Unknown1(s) => {
+            Value::String(s) | Value::DebugString(s) => {
                 // TODO to_string necessary?
                 writer.write_u32::<E>(string_map.get(Cow::Owned(Label::String(s.to_string()))))
             }
