@@ -3,13 +3,15 @@ use std::io::{Cursor, Read, Seek, Write};
 
 use byteorder::ByteOrder;
 
-use crate::io::read::{BdatSlice, FileReader};
+use crate::io::read::BdatSlice;
 use crate::{error::Result, types::RawTable};
 
 use self::{read::BdatReader, write::BdatWriter};
 
 mod read;
 mod write;
+
+pub use read::FileReader;
 
 /// Alias for [`byteorder::LittleEndian`], i.e. the byte order used in the Switch games.
 pub type SwitchEndian = byteorder::LittleEndian;
@@ -31,16 +33,60 @@ pub(crate) struct FileHeader {
     pub(crate) table_offsets: Vec<usize>,
 }
 
+/// Reads a BDAT file from a [`std::io::Read`] implementation. That type must also implement
+/// [`std::io::Seek`].
+///
+/// This function will only read the file header. To parse tables, call [`FileReader::get_tables`].
+///
+/// The BDAT file format is not recommended for streams, so it is best to read from a file or a
+/// byte buffer.
+///
+/// ```
+/// use std::fs::File;
+/// use bdat::{BdatResult, SwitchEndian};
+///
+/// fn read_file(name: &str) -> BdatResult<()> {
+///     let file = File::open(name)?;
+///     let file = bdat::from_reader::<_, SwitchEndian>(file)?;
+///     Ok(())
+/// }
+/// ```
 pub fn from_reader<R: Read + Seek, E: ByteOrder>(
     reader: R,
 ) -> Result<FileReader<BdatReader<R, E>, E>> {
     FileReader::read_file(BdatReader::new(reader))
 }
 
+/// Reads a BDAT file from a slice. The slice needs to have the **full** file data, though any
+/// unrelated bytes at the end will be ignored.
+///
+/// This function will only read the file header. To parse tables, call [`FileReader::get_tables`].
+///
+/// ```
+/// use std::fs::File;
+/// use bdat::{BdatResult, SwitchEndian};
+///
+/// fn read(data: &[u8]) -> BdatResult<()> {
+///     let file = bdat::from_bytes::<SwitchEndian>(data)?;
+///     Ok(())
+/// }
+/// ```
 pub fn from_bytes<E: ByteOrder>(bytes: &[u8]) -> Result<FileReader<BdatSlice<'_, E>, E>> {
     FileReader::read_file(BdatSlice::new(bytes))
 }
 
+/// Writes BDAT tables to a [`std::io::Write`] implementation that also implements [`std::io::Seek`].
+///
+/// ```
+/// use std::fs::File;
+/// use bdat::{BdatResult, BdatVersion, RawTable, SwitchEndian};
+///
+/// fn write_file(name: &str, tables: &[RawTable]) -> BdatResult<()> {
+///     let file = File::create(name)?;
+///     bdat::to_writer::<_, SwitchEndian>(file, BdatVersion::Modern, tables)?;
+///     Ok(())
+/// }
+/// ```
 pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
     writer: W,
     version: BdatVersion,
@@ -50,6 +96,17 @@ pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
     writer.write_file(tables)
 }
 
+/// Writes BDAT tables to a `Vec<u8>`.
+///
+/// ```
+/// use std::fs::File;
+/// use bdat::{BdatResult, BdatVersion, RawTable, SwitchEndian};
+///
+/// fn write_vec(tables: &[RawTable]) -> BdatResult<()> {
+///     let vec = bdat::to_vec::<SwitchEndian>(BdatVersion::Modern, tables)?;
+///     Ok(())
+/// }
+/// ```
 pub fn to_vec<'t, E: ByteOrder>(
     version: BdatVersion,
     tables: impl IntoIterator<Item = impl Borrow<RawTable<'t>>>,

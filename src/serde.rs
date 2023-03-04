@@ -405,6 +405,7 @@ mod tests {
     }
 
     #[test]
+    #[allow(clippy::approx_constant)]
     fn deser_cell() {
         assert_eq!(
             ValueType::Unknown // Not needed for Flag cells
@@ -436,7 +437,7 @@ mod tests {
                 .as_cell_seed()
                 .deserialize(&mut serde_json::Deserializer::from_str("3.14"))
                 .unwrap(),
-            Cell::Single(Value::Float(std::f32::consts::PI))
+            Cell::Single(Value::Float(3.14))
         );
     }
 }

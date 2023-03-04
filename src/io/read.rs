@@ -19,7 +19,6 @@ use super::{BdatVersion, FileHeader};
 const LEN_COLUMN_DEF_V2: usize = 3;
 const LEN_HASH_DEF_V2: usize = 8;
 
-// TODO better name
 pub struct FileReader<R, E> {
     tables: TableReader<R, E>,
     header: FileHeader,
@@ -71,7 +70,7 @@ where
     R: BdatRead<'b>,
     E: ByteOrder,
 {
-    pub fn read_file(mut reader: R) -> Result<Self> {
+    pub(super) fn read_file(mut reader: R) -> Result<Self> {
         if reader.read_u32()? == 0x54_41_44_42 {
             if reader.read_u32()? != 0x01_00_10_04 {
                 return Err(BdatError::MalformedBdat(Scope::File));
@@ -82,6 +81,7 @@ where
         }
     }
 
+    /// Reads all tables from the BDAT source.
     pub fn get_tables(&mut self) -> Result<Vec<RawTable<'b>>> {
         let mut tables = Vec::with_capacity(self.header.table_count);
 
@@ -96,6 +96,7 @@ where
         Ok(tables)
     }
 
+    /// Returns the number of tables in the BDAT file.
     pub fn table_count(&self) -> usize {
         self.header.table_count
     }

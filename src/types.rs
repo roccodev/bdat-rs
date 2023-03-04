@@ -1,14 +1,16 @@
 use enum_kinds::EnumKind;
 use num_enum::TryFromPrimitive;
-use std::{borrow::Borrow, cmp::Ordering, fmt::Display, ops::Index};
 use std::borrow::Cow;
+use std::{borrow::Borrow, cmp::Ordering, fmt::Display, ops::Index};
 
+#[cfg(feature = "hash-table")]
 use crate::hash::PreHashedMap;
 // doc imports
 #[allow(unused_imports)]
 use crate::io::BdatVersion;
 
-/// A Bdat table
+/// A Bdat table. Depending on how they were read, BDAT tables can either own their data source
+/// or borrow from it.
 ///
 /// ## Accessing cells
 /// The [`RawTable::row`] function provides an easy interface to access cells.
@@ -228,7 +230,7 @@ impl<'b> RawTable<'b> {
     ///
     /// # Panics
     /// If there is no row for the given ID
-    pub fn row(& self, id: usize) -> RowRef<'_, 'b> {
+    pub fn row(&self, id: usize) -> RowRef<'_, 'b> {
         self.get_row(id).expect("no such row")
     }
 
@@ -621,6 +623,9 @@ impl<'b> Value<'b> {
     /// Returns the underlying string value.
     /// This does **not** format other values, use the Display trait for that.
     ///
+    /// **Note**: this will potentially copy the string, if the table is borrowing its source.
+    /// To avoid copies, use [`Value::as_str`].
+    ///
     /// # Panics
     /// If the value is not stored as a string.
     pub fn into_string(self) -> String {
@@ -630,10 +635,16 @@ impl<'b> Value<'b> {
         }
     }
 
-    /*
-    pub fn as_str_unwrap() {
-       // TODO
-    }*/
+    /// Returns a reference to the underlying string value.
+    ///
+    /// # Panics
+    /// If the value is not stored as a string.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::String(s) | Self::Unknown1(s) => s.as_ref(),
+            _ => panic!("value is not a string"),
+        }
+    }
 }
 
 impl<'t, 'tb> AsRef<Row<'tb>> for RowRef<'t, 'tb> {
