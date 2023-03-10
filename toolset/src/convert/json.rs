@@ -7,6 +7,7 @@ use anyhow::{Context, Result};
 use bdat::types::{Cell, ColumnDef, Label, Row, Table, TableBuilder, ValueType};
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
+use serde_json::Map;
 
 use crate::error::Error;
 
@@ -31,7 +32,7 @@ struct TableRow {
     #[serde(rename = "$id")]
     id: usize,
     #[serde(flatten)]
-    cells: HashMap<String, serde_json::Value>,
+    cells: Map<String, serde_json::Value>,
 }
 
 #[derive(Deserialize, Serialize)]

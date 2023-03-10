@@ -47,9 +47,6 @@ pub struct ConvertArgs {
     /// Only convert these tables. If absent, converts all tables from all files.
     #[arg(short, long)]
     tables: Vec<String>,
-    /// Only convert these columns. If absent, converts all columns.
-    #[arg(short, long)]
-    columns: Vec<String>,
     /// The number of jobs (or threads) to use in the conversion process.
     /// By default, this is the number of cores/threads in the system.
     #[arg(short, long)]
@@ -124,7 +121,6 @@ pub fn run_serialization(
     };
 
     let table_filter: Filter = args.tables.into_iter().map(FilterArg).collect();
-    let _column_filter: Filter = args.columns.into_iter().map(FilterArg).collect();
 
     let files = input
         .list_files("bdat", false)?
