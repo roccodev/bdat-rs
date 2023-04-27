@@ -248,11 +248,11 @@ impl<'t, 'tb> RowChanges<'t, 'tb> {
 
                 new_cols
                     .difference(&old_cols)
-                    .map(|&label| (label, true, old_row.get(label).unwrap()).into())
+                    .map(|&label| (label, true, new_row.get(label).unwrap()).into())
                     .chain(
                         old_cols
                             .difference(&new_cols)
-                            .map(|&label| (label, false, new_row.get(label).unwrap()).into()),
+                            .map(|&label| (label, false, old_row.get(label).unwrap()).into()),
                     )
                     .chain(changed_cols.flat_map(|(&label, old_val, new_val)| {
                         [
