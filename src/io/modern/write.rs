@@ -94,7 +94,7 @@ where
                 self.w_u32(0x01_00_10_04)?;
                 8
             }
-            BdatVersion::Legacy => 0,
+            _ => 0,
         };
 
         let header_len = 4 + 4 + magic_len + u32::try_from(header.table_offsets.len() * 4)?;
@@ -245,7 +245,8 @@ where
                 // TODO to_string necessary?
                 writer.write_u32::<E>(string_map.get(Cow::Owned(Label::String(s.to_string()))))
             }
-            Value::Float(f) => writer.write_f32::<E>(*f),
+            // TODO only accept CFloat
+            Value::Float(f) => writer.write_f32::<E>((*f).into()),
         }
     }
 

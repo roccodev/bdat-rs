@@ -8,6 +8,7 @@ use crate::hash::PreHashedMap;
 // doc imports
 #[allow(unused_imports)]
 use crate::io::BdatVersion;
+use crate::legacy::float::BdatReal;
 
 /// A Bdat table. Depending on how they were read, BDAT tables can either own their data source
 /// or borrow from it.
@@ -91,7 +92,7 @@ pub enum Value<'b> {
     SignedShort(i16),
     SignedInt(i32),
     String(Cow<'b, str>),
-    Float(f32),
+    Float(BdatReal),
     /// A hash referencing a row in the same or some other table
     HashRef(u32),
     Percent(u8),
@@ -634,7 +635,7 @@ impl<'b> Value<'b> {
     /// If the value is not stored as a float.
     pub fn into_float(self) -> f32 {
         match self {
-            Self::Float(f) => f,
+            Self::Float(f) => f.into(),
             _ => panic!("value is not a float"),
         }
     }

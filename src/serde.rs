@@ -1,3 +1,4 @@
+use crate::legacy::float::BdatReal;
 use serde::{
     de::{self, DeserializeSeed, Visitor},
     Deserialize, Deserializer, Serialize,
@@ -42,7 +43,7 @@ impl<'b> Serialize for Value<'b> {
             Value::SignedShort(s) => serializer.serialize_i16(*s),
             Value::SignedInt(i) => serializer.serialize_i32(*i),
             Value::String(s) | Value::DebugString(s) => serializer.serialize_str(s),
-            Value::Float(f) => serializer.serialize_f32(*f),
+            Value::Float(f) => serializer.serialize_f32((*f).into()),
             Value::HashRef(h) => {
                 if serializer.is_human_readable() {
                     serializer.serialize_str(&format!("{}", Label::Hash(*h)))
@@ -69,7 +70,7 @@ impl ValueType {
             Self::SignedShort => Value::SignedShort(i16::deserialize(deserializer)?),
             Self::SignedByte => Value::SignedByte(i8::deserialize(deserializer)?),
             Self::String => Value::String(Cow::deserialize(deserializer)?),
-            Self::Float => Value::Float(f32::deserialize(deserializer)?),
+            Self::Float => Value::Float(BdatReal::Unknown(f32::deserialize(deserializer)?)),
             Self::HashRef => Value::HashRef(deserializer.deserialize_any(HexVisitor)?),
             Self::Percent => Value::Percent(u8::deserialize(deserializer)?),
             Self::DebugString => Value::DebugString(Cow::deserialize(deserializer)?),
@@ -354,7 +355,7 @@ mod tests {
             [
                 Value::UnsignedByte(82),
                 Value::String(String::from("Hello world").into()),
-                Value::Float(1.01)
+                Value::Float(1.01.into())
             ]
         );
     }
@@ -437,7 +438,7 @@ mod tests {
                 .as_cell_seed()
                 .deserialize(&mut serde_json::Deserializer::from_str("3.14"))
                 .unwrap(),
-            Cell::Single(Value::Float(3.14))
+            Cell::Single(Value::Float(3.14.into()))
         );
     }
 }

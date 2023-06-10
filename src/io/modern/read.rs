@@ -8,6 +8,7 @@ use std::{
 
 use byteorder::{ByteOrder, ReadBytesExt};
 
+use crate::legacy::float::BdatReal;
 use crate::{
     error::{BdatError, Result, Scope},
     types::{Cell, ColumnDef, Label, Row, Table, Value, ValueType},
@@ -103,8 +104,8 @@ where
 
     fn read_table(&mut self) -> Result<Table<'b>> {
         match self.version {
-            BdatVersion::Legacy => todo!("legacy bdats"),
             BdatVersion::Modern => self.tables.read_table_v2(),
+            _ => todo!("legacy bdats"),
         }
     }
 
@@ -266,7 +267,7 @@ impl<'b, R: BdatRead<'b>, E: ByteOrder> TableReader<R, E> {
             ValueType::String => {
                 Value::String(table_data.get_string(buf.read_u32::<E>()? as usize, usize::MAX)?)
             }
-            ValueType::Float => Value::Float(buf.read_f32::<E>()?),
+            ValueType::Float => Value::Float(BdatReal::Floating(buf.read_f32::<E>()?.into())),
             ValueType::Percent => Value::Percent(buf.read_u8()?),
             ValueType::HashRef => Value::HashRef(buf.read_u32::<E>()?),
             ValueType::DebugString => Value::DebugString(
