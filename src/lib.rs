@@ -62,5 +62,6 @@ pub mod types;
 
 pub use error::BdatError;
 pub use error::Result as BdatResult;
+pub use io::modern::*; // TODO
 pub use io::*;
 pub use types::*;
