@@ -275,7 +275,7 @@ impl<'de> DeserializeSeed<'de> for CellSeed {
             where
                 E: de::Error,
             {
-                Ok(Cell::Flag(v))
+                Ok(Cell::Flags(v))
             }
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
@@ -413,7 +413,7 @@ mod tests {
                 .as_cell_seed()
                 .deserialize(&mut serde_json::Deserializer::from_str("true"))
                 .unwrap(),
-            Cell::Flag(true)
+            Cell::Flags(true)
         );
 
         assert_eq!(

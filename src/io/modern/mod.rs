@@ -123,6 +123,7 @@ mod tests {
                 value_type: ValueType::UnsignedInt,
                 label: Label::Hash(0xca_fe_ca_fe),
                 offset: 4,
+                flags: Vec::new(),
             })
             .add_row(Row::new(
                 1,

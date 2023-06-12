@@ -52,6 +52,7 @@ pub struct ColumnDef {
     pub(crate) value_type: ValueType,
     pub(crate) label: Label,
     pub(crate) offset: usize,
+    pub(crate) flags: Vec<FlagDef>,
 }
 
 /// A row from a Bdat table
@@ -59,6 +60,15 @@ pub struct ColumnDef {
 pub struct Row<'b> {
     pub(crate) id: usize,
     pub(crate) cells: Vec<Cell<'b>>,
+}
+
+/// A sub-definition for flag data that is associated to a column
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct FlagDef {
+    /// The flag's identifier
+    label: Label,
+    /// The index in the parent cell's flag list
+    flag_index: usize,
 }
 
 /// A cell from a Bdat row
@@ -70,8 +80,8 @@ pub enum Cell<'b> {
     Single(Value<'b>),
     /// The cell contains a list of [`Value`]s
     List(Vec<Value<'b>>),
-    /// The cell acts as a bit flag
-    Flag(bool),
+    /// The cell acts as a heterogeneous list of [`Value`]s.
+    Flags(Vec<Value<'b>>),
 }
 
 /// A value in a Bdat cell
@@ -400,6 +410,7 @@ impl ColumnDef {
             value_type: ty,
             label,
             offset: 0,
+            flags: Vec::new(),
         }
     }
 
@@ -605,7 +616,7 @@ impl<'b> Display for Cell<'b> {
                 }
                 write!(f, "]")
             }
-            Cell::Flag(b) => b.fmt(f),
+            Cell::Flags(b) => todo!(), /*b.fmt(f) */
         }
     }
 }
