@@ -271,12 +271,14 @@ impl<'de> DeserializeSeed<'de> for CellSeed {
                 formatter.write_str("Value, bool, or sequence of Values")
             }
 
+            /*
             fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
             where
                 E: de::Error,
             {
                 Ok(Cell::Flags(v))
-            }
+            }*/
+            // TODO
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
             where

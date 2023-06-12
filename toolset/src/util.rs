@@ -1,4 +1,76 @@
+use anyhow::{Context, Result};
+use clap::Args;
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::path::{Path, PathBuf};
+
+#[derive(Clone)]
+pub struct ProgressBarState {
+    multi_bar: MultiProgress,
+    pub master_bar: ProgressBar,
+    child_style: ProgressStyle,
+}
+
+#[derive(Args)]
+pub struct RayonPoolJobs {
+    /// The number of jobs (or threads) to use in the conversion process.
+    /// By default, this is the number of cores/threads in the system.
+    #[arg(short, long)]
+    jobs: Option<u16>,
+}
+
+impl ProgressBarState {
+    pub fn new(master_name: &str, child_name: &str, total: usize) -> Self {
+        let multi_bar = MultiProgress::new();
+        let master_bar = multi_bar.add(
+            ProgressBar::new(total as u64)
+                .with_style(Self::build_progress_style(master_name, true)),
+        );
+        let child_style = Self::build_progress_style(child_name, false);
+
+        Self {
+            multi_bar,
+            master_bar,
+            child_style,
+        }
+    }
+
+    pub fn add_child(&self, total: usize) -> ProgressBar {
+        self.multi_bar
+            .add(ProgressBar::new(total as u64).with_style(self.child_style.clone()))
+    }
+
+    pub fn remove_child(&self, child: &ProgressBar) {
+        self.multi_bar.remove(child);
+    }
+
+    pub fn finish(&self) {
+        self.master_bar.finish();
+    }
+
+    pub fn println<I: AsRef<str>>(&self, msg: I) -> std::io::Result<()> {
+        self.multi_bar.println(msg)
+    }
+
+    fn build_progress_style(label: &str, with_time: bool) -> ProgressStyle {
+        ProgressStyle::with_template(&match with_time {
+            true => format!("{{spinner:.cyan}} [{{elapsed_precise:.cyan}}] {label}{{msg}}: {{human_pos}}/{{human_len}} ({{percent}}%) [{{bar:.cyan/blue}}] ETA: {{eta}}"),
+            false => format!("{{spinner:.green}} {label}{{msg}}: {{human_pos}}/{{human_len}} ({{percent}}%) [{{bar}}]"),
+        }).unwrap()
+    }
+}
+
+impl RayonPoolJobs {
+    /// Configures the Rayon thread pool based on the configured job count.
+    pub fn configure(&self) -> Result<()> {
+        let mut pool_builder = rayon::ThreadPoolBuilder::new();
+        if let Some(jobs) = self.jobs {
+            pool_builder = pool_builder.num_threads(jobs as usize);
+        }
+        pool_builder
+            .build_global()
+            .context("Could not build thread pool")
+    }
+}
 
 /// Calculates the greatest common denominator between the given paths.
 ///

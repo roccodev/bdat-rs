@@ -17,11 +17,12 @@
 // - [u16] Value Offset
 // - [u16] Array Size
 
-use crate::error::Result;
-use crate::legacy::scramble::unscramble;
+use super::{FileHeader, TableHeader};
+use crate::error::{Result, Scope};
+use crate::legacy::scramble::{unscramble, ScrambleType};
+use crate::BdatError;
 use byteorder::{ByteOrder, ReadBytesExt};
 use std::io::{Read, Seek, SeekFrom};
-use std::ops::Range;
 
 const COLUMN_DEF_LEN: usize = 6;
 
@@ -35,29 +36,38 @@ struct TableReader<R> {
     data: TableData<R>,
 }
 
-struct OffsetAndLen {
-    offset: usize,
-    len: usize,
-}
+impl FileHeader {
+    pub fn read<R: Read + Seek, E: ByteOrder>(mut reader: R) -> Result<Self> {
+        let table_count = reader.read_u32::<E>()? as usize;
+        let file_size = reader.read_u32::<E>()? as usize;
+        let mut offsets = Vec::with_capacity(table_count as usize);
+        for _ in 0..table_count {
+            offsets.push(reader.read_u32::<E>()? as usize);
+        }
+        Ok(Self {
+            table_count,
+            file_size,
+            table_offsets: offsets,
+        })
+    }
 
-struct TableHeader {
-    scramble_type: ScrambleType,
-    hashes: OffsetAndLen,
-    strings: OffsetAndLen,
-    offset_names: usize,
-    offset_columns: usize,
-    offset_rows: usize,
-    column_count: usize,
-    row_count: usize,
-    row_len: usize,
-    base_id: usize,
-}
+    pub fn for_each_table_mut<F, E>(&self, data: &mut [u8], f: F) -> std::result::Result<(), E>
+    where
+        F: Fn(&mut [u8]) -> std::result::Result<(), E>,
+    {
+        // An iterator for this would require unsafe code because it's returning mutable
+        // references
 
-#[derive(Ord, PartialOrd, Eq, PartialEq)]
-enum ScrambleType {
-    None,
-    Unknown,
-    Scrambled(u16),
+        for bounds in self.table_offsets.windows(2) {
+            match *bounds {
+                [s, e] => f(&mut data[s..e])?,
+                [s] => f(&mut data[s..self.file_size])?,
+                _ => return Ok(()),
+            }
+        }
+
+        Ok(())
+    }
 }
 
 impl<R: Read + Seek> TableReader<R> {
@@ -87,12 +97,7 @@ impl<R: Read + Seek> TableReader<R> {
             todo!("unexpected eof");
         }
 
-        // Unscramble column names and string table
-        unscramble(
-            &mut table_data[header.offset_names..header.hashes.offset - header.offset_names],
-            scramble_key,
-        );
-        unscramble(&mut table_data[header.strings.range()], scramble_key);
+        header.unscramble_data(&mut table_data);
 
         Ok(Self {
             header,
@@ -102,7 +107,11 @@ impl<R: Read + Seek> TableReader<R> {
 }
 
 impl TableHeader {
-    fn read<E: ByteOrder>(reader: &mut impl Read) -> Result<Self> {
+    pub fn read<E: ByteOrder>(mut reader: impl Read) -> Result<Self> {
+        if reader.read_u32::<E>()? != 0x54_41_44_42 {
+            // BDAT
+            return Err(BdatError::MalformedBdat(Scope::Table));
+        }
         let scramble_id = reader.read_u16::<E>()? as usize;
         let offset_names = reader.read_u16::<E>()? as usize;
         let row_len = reader.read_u16::<E>()? as usize;
@@ -113,9 +122,9 @@ impl TableHeader {
         let base_id = reader.read_u16::<E>()? as usize;
         reader.read_u16::<E>()?;
         let scramble_key = reader.read_u16::<E>()?;
-        let offset_strings = reader.read_u16::<E>()? as usize;
+        let offset_strings = reader.read_u32::<E>()? as usize;
         let strings_len = reader.read_u32::<E>()? as usize;
-        let offset_columns = reader.read_u32::<E>()? as usize;
+        let offset_columns = reader.read_u16::<E>()? as usize;
         let column_count = reader.read_u16::<E>()? as usize;
 
         Ok(Self {
@@ -136,6 +145,19 @@ impl TableHeader {
         })
     }
 
+    pub fn unscramble_data(&self, data: &mut [u8]) {
+        let scramble_key = match self.scramble_type {
+            ScrambleType::Scrambled(key) => key,
+            _ => return,
+        };
+        // Unscramble column names and string table
+        unscramble(
+            &mut data[self.offset_names..self.hashes.offset],
+            scramble_key,
+        );
+        unscramble(&mut data[self.strings.range()], scramble_key);
+    }
+
     fn get_table_len(&self) -> usize {
         [
             self.hashes.max_offset(),
@@ -146,21 +168,5 @@ impl TableHeader {
         .into_iter()
         .max()
         .unwrap()
-    }
-}
-
-impl OffsetAndLen {
-    fn max_offset(&self) -> usize {
-        self.offset + self.len
-    }
-
-    fn range(&self) -> Range<usize> {
-        self.offset..self.offset + self.len
-    }
-}
-
-impl From<(usize, usize)> for OffsetAndLen {
-    fn from((offset, len): (usize, usize)) -> Self {
-        Self { offset, len }
     }
 }

@@ -15,6 +15,7 @@ use clap::Args;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 
+use crate::util::{ProgressBarState, RayonPoolJobs};
 use crate::{
     error::Error,
     filter::{Filter, FilterArg},
@@ -47,10 +48,9 @@ pub struct ConvertArgs {
     /// Only convert these tables. If absent, converts all tables from all files.
     #[arg(short, long)]
     tables: Vec<String>,
-    /// The number of jobs (or threads) to use in the conversion process.
-    /// By default, this is the number of cores/threads in the system.
-    #[arg(short, long)]
-    jobs: Option<u16>,
+
+    #[clap(flatten)]
+    jobs: RayonPoolJobs,
 
     #[clap(flatten)]
     csv_opts: csv::CsvOptions,
@@ -80,14 +80,7 @@ pub trait BdatDeserialize {
 }
 
 pub fn run_conversions(input: InputData, args: ConvertArgs, is_extracting: bool) -> Result<()> {
-    // Change number of jobs in Rayon's thread pool
-    let mut pool_builder = rayon::ThreadPoolBuilder::new();
-    if let Some(jobs) = args.jobs {
-        pool_builder = pool_builder.num_threads(jobs as usize);
-    }
-    pool_builder
-        .build_global()
-        .context("Could not build thread pool")?;
+    args.jobs.configure()?;
 
     if is_extracting {
         let hash_table = input.load_hashes()?;
@@ -248,13 +241,9 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
         t => return Err(Error::UnknownFileType(t.to_string()).into()),
     };
 
-    let multi_bar = MultiProgress::new();
-    let file_bar = multi_bar.add(
-        ProgressBar::new(schema_files.len() as u64).with_style(build_progress_style("Files", true)),
-    );
-    let table_bar_style = build_progress_style("Tables", false);
+    let progress_bar = ProgressBarState::new("Files", "Tables", schema_files.len());
 
-    file_bar.inc(0);
+    progress_bar.master_bar.inc(0);
     let res = schema_files
         .into_par_iter()
         .panic_fuse()
@@ -268,10 +257,7 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
                 .parent()
                 .unwrap_or_else(|| Path::new(""));
 
-            let table_bar = multi_bar.add(
-                ProgressBar::new(schema_file.table_count() as u64)
-                    .with_style(table_bar_style.clone()),
-            );
+            let table_bar = progress_bar.add_child(schema_file.table_count());
 
             // Tables are stored at <relative root>/<file name>
             let tables = schema_file
@@ -291,19 +277,19 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
                 .collect::<Result<Vec<_>>>()?;
 
             if tables.is_empty() {
-                multi_bar.println(format!(
+                progress_bar.println(format!(
                     "[Warn] File {} has no tables",
                     schema_path.display()
                 ))?;
             }
 
-            multi_bar.remove(&table_bar);
+            progress_bar.remove_child(&table_bar);
 
             let out_dir = out_dir.join(relative_path);
             std::fs::create_dir_all(&out_dir)?;
             let out_file = File::create(out_dir.join(format!("{}.bdat", schema_file.file_name)))?;
             bdat::to_writer::<_, SwitchEndian>(out_file, schema_file.version, tables)?;
-            file_bar.inc(1);
+            progress_bar.master_bar.inc(1);
             Ok(())
         })
         .find_any(|r: &anyhow::Result<()>| r.is_err());
@@ -312,7 +298,7 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
         r?;
     }
 
-    file_bar.finish();
+    progress_bar.finish();
     Ok(())
 }
 

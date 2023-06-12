@@ -1,3 +1,10 @@
+#[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
+pub enum ScrambleType {
+    None,
+    Unknown,
+    Scrambled(u16),
+}
+
 /// Unscrambles a section of legacy BDAT data.
 #[inline]
 pub fn unscramble(data: &mut [u8], key: u16) {
@@ -24,7 +31,7 @@ pub fn unscramble_naive(data: &mut [u8], key: u16) {
     }
 }
 
-#[cfg(any(test, feature = "bench"))]
+//#[cfg(any(test, feature = "bench"))]
 #[inline]
 pub fn unscramble_chunks(data: &mut [u8], key: u16) {
     let mut t1 = ((key >> 8) ^ 0xff) as u8;

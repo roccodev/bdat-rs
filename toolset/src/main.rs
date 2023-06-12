@@ -10,6 +10,7 @@ use hash::HashNameTable;
 use info::InfoArgs;
 use itertools::Itertools;
 use walkdir::WalkDir;
+use crate::scramble::ScrambleArgs;
 
 mod convert;
 mod diff;
@@ -17,6 +18,7 @@ pub mod error;
 pub mod filter;
 pub mod hash;
 mod info;
+mod scramble;
 pub mod util;
 
 #[derive(Parser)]
@@ -45,6 +47,10 @@ enum Commands {
     Info(InfoArgs),
     /// Print the differences between two BDAT dumps
     Diff(DiffArgs),
+    /// Scrambles all tables in legacy (XC1/X/2/DE) BDAT files
+    Scramble(ScrambleArgs),
+    /// Unscrambles all tables in legacy (XC1/X/2/DE) BDAT files
+    Unscramble(ScrambleArgs),
 }
 
 #[derive(Args)]
@@ -67,6 +73,8 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::Extract(args)) => convert::run_conversions(cli.input, args, true),
         Some(Commands::Pack(args)) => convert::run_conversions(cli.input, args, false),
         Some(Commands::Diff(args)) => diff::run_diff(cli.input, args),
+        Some(Commands::Scramble(args)) => scramble::scramble(cli.input, args),
+        Some(Commands::Unscramble(args)) => scramble::unscramble(cli.input, args),
         _ => Ok(()),
     }
 }
