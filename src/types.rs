@@ -52,6 +52,7 @@ pub struct ColumnDef {
     pub(crate) value_type: ValueType,
     pub(crate) label: Label,
     pub(crate) offset: usize,
+    pub(crate) count: usize,
     pub(crate) flags: Vec<FlagDef>,
 }
 
@@ -66,9 +67,11 @@ pub struct Row<'b> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct FlagDef {
     /// The flag's identifier
-    label: Label,
+    pub(crate) label: Label,
+    /// The bits this flag is setting on the parent
+    pub(crate) mask: u32,
     /// The index in the parent cell's flag list
-    flag_index: usize,
+    pub(crate) flag_index: usize,
 }
 
 /// A cell from a Bdat row
@@ -411,6 +414,7 @@ impl ColumnDef {
             label,
             offset: 0,
             flags: Vec::new(),
+            count: 1,
         }
     }
 

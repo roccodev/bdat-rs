@@ -227,6 +227,7 @@ impl<'b, R: BdatRead<'b>, E: ByteOrder> TableReader<R, E> {
                 label,
                 offset: data_offset,
                 flags: Vec::new(),
+                count: 1,
             });
             data_offset += ty.data_len();
         }

@@ -124,6 +124,7 @@ mod tests {
                 label: Label::Hash(0xca_fe_ca_fe),
                 offset: 4,
                 flags: Vec::new(),
+                count: 1,
             })
             .add_row(Row::new(
                 1,

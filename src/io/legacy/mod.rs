@@ -2,10 +2,12 @@ pub mod float;
 pub mod scramble;
 
 mod read;
+mod util;
 
 use scramble::ScrambleType;
 use std::ops::Range;
 
+#[derive(Debug)]
 pub struct FileHeader {
     pub table_count: usize,
     file_size: usize,
