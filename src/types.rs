@@ -83,8 +83,9 @@ pub enum Cell<'b> {
     Single(Value<'b>),
     /// The cell contains a list of [`Value`]s
     List(Vec<Value<'b>>),
-    /// The cell acts as a heterogeneous list of [`Value`]s.
-    Flags(Vec<Value<'b>>),
+    /// The cell acts as a list of integers, derived by masking bits from the
+    /// parent value.
+    Flags(Vec<u32>),
 }
 
 /// A value in a Bdat cell

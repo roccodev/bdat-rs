@@ -26,8 +26,11 @@ use std::ops::{Deref, Range, RangeFrom};
 use byteorder::{ByteOrder, ReadBytesExt};
 
 use crate::error::{Result, Scope};
+use crate::legacy::float::BdatReal;
 use crate::legacy::scramble::{unscramble, ScrambleType};
-use crate::{BdatError, ColumnDef, FlagDef, Label, Table, TableBuilder, ValueType};
+use crate::{
+    BdatError, Cell, ColumnDef, FlagDef, Label, Row, Table, TableBuilder, Value, ValueType,
+};
 
 use super::{FileHeader, TableHeader};
 
@@ -47,32 +50,42 @@ struct ColumnReader<'a, 't, E> {
     _endianness: PhantomData<E>,
 }
 
-#[derive(Debug)]
+struct RowReader<'a, 't: 'a, E> {
+    table: &'a mut TableReader<'t, E>,
+    /// The cells for the row currently being read
+    cells: Vec<Option<Cell<'t>>>,
+    columns: &'a [ColumnDef],
+    row_idx: usize,
+}
+
+#[derive(Debug, Clone)]
 struct ColumnData<'t> {
     name: Utf<'t>,
     info_offset: usize,
     cell: ColumnCell,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 struct FlagData {
     index: usize,
     mask: u32,
     parent_info_offset: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 struct ValueData {
     value_type: ValueType,
     offset: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 enum ColumnCell {
     Flag(FlagData), // this is used in the flag's column, not the parent's
     Value(ValueData),
     Array(ValueData, usize), // array size
 }
+
+struct Flags<'t>(Vec<ColumnData<'t>>);
 
 impl FileHeader {
     pub fn read<R: Read + Seek, E: ByteOrder>(mut reader: R) -> Result<Self> {
@@ -114,6 +127,71 @@ impl FileHeader {
     }
 }
 
+impl TableHeader {
+    pub fn read<E: ByteOrder>(mut reader: impl Read) -> Result<Self> {
+        if reader.read_u32::<E>()? != 0x54_41_44_42 {
+            // BDAT
+            return Err(BdatError::MalformedBdat(Scope::Table));
+        }
+        let scramble_id = reader.read_u16::<E>()? as usize;
+        let offset_names = reader.read_u16::<E>()? as usize;
+        let row_len = reader.read_u16::<E>()? as usize;
+        let offset_hashes = reader.read_u16::<E>()? as usize;
+        let hashes_len = reader.read_u16::<E>()? as usize;
+        let offset_rows = reader.read_u16::<E>()? as usize;
+        let row_count = reader.read_u16::<E>()? as usize;
+        let base_id = reader.read_u16::<E>()? as usize;
+        reader.read_u16::<E>()?;
+        let scramble_key = reader.read_u16::<E>()?;
+        let offset_strings = reader.read_u32::<E>()? as usize;
+        let strings_len = reader.read_u32::<E>()? as usize;
+        let offset_columns = reader.read_u16::<E>()? as usize;
+        let column_count = reader.read_u16::<E>()? as usize;
+
+        Ok(Self {
+            scramble_type: match scramble_id {
+                0 => ScrambleType::None,
+                2 => ScrambleType::Scrambled(scramble_key),
+                _ => ScrambleType::Unknown,
+            },
+            hashes: (offset_hashes, hashes_len).into(),
+            strings: (offset_strings, strings_len).into(),
+            offset_columns,
+            offset_names,
+            offset_rows,
+            column_count,
+            row_count,
+            row_len,
+            base_id,
+        })
+    }
+
+    pub fn unscramble_data(&self, data: &mut [u8]) {
+        let scramble_key = match self.scramble_type {
+            ScrambleType::Scrambled(key) => key,
+            _ => return,
+        };
+        // Unscramble column names and string table
+        unscramble(
+            &mut data[self.offset_names..self.hashes.offset],
+            scramble_key,
+        );
+        unscramble(&mut data[self.strings.range()], scramble_key);
+    }
+
+    fn get_table_len(&self) -> usize {
+        [
+            self.hashes.max_offset(),
+            self.strings.max_offset(),
+            self.offset_rows + self.row_len * self.row_count,
+            self.offset_columns + COLUMN_DEF_LEN * self.column_count,
+        ]
+        .into_iter()
+        .max()
+        .unwrap()
+    }
+}
+
 impl<'t, E: ByteOrder> TableReader<'t, E> {
     fn from_reader<R: Read + Seek>(mut reader: R) -> Result<Self> {
         let original_pos = reader.stream_position()?;
@@ -142,24 +220,35 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         })
     }
 
-    fn read(&mut self) -> Result<Table> {
+    fn read(mut self) -> Result<Table<'t>> {
         let name = self.read_name(0)?.to_string(); // TODO
         self.data.seek(SeekFrom::Start(
             self.header.offset_columns.try_into().unwrap(),
         ))?;
         let mut seek = self.data.position();
-        let columns = (0..self.header.column_count)
+        let (flags, columns) = (0..self.header.column_count)
             .map(|_| {
-                let col = ColumnReader::new(self, seek)?.read_column()?;
+                let col = ColumnReader::new(&self, seek)?.read_column()?;
                 seek += COLUMN_DEF_LEN as u64;
                 Ok(col)
             })
-            .collect::<Result<Vec<_>>>()?;
+            .partition::<Vec<_>, _>(|c| {
+                c.as_ref()
+                    .ok()
+                    .and_then(|c| c.cell.is_flag().then_some(()))
+                    .is_some()
+            });
+        let (columns_src, flags): (Vec<ColumnData>, Flags) = (
+            columns.into_iter().collect::<Result<_>>()?,
+            Flags::new(flags.into_iter().collect::<Result<_>>()?),
+        );
+
+        let column_cells = columns_src.iter().map(|c| c.cell).collect::<Vec<_>>();
 
         // De-flag-ify
-        let columns = columns
-            .iter()
-            .filter(|c| c.cell.not_flag())
+        let columns = columns_src
+            .clone() // TODO
+            .into_iter()
             .map(|c| {
                 ColumnDef {
                     label: Label::String(c.name.to_string()),
@@ -170,9 +259,8 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
                         _ => 1,
                     },
                     // TODO optimize?
-                    flags: columns
-                        .iter()
-                        .filter(|c1| matches!(&c1.cell, ColumnCell::Flag(f) if f.parent_info_offset == c.info_offset))
+                    flags: flags
+                        .get_from_parent(c.info_offset)
                         .map(|f| {
                             let ColumnCell::Flag(flag) = &f.cell else { unreachable!() };
                             FlagDef {
@@ -184,14 +272,25 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
                         .collect(),
                 }
             })
-            .collect();
+            .collect::<Vec<_>>();
 
-        self.data.seek(SeekFrom::Start(seek))?;
+        self.data
+            .seek(SeekFrom::Start(self.header.offset_rows.try_into().unwrap()))?;
+
+        let mut rows = vec![];
+        let row_count = self.header.row_count;
+        let base_id = self.header.base_id;
+        let mut row_reader = RowReader::new(&mut self, &columns);
+        for i in 0..row_count {
+            let cells = row_reader.read_row()?;
+            rows.push(Row::new(base_id + i, cells));
+            row_reader.next_row()?;
+        }
 
         Ok(TableBuilder::new()
             .set_name(Some(Label::String(name)))
             .set_columns(columns)
-            .set_rows(vec![])
+            .set_rows(rows)
             .build())
     }
 
@@ -200,17 +299,29 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
     }
 
     /// Reads a string from an absolute offset from the start of the table.
-    fn read_string(&self, offset: usize) -> Result<Utf<'_>> {
-        let c_str =
-            CStr::from_bytes_until_nul(self.as_slice(offset..)).expect("no string terminator");
-        Ok(Cow::Borrowed(c_str.to_str().expect("invalid utf8"))) // TODO use results?
+    fn read_string(&self, offset: usize) -> Result<Utf<'t>> {
+        // TODO: use results?
+        match self.data.get_ref() {
+            // To get a Utf of lifetime 't, we need to extract the 't slice from Cow::Borrowed,
+            // or keep using owned values
+            Cow::Owned(owned) => {
+                let c_str =
+                    CStr::from_bytes_until_nul(&owned[offset..]).expect("no string terminator");
+                Ok(Cow::Owned(
+                    c_str.to_str().expect("invalid utf8").to_string(),
+                ))
+            }
+            Cow::Borrowed(borrowed) => {
+                let c_str =
+                    CStr::from_bytes_until_nul(&borrowed[offset..]).expect("no string terminator");
+                Ok(Cow::Borrowed(c_str.to_str().expect("invalid utf8")))
+            }
+        }
     }
 
     /// Reads a string relative to the names offset.
-    fn read_name(&self, offset: usize) -> Result<Utf<'_>> {
-        let c_str = CStr::from_bytes_until_nul(self.as_slice(self.header.offset_names + offset..))
-            .expect("no string terminator");
-        Ok(Cow::Borrowed(c_str.to_str().expect("invalid utf8"))) // TODO use results?
+    fn read_name(&self, offset: usize) -> Result<Utf<'t>> {
+        self.read_string(offset + self.header.offset_names)
     }
 }
 
@@ -295,68 +406,75 @@ impl<'a, 't, E: ByteOrder> ColumnReader<'a, 't, E> {
     }
 }
 
-impl TableHeader {
-    pub fn read<E: ByteOrder>(mut reader: impl Read) -> Result<Self> {
-        if reader.read_u32::<E>()? != 0x54_41_44_42 {
-            // BDAT
-            return Err(BdatError::MalformedBdat(Scope::Table));
+impl<'a, 't, E: ByteOrder> RowReader<'a, 't, E> {
+    fn new(table: &'a mut TableReader<'t, E>, columns: &'a [ColumnDef]) -> Self {
+        Self {
+            table,
+            cells: vec![None; columns.len()],
+            columns,
+            row_idx: 0,
         }
-        let scramble_id = reader.read_u16::<E>()? as usize;
-        let offset_names = reader.read_u16::<E>()? as usize;
-        let row_len = reader.read_u16::<E>()? as usize;
-        let offset_hashes = reader.read_u16::<E>()? as usize;
-        let hashes_len = reader.read_u16::<E>()? as usize;
-        let offset_rows = reader.read_u16::<E>()? as usize;
-        let row_count = reader.read_u16::<E>()? as usize;
-        let base_id = reader.read_u16::<E>()? as usize;
-        reader.read_u16::<E>()?;
-        let scramble_key = reader.read_u16::<E>()?;
-        let offset_strings = reader.read_u32::<E>()? as usize;
-        let strings_len = reader.read_u32::<E>()? as usize;
-        let offset_columns = reader.read_u16::<E>()? as usize;
-        let column_count = reader.read_u16::<E>()? as usize;
+    }
 
-        Ok(Self {
-            scramble_type: match scramble_id {
-                0 => ScrambleType::None,
-                2 => ScrambleType::Scrambled(scramble_key),
-                _ => ScrambleType::Unknown,
-            },
-            hashes: (offset_hashes, hashes_len).into(),
-            strings: (offset_strings, strings_len).into(),
-            offset_columns,
-            offset_names,
-            offset_rows,
-            column_count,
-            row_count,
-            row_len,
-            base_id,
+    fn next_row(&mut self) -> Result<()> {
+        self.row_idx += 1;
+        self.table.data.seek(SeekFrom::Start(
+            (self.table.header.offset_rows + self.row_idx * self.table.header.row_len)
+                .try_into()
+                .unwrap(),
+        ))?;
+        self.cells.fill(None);
+        Ok(())
+    }
+
+    fn read_row(&mut self) -> Result<Vec<Cell<'t>>> {
+        for (i, col) in self.columns.iter().enumerate() {
+            if col.count > 1 {
+                // Array
+                let values = self.read_array(col.value_type, col.count)?;
+                self.cells[i] = Some(Cell::List(values));
+                continue;
+            }
+
+            let value = self.read_value(col.value_type)?;
+
+            if !col.flags.is_empty() {
+                // Flags
+                let value = value.into_integer();
+                let flags = col.flags.iter().map(|f| value & f.mask).collect::<Vec<_>>();
+                self.cells[i] = Some(Cell::Flags(flags));
+                continue;
+            }
+
+            self.cells[i] = Some(Cell::Single(value));
+        }
+
+        Ok(self.cells.iter().flatten().cloned().collect())
+    }
+
+    fn read_value(&mut self, value_type: ValueType) -> Result<Value<'t>> {
+        let buf = &mut self.table.data;
+        Ok(match value_type {
+            ValueType::Unknown => Value::Unknown,
+            ValueType::UnsignedByte => Value::UnsignedByte(buf.read_u8()?),
+            ValueType::UnsignedShort => Value::UnsignedShort(buf.read_u16::<E>()?),
+            ValueType::UnsignedInt => Value::UnsignedInt(buf.read_u32::<E>()?),
+            ValueType::SignedByte => Value::SignedByte(buf.read_i8()?),
+            ValueType::SignedShort => Value::SignedShort(buf.read_i16::<E>()?),
+            ValueType::SignedInt => Value::SignedInt(buf.read_i32::<E>()?),
+            ValueType::String => {
+                let offset = buf.read_u32::<E>()? as usize;
+                // explicit return to get rid of the `buf` mutable borrow early
+                return Ok(Value::String(self.table.read_string(offset)?));
+            }
+            // TODO xcx floats
+            ValueType::Float => Value::Float(BdatReal::Floating(buf.read_f32::<E>()?.into())),
+            _ => panic!("not supported in legacy bdat"), // TODO: results
         })
     }
 
-    pub fn unscramble_data(&self, data: &mut [u8]) {
-        let scramble_key = match self.scramble_type {
-            ScrambleType::Scrambled(key) => key,
-            _ => return,
-        };
-        // Unscramble column names and string table
-        unscramble(
-            &mut data[self.offset_names..self.hashes.offset],
-            scramble_key,
-        );
-        unscramble(&mut data[self.strings.range()], scramble_key);
-    }
-
-    fn get_table_len(&self) -> usize {
-        [
-            self.hashes.max_offset(),
-            self.strings.max_offset(),
-            self.offset_rows + self.row_len * self.row_count,
-            self.offset_columns + COLUMN_DEF_LEN * self.column_count,
-        ]
-        .into_iter()
-        .max()
-        .unwrap()
+    fn read_array(&mut self, value_type: ValueType, len: usize) -> Result<Vec<Value<'t>>> {
+        (0..len).map(|_| self.read_value(value_type)).collect()
     }
 }
 
@@ -368,11 +486,32 @@ impl ColumnCell {
         }
     }
 
-    fn not_flag(&self) -> bool {
-        if let Self::Flag(_) = self {
-            false
-        } else {
-            true
+    fn is_flag(&self) -> bool {
+        matches!(self, Self::Flag(_))
+    }
+}
+
+impl<'t> Flags<'t> {
+    fn new(mut src: Vec<ColumnData<'t>>) -> Self {
+        src.sort_by_key(Self::extract);
+        Self(src)
+    }
+
+    fn get_from_parent(&self, parent_info_offset: usize) -> impl Iterator<Item = &ColumnData> {
+        let first_idx = self
+            .0
+            .binary_search_by_key(&parent_info_offset, Self::extract)
+            .unwrap_or(self.0.len());
+        self.0
+            .iter()
+            .skip(first_idx)
+            .take_while(move |c| Self::extract(c) == parent_info_offset)
+    }
+
+    fn extract(column: &ColumnData<'_>) -> usize {
+        match &column.cell {
+            ColumnCell::Flag(f) => f.parent_info_offset,
+            _ => panic!("not a flag"),
         }
     }
 }
