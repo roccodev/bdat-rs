@@ -8,6 +8,7 @@ use std::{
 
 use byteorder::{ByteOrder, ReadBytesExt};
 
+use crate::io::read::{BdatReader, BdatSlice};
 use crate::legacy::float::BdatReal;
 use crate::{
     error::{BdatError, Result, Scope},
@@ -15,7 +16,7 @@ use crate::{
     TableBuilder,
 };
 
-use super::{BdatVersion, FileHeader};
+use super::FileHeader;
 
 const LEN_COLUMN_DEF_V2: usize = 3;
 const LEN_HASH_DEF_V2: usize = 8;
@@ -23,20 +24,6 @@ const LEN_HASH_DEF_V2: usize = 8;
 pub struct FileReader<R, E> {
     tables: TableReader<R, E>,
     header: FileHeader,
-    version: BdatVersion,
-    _endianness: PhantomData<E>,
-}
-
-pub struct BdatReader<R, E> {
-    stream: R,
-    table_offset: usize,
-    _endianness: PhantomData<E>,
-}
-
-#[derive(Clone)]
-pub struct BdatSlice<'b, E> {
-    data: Cursor<&'b [u8]>,
-    table_offset: usize,
     _endianness: PhantomData<E>,
 }
 
@@ -45,7 +32,7 @@ struct TableData<'r> {
     string_table_offset: usize,
 }
 
-pub trait BdatRead<'b> {
+pub trait ModernRead<'b> {
     /// Read a single 32-bit unsigned integer at the current position.
     fn read_u32(&mut self) -> Result<u32>;
 
@@ -68,17 +55,17 @@ struct TableReader<R, E> {
 
 impl<'b, R, E> FileReader<R, E>
 where
-    R: BdatRead<'b>,
+    R: ModernRead<'b>,
     E: ByteOrder,
 {
-    pub(super) fn read_file(mut reader: R) -> Result<Self> {
+    pub(crate) fn read_file(mut reader: R) -> Result<Self> {
         if reader.read_u32()? == 0x54_41_44_42 {
             if reader.read_u32()? != 0x01_00_10_04 {
                 return Err(BdatError::MalformedBdat(Scope::File));
             }
-            Self::new_with_header(reader, BdatVersion::Modern)
+            Self::new_with_header(reader)
         } else {
-            Self::new_with_header(reader, BdatVersion::Legacy)
+            Err(BdatError::MalformedBdat(Scope::File))
         }
     }
 
@@ -103,45 +90,21 @@ where
     }
 
     fn read_table(&mut self) -> Result<Table<'b>> {
-        match self.version {
-            BdatVersion::Modern => self.tables.read_table_v2(),
-            _ => todo!("legacy bdats"),
-        }
+        self.tables.read_table_v2()
     }
 
-    fn new_with_header(reader: R, version: BdatVersion) -> Result<Self> {
+    fn new_with_header(reader: R) -> Result<Self> {
         let mut header_reader = HeaderReader::<R, E>::new(reader);
-        let header = header_reader.read_header(version)?;
+        let header = header_reader.read_header()?;
         Ok(Self {
             tables: TableReader::new(header_reader.reader),
             header,
-            version,
             _endianness: PhantomData,
         })
     }
 }
 
-impl<'b, E> BdatSlice<'b, E> {
-    pub fn new(bytes: &'b [u8]) -> Self {
-        Self {
-            data: Cursor::new(bytes),
-            table_offset: 0,
-            _endianness: PhantomData,
-        }
-    }
-}
-
-impl<R, E> BdatReader<R, E> {
-    pub fn new(reader: R) -> Self {
-        Self {
-            stream: reader,
-            table_offset: 0,
-            _endianness: PhantomData,
-        }
-    }
-}
-
-impl<'b, R: BdatRead<'b>, E: ByteOrder> HeaderReader<R, E> {
+impl<'b, R: ModernRead<'b>, E: ByteOrder> HeaderReader<R, E> {
     fn new(reader: R) -> Self {
         Self {
             reader,
@@ -149,13 +112,11 @@ impl<'b, R: BdatRead<'b>, E: ByteOrder> HeaderReader<R, E> {
         }
     }
 
-    fn read_header(&mut self, version: BdatVersion) -> Result<FileHeader> {
+    fn read_header(&mut self) -> Result<FileHeader> {
         let table_count = self.reader.read_u32()? as usize;
         let mut table_offsets = Vec::with_capacity(table_count);
 
-        if version == BdatVersion::Modern {
-            self.reader.read_u32()?; // File size
-        }
+        self.reader.read_u32()?; // File size
 
         for _ in 0..table_count {
             table_offsets.push(self.reader.read_u32()? as usize);
@@ -168,7 +129,7 @@ impl<'b, R: BdatRead<'b>, E: ByteOrder> HeaderReader<R, E> {
     }
 }
 
-impl<'b, R: BdatRead<'b>, E: ByteOrder> TableReader<R, E> {
+impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
     fn new(reader: R) -> Self {
         Self {
             reader,
@@ -339,7 +300,7 @@ impl<'r> TableData<'r> {
     }
 }
 
-impl<'b, E> BdatRead<'b> for BdatSlice<'b, E>
+impl<'b, E> ModernRead<'b> for BdatSlice<'b, E>
 where
     E: ByteOrder,
 {
@@ -361,7 +322,7 @@ where
     }
 }
 
-impl<'b, R, E> BdatRead<'b> for BdatReader<R, E>
+impl<'b, R, E> ModernRead<'b> for BdatReader<R, E>
 where
     R: Read + Seek,
     E: ByteOrder,

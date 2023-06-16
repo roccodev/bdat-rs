@@ -11,33 +11,30 @@
 //! The crate exposes the [`from_bytes`] and [`from_reader`] functions to parse BDAT files from
 //! a slice or a [`std::io::Read`] stream respectively.
 //!
-//! For I/O operations, the byte order must also be specified. For BDAT files used by the Switch
-//! games (DE, 2, 3), use [`SwitchEndian`]. For the original Xenoblade Chronicles and X, use
-//! [`WiiEndian`].
 //! ```
 //! use bdat::{BdatResult, SwitchEndian};
 //!
 //! fn read_tables() -> BdatResult<()> {
 //!     let data = [0u8; 0];
 //!     // also bdat::from_reader for io::Read implementations
-//!     let mut bdat_file = bdat::from_bytes::<SwitchEndian>(&data)?;
+//!     let mut bdat_file = bdat::from_bytes(&data)?;
 //!     let table = &bdat_file.get_tables()?[0];
 //!     Ok(())
 //! }
 //! ```
 //!
 //! ## Writing BDAT tables
-//! The [`to_vec`] and [`to_writer`] functions can be used to write BDAT files to a vector or a
+//! The `to_vec` and `to_writer` functions can be used to write BDAT files to a vector or a
 //! [`std::io::Write`] implementation.
 //!
 //! Unlike reading (where it is detected automatically), writing also requires the user to specify
-//! the BDAT version to use.
+//! the BDAT version to use, by choosing the appropriate module implementation.
 //! ```
 //! use bdat::{BdatResult, BdatVersion, Table, SwitchEndian};
 //!
 //! fn write_table(table: &Table) -> BdatResult<()> {
 //!     // also bdat::to_writer for io::Write implementations
-//!     let _written: Vec<u8> = bdat::to_vec::<SwitchEndian>(BdatVersion::Modern, [table])?;
+//!     let _written: Vec<u8> = bdat::modern::to_vec::<SwitchEndian>([table])?;
 //!     Ok(())
 //! }
 //! ```
@@ -62,6 +59,6 @@ pub mod types;
 
 pub use error::BdatError;
 pub use error::Result as BdatResult;
-pub use io::modern::*; // TODO
+pub use io::detect::*;
 pub use io::*;
 pub use types::*;

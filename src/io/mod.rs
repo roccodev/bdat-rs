@@ -1,6 +1,12 @@
 pub mod legacy;
 pub mod modern;
 
+pub(crate) mod detect;
+
+mod read;
+
+pub use read::BdatFile;
+
 /// Alias for [`byteorder::LittleEndian`], i.e. the byte order used in the Switch games.
 pub type SwitchEndian = byteorder::LittleEndian;
 /// Alias for [`byteorder::BigEndian`], i.e. the byte order used in the Wii/Wii U games.

@@ -1,12 +1,10 @@
 use std::borrow::Borrow;
 use std::io::{Cursor, Read, Seek, Write};
 
-use super::BdatVersion;
+use self::write::BdatWriter;
+use super::read::{BdatReader, BdatSlice};
 use crate::{error::Result, types::Table};
 use byteorder::ByteOrder;
-use read::BdatSlice;
-
-use self::{read::BdatReader, write::BdatWriter};
 
 mod read;
 mod write;
@@ -33,7 +31,7 @@ pub(crate) struct FileHeader {
 ///
 /// fn read_file(name: &str) -> BdatResult<()> {
 ///     let file = File::open(name)?;
-///     let file = bdat::from_reader::<_, SwitchEndian>(file)?;
+///     let file = bdat::modern::from_reader::<_, SwitchEndian>(file)?;
 ///     Ok(())
 /// }
 /// ```
@@ -53,7 +51,7 @@ pub fn from_reader<R: Read + Seek, E: ByteOrder>(
 /// use bdat::{BdatResult, SwitchEndian};
 ///
 /// fn read(data: &[u8]) -> BdatResult<()> {
-///     let file = bdat::from_bytes::<SwitchEndian>(data)?;
+///     let file = bdat::modern::from_bytes::<SwitchEndian>(data)?;
 ///     Ok(())
 /// }
 /// ```
@@ -65,20 +63,19 @@ pub fn from_bytes<E: ByteOrder>(bytes: &[u8]) -> Result<FileReader<BdatSlice<'_,
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, BdatVersion, Table, SwitchEndian};
+/// use bdat::{BdatResult, Table, SwitchEndian};
 ///
 /// fn write_file(name: &str, tables: &[Table]) -> BdatResult<()> {
 ///     let file = File::create(name)?;
-///     bdat::to_writer::<_, SwitchEndian>(file, BdatVersion::Modern, tables)?;
+///     bdat::modern::to_writer::<_, SwitchEndian>(file, tables)?;
 ///     Ok(())
 /// }
 /// ```
 pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
     writer: W,
-    version: BdatVersion,
     tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
 ) -> Result<()> {
-    let mut writer = BdatWriter::<W, E>::new(writer, version);
+    let mut writer = BdatWriter::<W, E>::new(writer);
     writer.write_file(tables)
 }
 
@@ -86,19 +83,18 @@ pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, BdatVersion, Table, SwitchEndian};
+/// use bdat::{BdatResult, Table, SwitchEndian};
 ///
 /// fn write_vec(tables: &[Table]) -> BdatResult<()> {
-///     let vec = bdat::to_vec::<SwitchEndian>(BdatVersion::Modern, tables)?;
+///     let vec = bdat::modern::to_vec::<SwitchEndian>(tables)?;
 ///     Ok(())
 /// }
 /// ```
 pub fn to_vec<'t, E: ByteOrder>(
-    version: BdatVersion,
     tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
 ) -> Result<Vec<u8>> {
     let mut vec = Vec::new();
-    to_writer::<_, E>(Cursor::new(&mut vec), version, tables)?;
+    to_writer::<_, E>(Cursor::new(&mut vec), tables)?;
     Ok(vec)
 }
 
@@ -142,14 +138,14 @@ mod tests {
             ))
             .build();
 
-        let written = to_vec::<SwitchEndian>(BdatVersion::Modern, [&table]).unwrap();
+        let written = to_vec::<SwitchEndian>([&table]).unwrap();
         let read_back = &from_bytes::<SwitchEndian>(&written)
             .unwrap()
             .get_tables()
             .unwrap()[0];
         assert_eq!(table, *read_back);
 
-        let new_written = to_vec::<SwitchEndian>(BdatVersion::Modern, [read_back]).unwrap();
+        let new_written = to_vec::<SwitchEndian>([read_back]).unwrap();
         assert_eq!(written, new_written);
     }
 }

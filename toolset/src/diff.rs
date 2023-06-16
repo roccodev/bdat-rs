@@ -14,7 +14,7 @@ use indicatif::ProgressBar;
 use itertools::Itertools;
 use rayon::{iter::Either, prelude::*};
 
-use bdat::{Cell, Label, RowRef, SwitchEndian, Table};
+use bdat::{BdatFile, Cell, Label, RowRef, SwitchEndian, Table};
 
 use crate::{hash::MurmurHashSet, InputData};
 
@@ -87,7 +87,7 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
         .par_iter()
         .flat_map(|(file, new)| {
             let reader = BufReader::new(File::open(file)?);
-            let mut tables = bdat::from_reader::<_, SwitchEndian>(reader).and_then(|mut f| {
+            let mut tables = bdat::from_reader(reader).and_then(|mut f| {
                 Ok(f.get_tables()?
                     .into_iter()
                     .map(|table| TableWithSource {

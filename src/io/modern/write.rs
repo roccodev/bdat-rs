@@ -14,11 +14,10 @@ use crate::{
     types::{Cell, Label, Row, Table, Value},
 };
 
-use super::{BdatVersion, FileHeader};
+use super::FileHeader;
 
 pub(crate) struct BdatWriter<W, E> {
     stream: W,
-    version: BdatVersion,
     _endianness: PhantomData<E>,
 }
 
@@ -33,10 +32,9 @@ where
     W: Write + Seek,
     E: ByteOrder,
 {
-    pub fn new(writer: W, version: BdatVersion) -> Self {
+    pub fn new(writer: W) -> Self {
         Self {
             stream: writer,
-            version,
             _endianness: PhantomData,
         }
     }
@@ -51,7 +49,7 @@ where
                 let mut data = vec![];
                 let cursor = Cursor::new(&mut data);
 
-                BdatWriter::<_, E>::new(cursor, self.version)
+                BdatWriter::<_, E>::new(cursor)
                     .write_table(table.borrow())
                     .map(|_| data)
             })
@@ -88,13 +86,10 @@ where
     }
 
     pub fn write_header(&mut self, header: FileHeader, table_data_len: usize) -> Result<()> {
-        let magic_len = match self.version {
-            BdatVersion::Modern => {
-                self.w_u32(0x54_41_44_42)?;
-                self.w_u32(0x01_00_10_04)?;
-                8
-            }
-            _ => 0,
+        let magic_len = {
+            self.w_u32(0x54_41_44_42)?;
+            self.w_u32(0x01_00_10_04)?;
+            8
         };
 
         let header_len = 4 + 4 + magic_len + u32::try_from(header.table_offsets.len() * 4)?;
@@ -109,10 +104,7 @@ where
     }
 
     pub fn write_table(&mut self, table: &Table) -> Result<()> {
-        match self.version {
-            BdatVersion::Modern => self.write_table_v2(table),
-            _ => todo!("legacy BDATs"),
-        }
+        self.write_table_v2(table)
     }
 
     fn write_table_v2(&mut self, table: &Table) -> Result<()> {
