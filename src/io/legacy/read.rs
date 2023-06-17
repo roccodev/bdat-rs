@@ -23,7 +23,7 @@ use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 use std::ops::{Deref, Range, RangeFrom};
 
-use byteorder::{ByteOrder, ReadBytesExt};
+use byteorder::{ByteOrder, NativeEndian, ReadBytesExt};
 
 use crate::error::{Result, Scope};
 use crate::legacy::float::BdatReal;
@@ -173,8 +173,8 @@ impl FileHeader {
 
 impl TableHeader {
     pub fn read<E: ByteOrder>(mut reader: impl Read) -> Result<Self> {
-        if reader.read_u32::<E>()? != 0x54_41_44_42 {
-            // BDAT
+        if reader.read_u32::<NativeEndian>()? != 0x54_41_44_42 {
+            // BDAT - doesn't change with endianness
             return Err(BdatError::MalformedBdat(Scope::Table));
         }
         let scramble_id = reader.read_u16::<E>()? as usize;
@@ -195,7 +195,7 @@ impl TableHeader {
         Ok(Self {
             scramble_type: match scramble_id {
                 0 => ScrambleType::None,
-                2 => ScrambleType::Scrambled(scramble_key),
+                768 /* XCX */ | 2 => ScrambleType::Scrambled(scramble_key),
                 _ => ScrambleType::Unknown,
             },
             hashes: (offset_hashes, hashes_len).into(),

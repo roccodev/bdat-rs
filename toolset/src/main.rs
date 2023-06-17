@@ -2,6 +2,8 @@ use std::borrow::Cow;
 use std::path::Path;
 use std::{fs::File, path::PathBuf};
 
+use crate::scramble::ScrambleArgs;
+use crate::util::BdatGame;
 use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use convert::ConvertArgs;
@@ -10,7 +12,6 @@ use hash::HashNameTable;
 use info::InfoArgs;
 use itertools::Itertools;
 use walkdir::WalkDir;
-use crate::scramble::ScrambleArgs;
 
 mod convert;
 mod diff;
@@ -47,18 +48,22 @@ enum Commands {
     Info(InfoArgs),
     /// Print the differences between two BDAT dumps
     Diff(DiffArgs),
-    /// Scrambles all tables in legacy (XC1/X/2/DE) BDAT files
+    /// Scramble all tables in legacy (XC1/X/2/DE) BDAT files
     Scramble(ScrambleArgs),
-    /// Unscrambles all tables in legacy (XC1/X/2/DE) BDAT files
+    /// Unscramble all tables in legacy (XC1/X/2/DE) BDAT files
     Unscramble(ScrambleArgs),
 }
 
-#[derive(Args)]
+#[derive(Args, Default)]
 pub struct InputData {
     /// A file containing unhashed names, one in each line. If provided, all matched hashes will
     /// be replaced with the unhashed names.
     #[arg(long, global = true)]
     hashes: Option<String>,
+
+    /// The Xenoblade Chronicles game to choose BDAT settings for. Not required for reading.
+    #[arg(long, short, value_enum)]
+    game: Option<BdatGame>,
 
     /// The input files. For "bdat-toolset diff", these are the "new" BDAT files.
     #[arg(global = true)]

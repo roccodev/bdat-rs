@@ -16,6 +16,7 @@ use rayon::{iter::Either, prelude::*};
 
 use bdat::{BdatFile, Cell, Label, RowRef, SwitchEndian, Table};
 
+use crate::util::BdatGame;
 use crate::{hash::MurmurHashSet, InputData};
 
 #[derive(Args)]
@@ -66,7 +67,7 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
     let new_files = input.list_files("bdat", !args.no_file_names)?.into_iter();
     let old_files = InputData {
         files: args.old_files,
-        hashes: None,
+        ..Default::default()
     };
     let old_files = old_files
         .list_files("bdat", !args.no_file_names)?

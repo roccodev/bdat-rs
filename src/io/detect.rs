@@ -1,26 +1,29 @@
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
-use byteorder::{ByteOrder, NativeEndian, ReadBytesExt};
+use byteorder::{NativeEndian, ReadBytesExt};
 
 use crate::error::Result;
 use crate::io::read::{BdatFile, BdatReader, BdatSlice};
 use crate::legacy::read::{LegacyReader, LegacySlice};
 use crate::modern::FileReader;
-use crate::{BdatVersion, SwitchEndian, Table};
+use crate::{BdatVersion, SwitchEndian, Table, WiiEndian};
 
-pub enum VersionReader<R: Read + Seek, E: ByteOrder> {
-    Legacy(LegacyReader<R, E>),
-    Modern(FileReader<BdatReader<R, E>, E>),
+pub enum VersionReader<R: Read + Seek> {
+    Legacy(LegacyReader<R, SwitchEndian>),
+    LegacyX(LegacyReader<R, WiiEndian>),
+    Modern(FileReader<BdatReader<R, SwitchEndian>, SwitchEndian>),
 }
 
-pub enum VersionSlice<'b, E: ByteOrder> {
-    Legacy(LegacySlice<'b, E>),
-    Modern(FileReader<BdatSlice<'b, E>, E>),
+pub enum VersionSlice<'b> {
+    Legacy(LegacySlice<'b, SwitchEndian>),
+    LegacyX(LegacySlice<'b, WiiEndian>),
+    Modern(FileReader<BdatSlice<'b, SwitchEndian>, SwitchEndian>),
 }
 
-pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_, impl ByteOrder>> {
+pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
     match detect_version(Cursor::new(&bytes))? {
         BdatVersion::Legacy => Ok(VersionSlice::Legacy(LegacySlice::new(bytes)?)),
+        BdatVersion::LegacyX => Ok(VersionSlice::LegacyX(LegacySlice::new(bytes)?)),
         BdatVersion::Modern => Ok(VersionSlice::Modern(
             FileReader::<_, SwitchEndian>::read_file(BdatSlice::<SwitchEndian>::new(bytes))?,
         )),
@@ -28,9 +31,10 @@ pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_, impl ByteOrder>> 
     }
 }
 
-pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<VersionReader<R, impl ByteOrder>> {
+pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<VersionReader<R>> {
     match detect_version(&mut reader)? {
         BdatVersion::Legacy => Ok(VersionReader::Legacy(LegacyReader::new(reader)?)),
+        BdatVersion::LegacyX => Ok(VersionReader::LegacyX(LegacyReader::new(reader)?)),
         BdatVersion::Modern => Ok(VersionReader::Modern(
             FileReader::<_, SwitchEndian>::read_file(BdatReader::<_, SwitchEndian>::new(reader))?,
         )),
@@ -80,10 +84,11 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
     })
 }
 
-impl<'b, R: Read + Seek, E: ByteOrder> BdatFile<'b> for VersionReader<R, E> {
+impl<'b, R: Read + Seek> BdatFile<'b> for VersionReader<R> {
     fn get_tables(&mut self) -> Result<Vec<Table<'b>>> {
         match self {
             Self::Legacy(r) => r.get_tables(),
+            Self::LegacyX(r) => r.get_tables(),
             Self::Modern(r) => r.get_tables(),
         }
     }
@@ -91,15 +96,17 @@ impl<'b, R: Read + Seek, E: ByteOrder> BdatFile<'b> for VersionReader<R, E> {
     fn table_count(&self) -> usize {
         match self {
             Self::Legacy(r) => r.table_count(),
+            Self::LegacyX(r) => r.table_count(),
             Self::Modern(r) => r.table_count(),
         }
     }
 }
 
-impl<'b, E: ByteOrder> BdatFile<'b> for VersionSlice<'b, E> {
+impl<'b> BdatFile<'b> for VersionSlice<'b> {
     fn get_tables(&mut self) -> Result<Vec<Table<'b>>> {
         match self {
             Self::Legacy(r) => r.get_tables(),
+            Self::LegacyX(r) => r.get_tables(),
             Self::Modern(r) => r.get_tables(),
         }
     }
@@ -107,6 +114,7 @@ impl<'b, E: ByteOrder> BdatFile<'b> for VersionSlice<'b, E> {
     fn table_count(&self) -> usize {
         match self {
             Self::Legacy(r) => r.table_count(),
+            Self::LegacyX(r) => r.table_count(),
             Self::Modern(r) => r.table_count(),
         }
     }

@@ -152,6 +152,7 @@ pub fn run_serialization(
             let tables_dir = out_dir.join(&file_name);
             std::fs::create_dir_all(&tables_dir)?;
 
+            // TODO version
             let mut schema =
                 (!args.no_schema).then(|| FileSchema::new(file_name, BdatVersion::Modern));
 

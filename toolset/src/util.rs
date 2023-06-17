@@ -1,5 +1,6 @@
 use anyhow::{Context, Result};
-use clap::Args;
+use bdat::BdatVersion;
+use clap::{Args, ValueEnum};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::path::{Path, PathBuf};
 
@@ -16,6 +17,13 @@ pub struct RayonPoolJobs {
     /// By default, this is the number of cores/threads in the system.
     #[arg(short, long)]
     jobs: Option<u16>,
+}
+
+#[derive(Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
+pub enum BdatGame {
+    Legacy,
+    Xcx,
+    Modern,
 }
 
 impl ProgressBarState {
@@ -69,6 +77,30 @@ impl RayonPoolJobs {
         pool_builder
             .build_global()
             .context("Could not build thread pool")
+    }
+}
+
+impl ValueEnum for BdatGame {
+    fn value_variants<'a>() -> &'a [Self] {
+        &[Self::Legacy, Self::Xcx, Self::Modern]
+    }
+
+    fn to_possible_value<'a>(&self) -> Option<clap::builder::PossibleValue> {
+        match self {
+            Self::Legacy => Some(clap::builder::PossibleValue::new("xc1")),
+            Self::Xcx => Some(clap::builder::PossibleValue::new("xcx")),
+            Self::Modern => Some(clap::builder::PossibleValue::new("xc3")),
+        }
+    }
+}
+
+impl From<BdatGame> for BdatVersion {
+    fn from(value: BdatGame) -> Self {
+        match value {
+            BdatGame::Legacy => BdatVersion::Legacy,
+            BdatGame::Xcx => BdatVersion::LegacyX,
+            BdatGame::Modern => BdatVersion::Modern,
+        }
     }
 }
 
