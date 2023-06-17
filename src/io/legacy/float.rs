@@ -1,5 +1,6 @@
-use crate::BdatVersion;
 use std::fmt::{Display, Formatter};
+
+use crate::BdatVersion;
 
 /// A real number with a different internal representation based on the BDAT version.
 ///
@@ -47,13 +48,25 @@ impl From<f32> for IeeeFloat {
 
 impl From<CrossFixed> for f32 {
     fn from(value: CrossFixed) -> Self {
-        value.0 / 4096.0
+        value.0
     }
 }
 
 impl From<f32> for CrossFixed {
     fn from(value: f32) -> Self {
-        Self(value * 4096.0)
+        Self(value)
+    }
+}
+
+impl From<u32> for CrossFixed {
+    fn from(value: u32) -> Self {
+        Self((value as f64 / 4096.0) as f32)
+    }
+}
+
+impl From<CrossFixed> for u32 {
+    fn from(value: CrossFixed) -> u32 {
+        (value.0 as f64 * 4096.0) as u32
     }
 }
 

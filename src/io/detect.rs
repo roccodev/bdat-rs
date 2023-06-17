@@ -22,8 +22,14 @@ pub enum VersionSlice<'b> {
 
 pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
     match detect_version(Cursor::new(&bytes))? {
-        BdatVersion::Legacy => Ok(VersionSlice::Legacy(LegacySlice::new(bytes)?)),
-        BdatVersion::LegacyX => Ok(VersionSlice::LegacyX(LegacySlice::new(bytes)?)),
+        BdatVersion::Legacy => Ok(VersionSlice::Legacy(LegacySlice::new(
+            bytes,
+            BdatVersion::Legacy,
+        )?)),
+        BdatVersion::LegacyX => Ok(VersionSlice::LegacyX(LegacySlice::new(
+            bytes,
+            BdatVersion::LegacyX,
+        )?)),
         BdatVersion::Modern => Ok(VersionSlice::Modern(
             FileReader::<_, SwitchEndian>::read_file(BdatSlice::<SwitchEndian>::new(bytes))?,
         )),
@@ -33,8 +39,14 @@ pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
 
 pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<VersionReader<R>> {
     match detect_version(&mut reader)? {
-        BdatVersion::Legacy => Ok(VersionReader::Legacy(LegacyReader::new(reader)?)),
-        BdatVersion::LegacyX => Ok(VersionReader::LegacyX(LegacyReader::new(reader)?)),
+        BdatVersion::Legacy => Ok(VersionReader::Legacy(LegacyReader::new(
+            reader,
+            BdatVersion::Legacy,
+        )?)),
+        BdatVersion::LegacyX => Ok(VersionReader::LegacyX(LegacyReader::new(
+            reader,
+            BdatVersion::LegacyX,
+        )?)),
         BdatVersion::Modern => Ok(VersionReader::Modern(
             FileReader::<_, SwitchEndian>::read_file(BdatReader::<_, SwitchEndian>::new(reader))?,
         )),
