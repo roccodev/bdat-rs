@@ -6,6 +6,7 @@ use crate::{
 use anyhow::{Context, Result};
 use bdat::{types::Label, BdatFile, SwitchEndian};
 use clap::Args;
+use std::borrow::Cow;
 
 #[derive(Args)]
 pub struct InfoArgs {
@@ -24,8 +25,8 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
 
     for file in input.list_files("bdat", false)? {
         let path = file?;
-        let file = std::fs::read(&path)?;
-        let mut file = bdat::from_bytes(&file).context("Failed to read BDAT file")?;
+        let mut file = std::fs::read(&path)?;
+        let mut file = bdat::from_bytes(&mut file).context("Failed to read BDAT file")?;
         for table in file
             .get_tables()
             .with_context(|| format!("Could not parse BDAT tables ({})", path.to_string_lossy()))?
@@ -52,11 +53,17 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
                     .into_columns()
                     .filter(|c| column_filter.contains(c.label()))
                 {
+                    let mut extra = Cow::Borrowed("");
+                    if col.count() > 1 {
+                        extra = Cow::Owned(format!("[{}]", col.count()));
+                    }
+
                     println!(
-                        "    - [{}] {}: {:?}",
+                        "    - [{}] {}: {:?}{}",
                         col.offset(),
                         format_unhashed_label(col.label(), &hash_table),
-                        col.value_type()
+                        col.value_type(),
+                        extra
                     );
                 }
             }

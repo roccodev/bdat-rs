@@ -1,7 +1,7 @@
 pub mod float;
 pub mod scramble;
 
-mod read;
+pub(crate) mod read;
 mod util;
 
 use scramble::ScrambleType;

@@ -438,6 +438,13 @@ impl ColumnDef {
     pub fn offset(&self) -> usize {
         self.offset
     }
+
+    /// Returns the number of values in this column's cells.
+    /// For [`Cell::Single`] and [`Cell::Flags`] cells, this is 1. For [`Cell::List`] cells, it is
+    /// the number of elements in the list.
+    pub fn count(&self) -> usize {
+        self.count
+    }
 }
 
 impl<'b> Cell<'b> {

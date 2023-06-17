@@ -29,13 +29,26 @@ use crate::error::{Result, Scope};
 use crate::legacy::float::BdatReal;
 use crate::legacy::scramble::{unscramble, ScrambleType};
 use crate::{
-    BdatError, Cell, ColumnDef, FlagDef, Label, Row, Table, TableBuilder, Value, ValueType,
+    BdatError, BdatFile, Cell, ColumnDef, FlagDef, Label, Row, Table, TableBuilder, Value,
+    ValueType,
 };
 
 use super::{FileHeader, TableHeader};
 
 const COLUMN_DEF_LEN: usize = 6;
 type Utf<'t> = Cow<'t, str>; // TODO: export to use in XC3 bdats
+
+pub struct LegacySlice<'t, E> {
+    data: &'t [u8],
+    header: FileHeader,
+    _endianness: PhantomData<E>,
+}
+
+pub struct LegacyReader<R, E> {
+    reader: R,
+    header: FileHeader,
+    _endianness: PhantomData<E>,
+}
 
 struct TableReader<'t, E> {
     header: TableHeader,
@@ -87,6 +100,35 @@ enum ColumnCell {
 
 struct Flags<'t>(Vec<ColumnData<'t>>);
 
+impl<R: Read + Seek, E: ByteOrder> LegacyReader<R, E> {
+    pub fn new(mut reader: R) -> Result<Self> {
+        let header = FileHeader::read::<_, E>(&mut reader)?;
+        Ok(Self {
+            header,
+            reader,
+            _endianness: PhantomData,
+        })
+    }
+}
+
+impl<'t, E: ByteOrder> LegacySlice<'t, E> {
+    pub fn new(bytes: &'t mut [u8]) -> Result<Self> {
+        let header = FileHeader::read::<_, E>(Cursor::new(&bytes))?;
+        // TODO
+        header.for_each_table_mut(bytes, |table| {
+            let header = TableHeader::read::<E>(Cursor::new(&table))?;
+            header.unscramble_data(table);
+            table[4] = 0;
+            Ok::<_, BdatError>(())
+        })?;
+        Ok(Self {
+            header,
+            data: bytes,
+            _endianness: PhantomData,
+        })
+    }
+}
+
 impl FileHeader {
     pub fn read<R: Read + Seek, E: ByteOrder>(mut reader: R) -> Result<Self> {
         let table_count = reader.read_u32::<E>()? as usize;
@@ -102,9 +144,9 @@ impl FileHeader {
         })
     }
 
-    pub fn for_each_table_mut<F, E>(&self, data: &mut [u8], f: F) -> std::result::Result<(), E>
+    pub fn for_each_table_mut<F, E>(&self, data: &mut [u8], mut f: F) -> std::result::Result<(), E>
     where
-        F: Fn(&mut [u8]) -> std::result::Result<(), E>,
+        F: FnMut(&mut [u8]) -> std::result::Result<(), E>,
     {
         // An iterator for this would require unsafe code because it's returning mutable
         // references
@@ -122,6 +164,8 @@ impl FileHeader {
                 _ => return Ok(()),
             }
         }
+
+        f(&mut data[(self.table_offsets[self.table_offsets.len() - 1])..self.file_size])?;
 
         Ok(())
     }
@@ -220,6 +264,25 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         })
     }
 
+    fn from_slice(bytes: &'t [u8]) -> Result<TableReader<'t, E>> {
+        let mut reader = Cursor::new(&bytes);
+        let original_pos = reader.stream_position()?;
+        let header = TableHeader::read::<E>(&mut reader)?;
+        reader.seek(SeekFrom::Start(original_pos))?;
+
+        match header.scramble_type {
+            ScrambleType::Scrambled(_) => {} /*header.unscramble_data(bytes)*/
+            ScrambleType::Unknown => panic!("Unknown scramble type"),
+            ScrambleType::None => {}
+        };
+
+        Ok(Self {
+            header,
+            data: Cursor::new(Cow::Borrowed(bytes)),
+            _endianness: PhantomData,
+        })
+    }
+
     fn read(mut self) -> Result<Table<'t>> {
         let name = self.read_name(0)?.to_string(); // TODO
         self.data.seek(SeekFrom::Start(
@@ -301,7 +364,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
     /// Reads a string from an absolute offset from the start of the table.
     fn read_string(&self, offset: usize) -> Result<Utf<'t>> {
         // TODO: use results?
-        match self.data.get_ref() {
+        let res = match self.data.get_ref() {
             // To get a Utf of lifetime 't, we need to extract the 't slice from Cow::Borrowed,
             // or keep using owned values
             Cow::Owned(owned) => {
@@ -316,7 +379,8 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
                     CStr::from_bytes_until_nul(&borrowed[offset..]).expect("no string terminator");
                 Ok(Cow::Borrowed(c_str.to_str().expect("invalid utf8")))
             }
-        }
+        };
+        res
     }
 
     /// Reads a string relative to the names offset.
@@ -516,27 +580,31 @@ impl<'t> Flags<'t> {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use crate::legacy::read::TableReader;
-    use crate::legacy::FileHeader;
-    use crate::{BdatError, SwitchEndian};
-    use std::io::Cursor;
+impl<'b, R: Read + Seek, E: ByteOrder> BdatFile<'b> for LegacyReader<R, E> {
+    fn get_tables(&mut self) -> Result<Vec<Table<'b>>> {
+        let mut tables = Vec::with_capacity(self.header.table_count);
+        for offset in &self.header.table_offsets {
+            self.reader.seek(SeekFrom::Start(*offset as u64))?;
+            tables.push(TableReader::<E>::from_reader(&mut self.reader)?.read()?);
+        }
+        Ok(tables)
+    }
 
-    #[test]
-    fn test_columns() {
-        let mut data = std::fs::read("/tmp/test.bdat").unwrap();
-        let header = FileHeader::read::<_, SwitchEndian>(Cursor::new(data.as_slice())).unwrap();
-        println!("Header {:?}", header);
-        header
-            .for_each_table_mut(&mut data, |table| {
-                let mut reader = TableReader::<SwitchEndian>::from_reader(Cursor::new(table))?;
-                println!("{:?}", reader.header);
-                let table = reader.read()?;
-                println!("\n That was table {:?} \n", table);
-                Ok::<_, BdatError>(())
-            })
-            .unwrap();
-        todo!()
+    fn table_count(&self) -> usize {
+        self.header.table_count
+    }
+}
+
+impl<'b, E: ByteOrder> BdatFile<'b> for LegacySlice<'b, E> {
+    fn get_tables(&mut self) -> Result<Vec<Table<'b>>> {
+        let mut tables = Vec::with_capacity(self.header.table_count);
+        for offset in &self.header.table_offsets {
+            tables.push(TableReader::<E>::from_slice(&self.data[*offset..])?.read()?);
+        }
+        Ok(tables)
+    }
+
+    fn table_count(&self) -> usize {
+        self.header.table_count
     }
 }
