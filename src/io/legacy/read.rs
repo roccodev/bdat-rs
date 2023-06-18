@@ -538,7 +538,6 @@ impl<'a, 't, E: ByteOrder> RowReader<'a, 't, E> {
                 // explicit return to get rid of the `buf` mutable borrow early
                 return Ok(Value::String(self.table.read_string(offset)?));
             }
-            // TODO xcx floats
             ValueType::Float => Value::Float(match self.table.version {
                 BdatVersion::LegacyX => BdatReal::Fixed(buf.read_u32::<E>()?.into()),
                 _ => BdatReal::Floating(buf.read_f32::<E>()?.into()),

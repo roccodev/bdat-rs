@@ -285,7 +285,12 @@ impl<'t, 'tb> RowChanges<'t, 'tb> {
                      added,
                      value,
                  }| {
-                    (!added).then(|| format!("{label}: {}", serde_json::to_string(value).unwrap()))
+                    (!added).then(|| {
+                        format!(
+                            "{label}: {}",
+                            serde_json::to_string(value.as_single().unwrap()).unwrap()
+                        )
+                    })
                 },
             )
             .join(" / ");
@@ -298,7 +303,12 @@ impl<'t, 'tb> RowChanges<'t, 'tb> {
                      added,
                      value,
                  }| {
-                    added.then(|| format!("{label}: {}", serde_json::to_string(value).unwrap()))
+                    added.then(|| {
+                        format!(
+                            "{label}: {}",
+                            serde_json::to_string(value.as_single().unwrap()).unwrap()
+                        )
+                    })
                 },
             )
             .join(" / ");

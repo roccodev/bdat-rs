@@ -12,12 +12,15 @@
 //! a slice or a [`std::io::Read`] stream respectively.
 //!
 //! ```
-//! use bdat::{BdatResult, SwitchEndian};
+//! use bdat::{BdatResult, SwitchEndian, BdatFile};
 //!
 //! fn read_tables() -> BdatResult<()> {
-//!     let data = [0u8; 0];
-//!     // also bdat::from_reader for io::Read implementations
-//!     let mut bdat_file = bdat::from_bytes(&data)?;
+//!     let mut data = [0u8; 0];
+//!     // also bdat::from_reader for io::Read implementations. Additionally,
+//!     // by using `bdat::from_bytes` (which automatically detects the version),
+//!     // we need mutable access to the data, as we might potentially have to
+//!     // unscramble text in legacy formats.
+//!     let mut bdat_file = bdat::from_bytes(&mut data)?;
 //!     let table = &bdat_file.get_tables()?[0];
 //!     Ok(())
 //! }

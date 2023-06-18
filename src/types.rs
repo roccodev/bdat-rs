@@ -65,18 +65,56 @@ pub struct Row<'b> {
 
 /// A sub-definition for flag data that is associated to a column
 #[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FlagDef {
     /// The flag's identifier
     pub(crate) label: Label,
     /// The bits this flag is setting on the parent
     pub(crate) mask: u32,
     /// The index in the parent cell's flag list
+    #[cfg_attr(feature = "serde", serde(rename = "index"))]
     pub(crate) flag_index: usize,
 }
 
-/// A cell from a Bdat row
+/// A cell from a BDAT row.
+///
+/// ## Cell types
+/// There are three types of cells in the various iterations of the BDAT format:
+/// * Single-value cells ([`Cell::Single`]), containing a single [`Value`].
+/// * Arrays ([`Cell::List`]), containing multiple [`Value`]s, but all of the same type.
+/// * Flag containers ([`Cell::Flags`]), stored as a number, but interpreted as flags by masking
+/// bits.
+///
+/// Modern BDAT versions only support single-value cells.
+///
+/// ## Serialization
+/// When the `serde` feature flag is enabled, cells can be serialized and deserialized using
+/// Serde.
+///
+/// Cells don't store metadata about their type or the type of the values they contain.
+/// Instead, they rely on columns to carry that data for them.
+///
+/// To serialize a `Cell` given its parent column, you can use [`Cell::cell_serializer`].
+/// ```
+/// use bdat::{Cell, ColumnDef};
+///
+/// fn serialize_cell(column: &ColumnDef, cell: &Cell) -> String {
+///     serde_json::to_string(&column.cell_serializer(cell)).unwrap()
+/// }
+/// ```
+///
+/// To deserialize a `Cell` that was serialized into the previous format, you can use
+/// [`Cell::as_cell_seed`], along with `DeserializeSeed` from Serde.
+/// ```
+/// use bdat::{Cell, ColumnDef};
+/// use serde_json::Deserializer;
+/// use serde::de::DeserializeSeed;
+///
+/// fn deserialize_cell<'s>(column: &ColumnDef, json: &'s str) -> Cell<'s> {
+///     column.as_cell_seed().deserialize(&mut Deserializer::from_str(json)).unwrap()
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq)]
-#[cfg_attr(feature = "serde", derive(serde::Serialize), serde(untagged))]
 pub enum Cell<'b> {
     /// The cell only contains a single [`Value`]. This is the only supported type
     /// in [`BdatVersion::Modern`] BDATs.
@@ -154,7 +192,8 @@ impl Label {
     ///
     /// If `force_hash` is `true`, the label will be re-hashed
     /// if it is either [`Label::String`] or [`Label::Unhashed`].
-    pub fn parse(text: String, force_hash: bool) -> Self {
+    pub fn parse<'a, S: Into<Cow<'a, str>>>(text: S, force_hash: bool) -> Self {
+        let text = text.into();
         if text.len() == 10 && text.as_bytes()[0] == b'<' {
             if let Ok(n) = u32::from_str_radix(&text[1..=8], 16) {
                 return Label::Hash(n);
@@ -163,7 +202,7 @@ impl Label {
         if force_hash {
             Label::Hash(crate::hash::murmur3_str(&text))
         } else {
-            Label::String(text)
+            Label::String(text.into_owned())
         }
     }
 
@@ -197,6 +236,15 @@ impl Label {
             (_, Self::Hash(_)) => Ordering::Less, // hashed IDs always come last
             (Self::Hash(_), _) => Ordering::Greater,
             (a, b) => a.as_str().cmp(b.as_str()),
+        }
+    }
+
+    /// An alternative to [`ToString::to_string`] that returns a reference to the label if it's
+    /// already a string.
+    pub fn to_string_convert(&self) -> Cow<str> {
+        match self {
+            Self::String(s) | Self::Unhashed(s) => Cow::Borrowed(s.as_str()),
+            _ => Cow::Owned(self.to_string()),
         }
     }
 
@@ -444,6 +492,11 @@ impl ColumnDef {
     /// the number of elements in the list.
     pub fn count(&self) -> usize {
         self.count
+    }
+
+    /// Returns this column's defined set of sub-flags.
+    pub fn flags(&self) -> &[FlagDef] {
+        &self.flags
     }
 }
 

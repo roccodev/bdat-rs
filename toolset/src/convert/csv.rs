@@ -46,7 +46,12 @@ impl BdatSerialize for CsvConverter {
         writer.serialize(header).context("Failed to write header")?;
         for row in table.rows() {
             writer
-                .serialize(row.cells().collect::<Vec<_>>())
+                .serialize(
+                    row.cells()
+                        .zip(table.columns())
+                        .map(|(cell, col)| col.cell_serializer(cell))
+                        .collect::<Vec<_>>(),
+                )
                 .with_context(|| format!("Failed to write row {}", row.id()))?;
         }
         Ok(())

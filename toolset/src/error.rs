@@ -13,6 +13,11 @@ pub enum Error {
     UnknownFileType(String),
     #[error("No schema files found, please run 'extract' without '--no-schema'")]
     DeserMissingSchema,
+    #[error(
+        "Outdated schema for file '{}', found version {}, expected version {}, \
+        please run 'extract' again without '--no-schema'", _0.0, _0.1, _0.2
+    )]
+    DeserOutdatedSchema(Box<(String, usize, usize)>),
     #[error("Table {0} is missing type information, please run 'extract' without '-u', or add types manually")]
     DeserMissingTypeInfo(OptLabel),
     #[error("Row {0} does not have entries for all columns")]

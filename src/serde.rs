@@ -1,9 +1,14 @@
 use crate::legacy::float::BdatReal;
+use crate::ColumnDef;
+use serde::de::value::MapAccessDeserializer;
+use serde::de::MapAccess;
+use serde::ser::SerializeMap;
 use serde::{
     de::{self, DeserializeSeed, Visitor},
-    Deserialize, Deserializer, Serialize,
+    ser, Deserialize, Deserializer, Serialize, Serializer,
 };
 use std::borrow::Cow;
+use std::collections::HashMap;
 use std::marker::PhantomData;
 
 use crate::types::{Cell, Label, Value, ValueType};
@@ -17,6 +22,12 @@ pub struct ValueWithType<'b> {
     pub value: Value<'b>,
 }
 
+/// Wraps a cell with its column to allow for custom serialization.
+pub struct SerializeCell<'a, 'b, 't> {
+    column: &'a ColumnDef,
+    cell: &'b Cell<'t>,
+}
+
 enum ValueTypeFields {
     Type,
     Value,
@@ -25,12 +36,48 @@ enum ValueTypeFields {
 struct HexVisitor;
 
 /// An implementation of [`DeserializeSeed`] for [`Cell`]s.
-pub struct CellSeed(ValueType);
+pub struct CellSeed<'a>(&'a ColumnDef);
+
+impl ColumnDef {
+    pub fn as_cell_seed(&self) -> CellSeed {
+        CellSeed(self)
+    }
+
+    pub fn cell_serializer<'a, 'b, 't>(&'a self, cell: &'b Cell<'t>) -> SerializeCell<'a, 'b, 't> {
+        SerializeCell { column: self, cell }
+    }
+}
+
+impl<'a, 'b, 't> Serialize for SerializeCell<'a, 'b, 't> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        match self.cell {
+            Cell::Single(v) => v.serialize(serializer),
+            Cell::List(values) => values.serialize(serializer),
+            Cell::Flags(flag_values) => {
+                let keys = self.column.flags();
+                let mut map = serializer.serialize_map(Some(flag_values.len()))?;
+                for (i, val) in flag_values.iter().enumerate() {
+                    let name = keys
+                        .get(i)
+                        .map(|f| f.label.to_string_convert())
+                        .ok_or_else(|| {
+                            ser::Error::custom(format!("no name for flag at index {i}"))
+                        })?;
+                    map.serialize_entry(&name, val)?;
+                }
+                map.end()
+            }
+        }
+    }
+}
 
 impl<'b> Serialize for Value<'b> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
-        S: serde::Serializer,
+        S: Serializer,
     {
         match self {
             Value::Unknown => panic!("serialize unknown value"),
@@ -77,10 +124,6 @@ impl ValueType {
             Self::Unknown2 => Value::Unknown2(u8::deserialize(deserializer)?),
             Self::Unknown3 => Value::Unknown3(u16::deserialize(deserializer)?),
         })
-    }
-
-    pub fn as_cell_seed(self) -> CellSeed {
-        CellSeed(self)
     }
 }
 
@@ -255,37 +298,45 @@ impl<'de> DeserializeSeed<'de> for ValueType {
     }
 }
 
-impl<'de> DeserializeSeed<'de> for CellSeed {
+impl<'a, 'de> DeserializeSeed<'de> for CellSeed<'a> {
     type Value = Cell<'de>;
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        struct CellVisitor(ValueType);
+        struct CellVisitor<'a>(&'a ColumnDef);
 
-        impl<'de> Visitor<'de> for CellVisitor {
+        impl<'a, 'de> Visitor<'de> for CellVisitor<'a> {
             type Value = Cell<'de>;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-                formatter.write_str("Value, bool, or sequence of Values")
+                formatter.write_str("Value, sequence of Values, or map with numeric values")
             }
 
-            /*
-            fn visit_bool<E>(self, v: bool) -> Result<Self::Value, E>
+            fn visit_map<A>(self, map: A) -> Result<Self::Value, A::Error>
             where
-                E: de::Error,
+                A: MapAccess<'de>,
             {
-                Ok(Cell::Flags(v))
-            }*/
-            // TODO
+                // Cell::Flags
+                let map = HashMap::<String, u32>::deserialize(MapAccessDeserializer::new(map))?;
+                let values = self
+                    .0
+                    .flags
+                    .iter()
+                    .filter_map(|f| map.get(f.label.to_string_convert().as_ref()))
+                    .copied()
+                    .collect();
+                Ok(Cell::Flags(values))
+            }
 
             fn visit_seq<A>(self, mut seq: A) -> Result<Self::Value, A::Error>
             where
                 A: de::SeqAccess<'de>,
             {
+                // Cell::List
                 let mut values = Vec::with_capacity(seq.size_hint().unwrap_or_default());
-                while let Some(v) = seq.next_element_seed(self.0)? {
+                while let Some(v) = seq.next_element_seed(self.0.value_type)? {
                     values.push(v);
                 }
                 Ok(Cell::List(values))
@@ -299,7 +350,10 @@ impl<'de> DeserializeSeed<'de> for CellSeed {
             .deserialize_any(CellVisitor(self.0))
             .or_else(|_| {
                 Ok(Cell::Single(
-                    self.0.deserialize(value).map_err(|e| e.into_error())?,
+                    self.0
+                        .value_type
+                        .deserialize(value)
+                        .map_err(|e| e.into_error())?,
                 ))
             })
     }
@@ -307,13 +361,18 @@ impl<'de> DeserializeSeed<'de> for CellSeed {
 
 #[cfg(test)]
 mod tests {
-    use serde::de::DeserializeSeed;
-    use serde::Deserialize;
-
     use crate::{
         serde::ValueWithType,
         types::{Cell, Value, ValueType},
+        ColumnDef, FlagDef, Label,
     };
+    use serde::{de::DeserializeSeed, Deserialize};
+
+    macro_rules! col {
+        ($ty:expr) => {
+            $crate::ColumnDef::new($ty, $crate::Label::Hash(0))
+        };
+    }
 
     #[test]
     fn json_single() {
@@ -411,15 +470,7 @@ mod tests {
     #[allow(clippy::approx_constant)]
     fn deser_cell() {
         assert_eq!(
-            ValueType::Unknown // Not needed for Flag cells
-                .as_cell_seed()
-                .deserialize(&mut serde_json::Deserializer::from_str("true"))
-                .unwrap(),
-            Cell::Flags(true)
-        );
-
-        assert_eq!(
-            ValueType::UnsignedInt
+            col!(ValueType::UnsignedInt)
                 .as_cell_seed()
                 .deserialize(&mut serde_json::Deserializer::from_str(
                     "[1, 2, 3, 4, 5, 6]"
@@ -436,11 +487,53 @@ mod tests {
         );
 
         assert_eq!(
-            ValueType::Float
+            col!(ValueType::Float)
                 .as_cell_seed()
                 .deserialize(&mut serde_json::Deserializer::from_str("3.14"))
                 .unwrap(),
             Cell::Single(Value::Float(3.14.into()))
+        );
+    }
+
+    #[test]
+    fn serde_flags() {
+        let column = ColumnDef {
+            label: Label::Hash(0),
+            value_type: ValueType::UnsignedInt,
+            count: 1,
+            offset: 0, // TODO better way of initializing the entire thing
+            flags: vec![
+                FlagDef {
+                    label: Label::parse("Flag1", false),
+                    mask: 1 << 2,
+                    flag_index: 0,
+                },
+                FlagDef {
+                    label: Label::parse("Flag2", false),
+                    mask: 1 << 3,
+                    flag_index: 1,
+                },
+                FlagDef {
+                    label: Label::parse("Flag3", false),
+                    mask: 1 << 4,
+                    flag_index: 2,
+                },
+            ],
+        };
+
+        assert_eq!(
+            r#"{"Flag1":1,"Flag2":3,"Flag3":4}"#,
+            serde_json::to_string(&column.cell_serializer(&Cell::Flags(vec![1, 3, 4]))).unwrap()
+        );
+
+        assert_eq!(
+            Cell::Flags(vec![1, 3, 4]),
+            column
+                .as_cell_seed()
+                .deserialize(&mut serde_json::Deserializer::from_str(
+                    r#"{"Flag1":1,"Flag2":3,"Flag3":4}"#
+                ))
+                .unwrap()
         );
     }
 }

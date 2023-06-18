@@ -5,6 +5,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use bdat::types::{Cell, ColumnDef, Label, Row, Table, TableBuilder, ValueType};
+use bdat::FlagDef;
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
 use serde_json::Map;
@@ -41,6 +42,8 @@ struct ColumnSchema {
     #[serde(rename = "type")]
     ty: ValueType,
     hashed: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    flags: Vec<FlagDef>,
 }
 
 pub struct JsonConverter {
@@ -66,6 +69,7 @@ impl BdatSerialize for JsonConverter {
                     name: c.label().to_string(),
                     ty: c.value_type(),
                     hashed: matches!(c.label(), Label::Unhashed(_)),
+                    flags: c.flags().to_vec(),
                 })
                 .collect::<Vec<_>>()
         });
@@ -80,7 +84,10 @@ impl BdatSerialize for JsonConverter {
                     .iter()
                     .zip(row.cells())
                     .map(|(col, cell)| {
-                        (col.label().to_string(), serde_json::to_value(cell).unwrap())
+                        (
+                            col.label().to_string(),
+                            serde_json::to_value(col.cell_serializer(cell)).unwrap(),
+                        )
                     })
                     .collect();
 
@@ -118,12 +125,13 @@ impl BdatDeserialize for JsonConverter {
             .schema
             .ok_or_else(|| Error::DeserMissingTypeInfo(name.clone().into()))?;
 
-        let (columns, column_map, _): (Vec<ColumnDef>, HashMap<String, (usize, ValueType)>, _) =
+        let (columns, mut column_map, _): (Vec<ColumnDef>, HashMap<String, (usize, ColumnDef)>, _) =
             schema.into_iter().fold(
                 (Vec::new(), HashMap::default(), 0),
                 |(mut cols, mut map, idx), col| {
-                    map.insert(col.name.clone(), (idx, col.ty));
-                    cols.push(ColumnDef::new(col.ty, Label::parse(col.name, col.hashed)));
+                    let def = ColumnDef::new(col.ty, Label::parse(col.name.clone(), col.hashed));
+                    map.insert(col.name, (idx, def.clone()));
+                    cols.push(def);
                     (cols, map, idx + 1)
                 },
             );
@@ -135,8 +143,8 @@ impl BdatDeserialize for JsonConverter {
                 let id = r.id;
                 let mut cells = vec![None; r.cells.len()];
                 for (k, v) in r.cells {
-                    let (index, ty) = column_map[&k];
-                    cells[index] = Some(ty.as_cell_seed().deserialize(v).unwrap());
+                    let (index, column) = column_map.remove(&k).unwrap();
+                    cells[index] = Some(column.as_cell_seed().deserialize(v).unwrap());
                 }
                 let old_len = cells.len();
                 let cells: Vec<Cell> = cells.into_iter().flatten().collect();

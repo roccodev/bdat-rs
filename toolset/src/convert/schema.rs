@@ -5,11 +5,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
+use crate::error::Error;
 use bdat::{
     io::BdatVersion,
     types::{Label, Table},
 };
 use serde::{Deserialize, Serialize};
+
+/// Incremental format version, used to determine schema compatibility.
+const FORMAT_VERSION: usize = 1;
 
 /// Defines the structure of a BDAT file, so it can
 /// be re-serialized properly.
@@ -17,6 +21,8 @@ use serde::{Deserialize, Serialize};
 pub struct FileSchema {
     pub file_name: String,
     pub version: BdatVersion,
+    #[serde(default)]
+    pub format_version: usize,
     tables: Vec<String>,
 }
 
@@ -29,12 +35,22 @@ impl FileSchema {
         Self {
             file_name,
             version,
+            format_version: FORMAT_VERSION,
             tables: Vec::new(),
         }
     }
 
     pub fn read(reader: impl Read) -> anyhow::Result<Self> {
-        Ok(serde_json::from_reader(reader)?)
+        let schema: FileSchema = serde_json::from_reader(reader)?;
+        if schema.format_version != FORMAT_VERSION {
+            return Err(Error::DeserOutdatedSchema(Box::new((
+                schema.file_name,
+                schema.format_version,
+                FORMAT_VERSION,
+            )))
+            .into());
+        }
+        Ok(schema)
     }
 
     /// Registers a table in the file schema
