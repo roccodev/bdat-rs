@@ -54,6 +54,11 @@ pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<VersionReader<R>> {
     }
 }
 
+/// Attempts to detect the BDAT version used in a file.
+pub fn detect_file_version<R: Read + Seek>(reader: R) -> Result<BdatVersion> {
+    detect_version(reader)
+}
+
 fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
     let magic = reader.read_u32::<NativeEndian>()?;
     if magic == 0x54_41_44_42 {

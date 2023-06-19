@@ -207,7 +207,10 @@ impl Label {
     }
 
     /// If needed, turns the label into a hashed label.
-    pub fn into_hash(self) -> Self {
+    pub fn into_hash(self, version: BdatVersion) -> Self {
+        if !version.are_labels_hashed() {
+            return self;
+        }
         match self {
             l @ Self::Hash(_) => l,
             Self::String(s) | Self::Unhashed(s) => Self::Hash(crate::hash::murmur3_str(&s)),

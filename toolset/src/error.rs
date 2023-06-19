@@ -2,7 +2,7 @@ use std::fmt::Display;
 
 use bdat::{Label, ValueType};
 
-pub const MAX_DUPLICATE_COLUMNS: usize = 16;
+pub const MAX_DUPLICATE_COLUMNS: usize = 4;
 
 #[derive(Debug)]
 pub struct OptLabel(Option<Label>);

@@ -130,7 +130,8 @@ pub fn run_serialization(
         .into_par_iter()
         .panic_fuse()
         .map(|path| {
-            let file = BufReader::new(File::open(&path)?);
+            let mut file = BufReader::new(File::open(&path)?);
+            let version = bdat::detect_file_version(&mut file)?;
             let mut file = bdat::from_reader(file).context("Failed to read BDAT file")?;
             let file_name = path
                 .file_stem()
@@ -152,9 +153,7 @@ pub fn run_serialization(
             let tables_dir = out_dir.join(&file_name);
             std::fs::create_dir_all(&tables_dir)?;
 
-            // TODO version
-            let mut schema =
-                (!args.no_schema).then(|| FileSchema::new(file_name, BdatVersion::Modern));
+            let mut schema = (!args.no_schema).then(|| FileSchema::new(file_name, version));
 
             for mut table in file.get_tables().with_context(|| {
                 format!("Could not parse BDAT tables ({})", path.to_string_lossy())
@@ -272,7 +271,11 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
                     let mut reader = BufReader::new(table_file);
 
                     table_bar.inc(1);
-                    deserializer.read_table(Some(label.into_hash()), &schema_file, &mut reader)
+                    deserializer.read_table(
+                        Some(label.into_hash(schema_file.version)),
+                        &schema_file,
+                        &mut reader,
+                    )
                 })
                 .collect::<Result<Vec<_>>>()?;
 
