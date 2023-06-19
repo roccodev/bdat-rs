@@ -4,6 +4,8 @@ use clap::{Args, ValueEnum};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::path::{Path, PathBuf};
 
+pub mod fixed_vec;
+
 #[derive(Clone)]
 pub struct ProgressBarState {
     multi_bar: MultiProgress,

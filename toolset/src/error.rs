@@ -1,6 +1,8 @@
 use std::fmt::Display;
 
-use bdat::Label;
+use bdat::{Label, ValueType};
+
+pub const MAX_DUPLICATE_COLUMNS: usize = 16;
 
 #[derive(Debug)]
 pub struct OptLabel(Option<Label>);
@@ -22,6 +24,14 @@ pub enum Error {
     DeserMissingTypeInfo(OptLabel),
     #[error("Row {0} does not have entries for all columns")]
     DeserIncompleteRow(usize),
+    #[error("Column {} in table {} exceeds the maximum duplicate column count of \
+    {MAX_DUPLICATE_COLUMNS}. Please avoid using multiple columns with the same name.",
+    _0.1, _0.0)]
+    DeserMaxDuplicateColumns(Box<(OptLabel, OptLabel)>),
+    #[error("Columns {} in table {} differ in type ({:?} / {:?}). \
+    Please avoid using multiple columns with the same name.", 
+    _0.1, _0.0, _0.2, _0.3)]
+    DeserDuplicateMismatch(Box<(OptLabel, OptLabel, ValueType, ValueType)>),
 }
 
 impl Display for OptLabel {

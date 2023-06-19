@@ -10,7 +10,8 @@ use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
 use serde_json::Map;
 
-use crate::error::Error;
+use crate::error::{Error, MAX_DUPLICATE_COLUMNS};
+use crate::util::fixed_vec::FixedVec;
 
 use super::{schema::FileSchema, BdatDeserialize, BdatSerialize, ConvertArgs};
 
@@ -50,6 +51,9 @@ pub struct JsonConverter {
     untyped: bool,
     pretty: bool,
 }
+
+// For duplicate column mitigation
+type DuplicateColumnKey = (FixedVec<usize, MAX_DUPLICATE_COLUMNS>, ColumnDef);
 
 impl JsonConverter {
     pub fn new(args: &ConvertArgs) -> Self {
@@ -125,26 +129,50 @@ impl BdatDeserialize for JsonConverter {
             .schema
             .ok_or_else(|| Error::DeserMissingTypeInfo(name.clone().into()))?;
 
-        let (columns, mut column_map, _): (Vec<ColumnDef>, HashMap<String, (usize, ColumnDef)>, _) =
-            schema.into_iter().fold(
+        let (columns, column_map, _): (Vec<ColumnDef>, HashMap<String, DuplicateColumnKey>, _) =
+            schema.into_iter().try_fold(
                 (Vec::new(), HashMap::default(), 0),
                 |(mut cols, mut map, idx), col| {
-                    let def = ColumnDef::new(col.ty, Label::parse(col.name.clone(), col.hashed));
-                    map.insert(col.name, (idx, def.clone()));
+                    let label = Label::parse(col.name.clone(), col.hashed);
+                    let def = ColumnDef::new(col.ty, label.clone());
+                    // Only keep the first occurrence: there's a table in XC2 (likely more) with
+                    // a duplicate column (FLD_RequestItemSet)
+                    let (indices, dup_col) = map
+                        .entry(col.name)
+                        .or_insert_with(|| (FixedVec::default(), def.clone()));
+                    indices.try_push(idx).map_err(|_| {
+                        Error::DeserMaxDuplicateColumns(Box::new((
+                            name.clone().into(),
+                            label.clone().into(),
+                        )))
+                    })?;
+                    if dup_col.value_type() != col.ty {
+                        return Err(Error::DeserDuplicateMismatch(Box::new((
+                            name.clone().into(),
+                            label.into(),
+                            dup_col.value_type(),
+                            col.ty,
+                        ))));
+                    }
                     cols.push(def);
-                    (cols, map, idx + 1)
+                    Ok((cols, map, idx + 1))
                 },
-            );
+            )?;
 
         let rows = table
             .rows
             .into_iter()
             .map(|r| {
                 let id = r.id;
-                let mut cells = vec![None; r.cells.len()];
+                let mut cells = vec![None; columns.len()];
                 for (k, v) in r.cells {
-                    let (index, column) = column_map.remove(&k).unwrap();
-                    cells[index] = Some(column.as_cell_seed().deserialize(v).unwrap());
+                    let (index, column) = &column_map[&k];
+                    let deserialized = Some(column.as_cell_seed().deserialize(v).unwrap());
+                    // Only clone in the worse scenario (duplicate columns)
+                    for idx in index.into_iter().skip(1) {
+                        cells[*idx] = deserialized.clone();
+                    }
+                    cells[index[0]] = deserialized;
                 }
                 let old_len = cells.len();
                 let cells: Vec<Cell> = cells.into_iter().flatten().collect();
