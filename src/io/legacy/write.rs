@@ -7,8 +7,9 @@ use byteorder::{ByteOrder, WriteBytesExt};
 
 use crate::error::Result;
 use crate::legacy::hash::HashTable;
+use crate::legacy::util::{pad_2, pad_32, pad_4, pad_64};
 use crate::legacy::{COLUMN_DEFINITION_SIZE, HEADER_SIZE};
-use crate::{ColumnDef, FlagDef, Label, Table, ValueType};
+use crate::{Cell, ColumnDef, FlagDef, Label, Row, Table, Value, ValueType};
 
 struct FileWriter<'a, 'b, 't, W> {
     tables: &'a [&'b Table<'t>],
@@ -24,7 +25,13 @@ struct TableWriter<'a, 't, E, W> {
     _endianness: PhantomData<E>,
 }
 
-struct CellWriter {}
+struct RowWriter<'a, 'b, 't, W, E> {
+    row: &'a Row<'t>,
+    columns: &'a [ColumnDef],
+    writer: W,
+    strings: &'b mut StringTable,
+    _endianness: PhantomData<E>,
+}
 
 #[derive(Debug)]
 enum CellHeader {
@@ -52,6 +59,7 @@ struct ColumnInfo {
 #[derive(Debug)]
 struct ColumnDefinition {
     info_ptr: usize,
+    parent: usize,
     name_ptr: usize,
     name: Label,
 }
@@ -82,7 +90,9 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         }
     }
 
-    fn write(&mut self) -> Result<()> {
+    fn write(mut self) -> Result<()> {
+        let table_start = self.buf.stream_position()?;
+
         self.make_layout()?;
         self.write_header()?;
 
@@ -102,11 +112,30 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
             self.buf.seek(SeekFrom::Start(pos))?;
         }
 
-        // Write row data - TODO
+        let row_start = self.buf.stream_position()?;
+        for row in self.table.rows() {
+            RowWriter::<_, E>::new(row, &self.table.columns, &mut self.strings, &mut self.buf)
+                .write()?;
+        }
+        let row_size = (self.buf.stream_position()? - row_start) as usize;
+        for _ in row_size..pad_32(row_size) {
+            self.buf.write_u8(0)?;
+        }
 
-        // Write string table - TODO
+        self.strings.base_offset = self.buf.stream_position()? as usize;
+        self.strings.write(&mut self.buf)?;
 
-        // TODO: write other levels of the name hash table
+        let table_size = (self.buf.stream_position()? - table_start) as usize;
+        for _ in table_size..pad_64(table_size) {
+            self.buf.write_u8(0)?;
+        }
+
+        // TODO - temporary solution: rows double pass
+        self.buf.seek(SeekFrom::Start(row_start))?;
+        for row in self.table.rows() {
+            RowWriter::<_, E>::new(row, &self.table.columns, &mut self.strings, &mut self.buf)
+                .write()?;
+        }
 
         Ok(())
     }
@@ -161,7 +190,7 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
             .write_u16::<E>(self.table.rows.len().try_into().unwrap())?;
         // ID of the first row - TODO
         self.buf.write_u16::<E>(0)?;
-        // UNKNOWN
+        // UNKNOWN - asserted 2 when reading
         self.buf.write_u16::<E>(2)?;
         // Checksum - TODO
         self.buf.write_u16::<E>(0)?;
@@ -201,16 +230,31 @@ impl ColumnTables {
 
         let definitions = cols
             .iter()
-            .map(|c| &c.label)
-            .chain(cols.iter().flat_map(|c| c.flags().iter().map(|f| &f.label)))
+            .map(|c| (None, &c.label))
+            .chain(
+                cols.iter()
+                    .enumerate()
+                    .flat_map(|(i, c)| c.flags().iter().map(move |f| (Some(i), &f.label))),
+            )
             .enumerate()
-            .map(|(i, label)| ColumnDefinition {
+            .map(|(i, (cell_idx, label))| ColumnDefinition {
                 info_ptr: info_offsets[i],
+                // For flags, this is the offset to the parent column's definition. For regular
+                // cells, this is 0
+                parent: cell_idx
+                    .map(|i| defs_offset + i * COLUMN_DEFINITION_SIZE)
+                    .unwrap_or_default(),
                 // Initially, the name table base offset is just before the info table
                 name_ptr: name_table.get_offset(&label.to_string_convert()) + info_table_size,
                 name: label.clone(),
             })
             .collect::<Vec<_>>();
+
+        for (info, def) in infos.iter_mut().zip(definitions.iter()) {
+            if let CellHeader::Flags { parent, .. } = &mut info.cell {
+                *parent = def.parent;
+            }
+        }
 
         let mut hash_table = HashTable::new(61); // TODO
         for (i, def) in definitions.iter().enumerate() {
@@ -243,6 +287,72 @@ impl ColumnTables {
             info.write::<E>(&mut writer)?;
         }
         Ok(())
+    }
+}
+
+impl<'a, 'b, 't, W: Write, E: ByteOrder> RowWriter<'a, 'b, 't, W, E> {
+    fn new(
+        row: &'a Row<'t>,
+        columns: &'a [ColumnDef],
+        strings: &'b mut StringTable,
+        writer: W,
+    ) -> Self {
+        Self {
+            row,
+            columns,
+            writer,
+            strings,
+            _endianness: PhantomData,
+        }
+    }
+
+    fn write(&mut self) -> Result<()> {
+        for (cell, col) in self.row.cells.iter().zip(self.columns.iter()) {
+            match cell {
+                Cell::Single(v) => self.write_value(v),
+                Cell::List(values) => values.iter().try_for_each(|v| self.write_value(v)),
+                Cell::Flags(flags) => {
+                    let mut num = 0;
+                    for (def, val) in col.flags().iter().zip(flags.iter()) {
+                        num |= (*val << def.flag_index) & def.mask;
+                    }
+                    self.write_flags(num, col.value_type)
+                }
+            }?
+        }
+        Ok(())
+    }
+
+    fn write_value(&mut self, value: &Value) -> Result<()> {
+        let writer = &mut self.writer;
+        Ok(match value {
+            Value::Unknown => panic!("tried to serialize unknown value"),
+            Value::UnsignedByte(b) => writer.write_u8(*b),
+            Value::UnsignedShort(s) => writer.write_u16::<E>(*s),
+            Value::UnsignedInt(i) => writer.write_u32::<E>(*i),
+            Value::SignedByte(b) => writer.write_i8(*b),
+            Value::SignedShort(s) => writer.write_i16::<E>(*s),
+            Value::SignedInt(i) => writer.write_i32::<E>(*i),
+            Value::String(s) => {
+                writer.write_u32::<E>(self.strings.get_offset(s).try_into().unwrap())
+            }
+            // TODO convert float based on version
+            Value::Float(f) => writer.write_f32::<E>((*f).into()),
+            _ => panic!("unsupported value type for legacy bdats"),
+        }?)
+    }
+
+    fn write_flags(&mut self, num: u32, value_type: ValueType) -> Result<()> {
+        let writer = &mut self.writer;
+        Ok(match value_type {
+            ValueType::UnsignedByte => writer.write_u8(num as u8),
+            ValueType::UnsignedShort => writer.write_u16::<E>(num as u16),
+            ValueType::UnsignedInt => writer.write_u32::<E>(num),
+            ValueType::SignedByte => writer.write_i8(num as i8),
+            ValueType::SignedShort => writer.write_i16::<E>(num as i16),
+            ValueType::SignedInt => writer.write_i32::<E>(num as i32),
+            _ => panic!("invalid value type for flag"),
+        }?)
     }
 }
 
@@ -326,7 +436,6 @@ impl CellHeader {
     }
 }
 
-// TODO: pad to 2
 impl StringTable {
     fn new(base_offset: usize) -> Self {
         Self {
@@ -365,16 +474,6 @@ impl StringTable {
     fn size_bytes(&self) -> usize {
         self.len
     }
-}
-
-#[inline]
-fn pad_2(len: usize) -> usize {
-    len + ((2 - (len & 1)) & 1)
-}
-
-#[inline]
-fn pad_4(len: usize) -> usize {
-    len + ((4 - (len & 3)) & 3)
 }
 
 #[cfg(test)]

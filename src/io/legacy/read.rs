@@ -28,11 +28,11 @@ use byteorder::{ByteOrder, NativeEndian, ReadBytesExt};
 use crate::error::{Result, Scope};
 use crate::legacy::float::BdatReal;
 use crate::legacy::scramble::{unscramble, ScrambleType};
+use crate::legacy::COLUMN_DEFINITION_SIZE;
 use crate::{
     BdatError, BdatFile, BdatVersion, Cell, ColumnDef, FlagDef, Label, Row, Table, TableBuilder,
     Value, ValueType,
 };
-use crate::legacy::COLUMN_DEFINITION_SIZE;
 
 use super::{FileHeader, TableHeader};
 
@@ -190,7 +190,7 @@ impl TableHeader {
         let offset_rows = reader.read_u16::<E>()? as usize;
         let row_count = reader.read_u16::<E>()? as usize;
         let base_id = reader.read_u16::<E>()? as usize;
-        reader.read_u16::<E>()?;
+        assert_eq!(2, reader.read_u16::<E>()?, "unknown constant is not 2");
         let scramble_key = reader.read_u16::<E>()?;
         let offset_strings = reader.read_u32::<E>()? as usize;
         let strings_len = reader.read_u32::<E>()? as usize;
@@ -200,7 +200,7 @@ impl TableHeader {
         Ok(Self {
             scramble_type: match scramble_id {
                 0 => ScrambleType::None,
-                768 /* XCX */ | 2 => ScrambleType::Scrambled(scramble_key),
+                0x300 /* XCX */ | 2 => ScrambleType::Scrambled(scramble_key),
                 _ => ScrambleType::Unknown,
             },
             hashes: (offset_hashes, hashes_len).into(),
@@ -313,8 +313,6 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
             Flags::new(flags.into_iter().collect::<Result<_>>()?),
         );
 
-        let column_cells = columns_src.iter().map(|c| c.cell).collect::<Vec<_>>();
-
         // De-flag-ify
         let columns = columns_src
             .clone() // TODO
@@ -410,7 +408,7 @@ impl<'a, 't, E: ByteOrder> ColumnReader<'a, 't, E> {
     }
 
     fn read_column(mut self) -> Result<ColumnData<'a>> {
-        self.data.read_u16::<E>()?; // TODO
+        self.data.read_u16::<E>()?; // hash table linked node
         let name_offset = self.data.read_u16::<E>()?;
         let name = self.table.read_string(name_offset as usize)?;
         let cell = self.read_cell()?;

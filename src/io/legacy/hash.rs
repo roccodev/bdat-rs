@@ -1,4 +1,5 @@
 use crate::error::Result;
+use crate::legacy::util::pad_8;
 use byteorder::{ByteOrder, WriteBytesExt};
 use std::io::{Seek, SeekFrom, Write};
 
@@ -72,11 +73,6 @@ impl HashTable {
     fn get_slot(&self, val: u16) -> Option<usize> {
         self.slots.iter().position(|v| v.contains(&val))
     }
-}
-
-#[inline]
-fn pad_8(len: usize) -> usize {
-    len + ((8 - (len & 7)) & 7)
 }
 
 #[cfg(test)]

@@ -33,7 +33,6 @@ pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
         BdatVersion::Modern => Ok(VersionSlice::Modern(
             FileReader::<_, SwitchEndian>::read_file(BdatSlice::<SwitchEndian>::new(bytes))?,
         )),
-        _ => panic!(),
     }
 }
 
@@ -50,7 +49,6 @@ pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<VersionReader<R>> {
         BdatVersion::Modern => Ok(VersionReader::Modern(
             FileReader::<_, SwitchEndian>::read_file(BdatReader::<_, SwitchEndian>::new(reader))?,
         )),
-        _ => panic!(),
     }
 }
 
