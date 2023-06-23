@@ -9,6 +9,9 @@ mod write;
 use scramble::ScrambleType;
 use std::ops::Range;
 
+const HEADER_SIZE: usize = 64;
+const COLUMN_DEFINITION_SIZE: usize = 6;
+
 #[derive(Debug)]
 pub struct FileHeader {
     pub table_count: usize,

@@ -1,3 +1,7 @@
+use crate::error::Result;
+use byteorder::{ByteOrder, WriteBytesExt};
+use std::io::{Seek, SeekFrom, Write};
+
 /// A simple hash table with separate chaining.
 /// When the table is written, chain nodes are linked together in column info tables.
 pub(super) struct HashTable {
@@ -39,10 +43,40 @@ impl HashTable {
         sum % self.hash_mod
     }
 
+    pub(crate) fn write_first_level<E: ByteOrder>(&self, mut writer: impl Write) -> Result<()> {
+        for slot in &self.slots {
+            writer.write_u16::<E>(slot.first().copied().unwrap_or(0))?;
+        }
+        let len = self.slots.len() * 2;
+        for _ in len..pad_8(len) {
+            writer.write_u8(0)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn write_other_levels<E: ByteOrder, W: Write + Seek>(
+        &self,
+        mut writer: W,
+    ) -> Result<()> {
+        for slot in self.slots.iter().filter(|s| s.len() >= 2) {
+            for offsets in slot.windows(2) {
+                let &[cur, next] = offsets else { unreachable!() };
+                writer.seek(SeekFrom::Start(cur as u64 + 2))?;
+                writer.write_u16::<E>(next)?;
+            }
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
     fn get_slot(&self, val: u16) -> Option<usize> {
         self.slots.iter().position(|v| v.contains(&val))
     }
+}
+
+#[inline]
+fn pad_8(len: usize) -> usize {
+    len + ((8 - (len & 7)) & 7)
 }
 
 #[cfg(test)]

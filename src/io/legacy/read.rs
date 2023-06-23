@@ -32,10 +32,10 @@ use crate::{
     BdatError, BdatFile, BdatVersion, Cell, ColumnDef, FlagDef, Label, Row, Table, TableBuilder,
     Value, ValueType,
 };
+use crate::legacy::COLUMN_DEFINITION_SIZE;
 
 use super::{FileHeader, TableHeader};
 
-const COLUMN_DEF_LEN: usize = 6;
 type Utf<'t> = Cow<'t, str>; // TODO: export to use in XC3 bdats
 
 pub struct LegacySlice<'t, E> {
@@ -233,7 +233,7 @@ impl TableHeader {
             self.hashes.max_offset(),
             self.strings.max_offset(),
             self.offset_rows + self.row_len * self.row_count,
-            self.offset_columns + COLUMN_DEF_LEN * self.column_count,
+            self.offset_columns + COLUMN_DEFINITION_SIZE * self.column_count,
         ]
         .into_iter()
         .max()
@@ -299,7 +299,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         let (flags, columns) = (0..self.header.column_count)
             .map(|_| {
                 let col = ColumnReader::new(&self, seek)?.read_column()?;
-                seek += COLUMN_DEF_LEN as u64;
+                seek += COLUMN_DEFINITION_SIZE as u64;
                 Ok(col)
             })
             .partition::<Vec<_>, _>(|c| {
