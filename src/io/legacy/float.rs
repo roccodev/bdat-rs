@@ -21,6 +21,27 @@ pub struct IeeeFloat(f32);
 pub struct CrossFixed(f32);
 
 impl BdatReal {
+    /// Converts a 32-bit representation into the proper real value, based on
+    /// the BDAT version.
+    pub fn from_bits(bits: u32, version: BdatVersion) -> Self {
+        match version {
+            BdatVersion::LegacyX => Self::Fixed(bits.into()),
+            _ => Self::Floating(f32::from_bits(bits).into()),
+        }
+    }
+
+    /// Converts the real value back to a 32-bit representation.
+    ///
+    /// ## Panics
+    /// Panics if no version is attached to the real value, i.e. it is a `BdatReal::Unknown`.
+    pub fn to_bits(&self) -> u32 {
+        match self {
+            Self::Floating(f) => f.0.to_bits(),
+            Self::Fixed(f) => u32::from(*f),
+            _ => panic!("unknown real bit conversion"),
+        }
+    }
+
     /// Converts the underlying real number into either a floating-point or a fixed-point
     /// representation.
     ///

@@ -1,4 +1,5 @@
-use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::borrow::Borrow;
+use std::io::{Cursor, Read, Seek, SeekFrom, Write};
 
 use byteorder::{NativeEndian, ReadBytesExt};
 
@@ -20,6 +21,25 @@ pub enum VersionSlice<'b> {
     Modern(FileReader<BdatSlice<'b, SwitchEndian>, SwitchEndian>),
 }
 
+/// Reads a BDAT file from a slice. The slice needs to have the **full** file data, though any
+/// unrelated bytes at the end will be ignored.
+///
+/// Version and endianness will be automatically detected. To force a different endianness and/or
+/// version, use the specialized functions from [`bdat::legacy`] and [`bdat::modern`].  
+/// Notably, only the legacy implementation needs a mutable reference to the data (as it may
+/// need to unscramble text), while this function is forced to carry that restriction.
+///
+/// This function will only read the file header. To parse tables, call [`FileReader::get_tables`].
+///
+/// ```
+/// use std::fs::File;
+/// use bdat::{BdatFile, BdatResult, SwitchEndian};
+///
+/// fn read(data: &mut [u8]) -> BdatResult<()> {
+///     let tables = bdat::from_bytes(data)?.get_tables()?;
+///     Ok(())
+/// }
+/// ```
 pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
     match detect_version(Cursor::new(&bytes))? {
         BdatVersion::Legacy => Ok(VersionSlice::Legacy(LegacySlice::new(
@@ -36,6 +56,27 @@ pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
     }
 }
 
+/// Reads a BDAT file from a [`std::io::Read`] implementation. That type must also implement
+/// [`std::io::Seek`].
+///
+/// Version and endianness will be automatically detected. To force a different endianness and/or
+/// version, use the specialized functions from [`bdat::legacy`] and [`bdat::modern`].
+///
+/// This function will only read the file header. To parse tables, call [`BdatFile::get_tables`].
+///
+/// The BDAT file format is not recommended for streams, so it is best to read from a file or a
+/// byte buffer.
+///
+/// ```
+/// use std::fs::File;
+/// use bdat::{BdatFile, BdatResult, SwitchEndian};
+///
+/// fn read_file(name: &str) -> BdatResult<()> {
+///     let file = File::open(name)?;
+///     let tables = bdat::from_reader(file)?.get_tables()?;
+///     Ok(())
+/// }
+/// ```
 pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<VersionReader<R>> {
     match detect_version(&mut reader)? {
         BdatVersion::Legacy => Ok(VersionReader::Legacy(LegacyReader::new(

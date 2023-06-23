@@ -1,5 +1,6 @@
+use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::io::{Seek, SeekFrom, Write};
+use std::io::{Cursor, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
 use std::rc::Rc;
 
@@ -9,19 +10,22 @@ use crate::error::Result;
 use crate::legacy::hash::HashTable;
 use crate::legacy::util::{pad_2, pad_32, pad_4, pad_64};
 use crate::legacy::{COLUMN_DEFINITION_SIZE, HEADER_SIZE};
-use crate::{Cell, ColumnDef, FlagDef, Label, Row, Table, Value, ValueType};
+use crate::{BdatVersion, Cell, ColumnDef, FlagDef, Label, Row, Table, Value, ValueType};
 
-struct FileWriter<'a, 'b, 't, W> {
-    tables: &'a [&'b Table<'t>],
+pub struct FileWriter<W, E> {
     writer: W,
+    version: BdatVersion,
+    _endianness: PhantomData<E>,
 }
 
 struct TableWriter<'a, 't, E, W> {
     table: &'a Table<'t>,
     buf: W,
+    version: BdatVersion,
     names: StringTable,
     strings: StringTable,
     columns: Option<ColumnTables>,
+    // TODO maybe regroup into header struct
     hash_table_offset: usize,
     row_data_offset: usize,
     row_size: usize,
@@ -34,6 +38,7 @@ struct RowWriter<'a, 'b, 't, W, E> {
     columns: &'a [ColumnDef],
     writer: W,
     strings: &'b mut StringTable,
+    version: BdatVersion,
     _endianness: PhantomData<E>,
 }
 
@@ -82,11 +87,67 @@ struct StringTable {
     len: usize,
 }
 
+impl<W: Write + Seek, E: ByteOrder> FileWriter<W, E> {
+    pub fn new(writer: W, version: BdatVersion) -> Self {
+        Self {
+            writer,
+            version,
+            _endianness: PhantomData,
+        }
+    }
+
+    pub fn write_file<'t>(
+        &mut self,
+        tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
+    ) -> Result<()> {
+        let (table_bytes, table_offsets, total_len, table_count) = tables
+            .into_iter()
+            .map(|table| {
+                let mut data = vec![];
+                let cursor = Cursor::new(&mut data);
+
+                TableWriter::<E, _>::new(table.borrow(), cursor, self.version)
+                    .write()
+                    .map(|_| data)
+            })
+            .try_fold(
+                (Vec::new(), Vec::new(), 0, 0),
+                |(mut tot_bytes, mut offsets, len, count), table_bytes| {
+                    table_bytes.map(|mut bytes| {
+                        let new_len = bytes.len();
+                        (
+                            {
+                                tot_bytes.append(&mut bytes);
+                                tot_bytes
+                            },
+                            {
+                                offsets.push(len);
+                                offsets
+                            },
+                            len + new_len,
+                            count + 1,
+                        )
+                    })
+                },
+            )?;
+
+        self.writer.write_u32::<E>(table_count as u32)?;
+        self.writer.write_u32::<E>(total_len.try_into().unwrap())?;
+        for offset in table_offsets {
+            self.writer.write_u32::<E>(offset.try_into().unwrap())?;
+        }
+        self.writer.write_all(&table_bytes)?;
+
+        Ok(())
+    }
+}
+
 impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
-    fn new(table: &'a Table<'t>, writer: W) -> Self {
+    fn new(table: &'a Table<'t>, writer: W, version: BdatVersion) -> Self {
         Self {
             table,
             buf: writer,
+            version,
             names: StringTable::new(HEADER_SIZE),
             strings: StringTable::new(0),
             columns: None,
@@ -126,8 +187,14 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         let row_start = self.buf.stream_position()?;
         self.row_data_offset = row_start as usize;
         for row in self.table.rows() {
-            RowWriter::<_, E>::new(row, &self.table.columns, &mut self.strings, &mut self.buf)
-                .write()?;
+            RowWriter::<_, E>::new(
+                self.version,
+                row,
+                &self.table.columns,
+                &mut self.strings,
+                &mut self.buf,
+            )
+            .write()?;
         }
         let row_size = (self.buf.stream_position()? - row_start) as usize;
         self.row_size = row_size / self.table.rows.len();
@@ -147,8 +214,14 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         // TODO - temporary solution: rows double pass
         self.buf.seek(SeekFrom::Start(row_start))?;
         for row in self.table.rows() {
-            RowWriter::<_, E>::new(row, &self.table.columns, &mut self.strings, &mut self.buf)
-                .write()?;
+            RowWriter::<_, E>::new(
+                self.version,
+                row,
+                &self.table.columns,
+                &mut self.strings,
+                &mut self.buf,
+            )
+            .write()?;
         }
 
         // Write header when we have all the necessary information
@@ -331,12 +404,14 @@ impl ColumnTables {
 
 impl<'a, 'b, 't, W: Write, E: ByteOrder> RowWriter<'a, 'b, 't, W, E> {
     fn new(
+        version: BdatVersion,
         row: &'a Row<'t>,
         columns: &'a [ColumnDef],
         strings: &'b mut StringTable,
         writer: W,
     ) -> Self {
         Self {
+            version,
             row,
             columns,
             writer,
@@ -375,8 +450,11 @@ impl<'a, 'b, 't, W: Write, E: ByteOrder> RowWriter<'a, 'b, 't, W, E> {
             Value::String(s) => {
                 writer.write_u32::<E>(self.strings.get_offset(s).try_into().unwrap())
             }
-            // TODO convert float based on version
-            Value::Float(f) => writer.write_f32::<E>((*f).into()),
+            Value::Float(f) => {
+                let mut f = *f;
+                f.make_known(self.version);
+                writer.write_u32::<E>(f.to_bits())
+            }
             _ => panic!("unsupported value type for legacy bdats"),
         }?)
     }
@@ -520,7 +598,7 @@ mod tests {
     use std::fs::File;
 
     use crate::legacy::write::TableWriter;
-    use crate::{BdatFile, SwitchEndian};
+    use crate::{BdatFile, BdatVersion, SwitchEndian};
 
     #[test]
     fn write_v1() {
@@ -529,7 +607,7 @@ mod tests {
 
         let tables = crate::from_reader(orig).unwrap().get_tables().unwrap();
 
-        let mut writer = TableWriter::<SwitchEndian, _>::new(&tables[0], new);
+        let writer = TableWriter::<SwitchEndian, _>::new(&tables[0], new, BdatVersion::Legacy);
         writer.write().unwrap();
     }
 }
