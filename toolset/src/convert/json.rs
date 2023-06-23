@@ -168,7 +168,7 @@ impl BdatDeserialize for JsonConverter {
                 for (k, v) in r.cells {
                     let (index, column) = &column_map[&k];
                     let deserialized = Some(column.as_cell_seed().deserialize(v).unwrap());
-                    // Only clone in the worse scenario (duplicate columns)
+                    // Only clone in the worst scenario (duplicate columns)
                     for idx in index.into_iter().skip(1) {
                         cells[*idx] = deserialized.clone();
                     }

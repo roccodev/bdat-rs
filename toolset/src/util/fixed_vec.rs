@@ -49,18 +49,18 @@ impl<T, const MAX: usize> Index<usize> for FixedVec<T, MAX> {
 
 impl<T, const MAX: usize> IntoIterator for FixedVec<T, MAX> {
     type Item = T;
-    type IntoIter = std::array::IntoIter<T, MAX>;
+    type IntoIter = std::iter::Take<std::array::IntoIter<T, MAX>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.buf.into_iter()
+        self.buf.into_iter().take(self.len)
     }
 }
 
 impl<'a, T, const MAX: usize> IntoIterator for &'a FixedVec<T, MAX> {
     type Item = &'a T;
-    type IntoIter = std::slice::Iter<'a, T>;
+    type IntoIter = std::iter::Take<std::slice::Iter<'a, T>>;
 
     fn into_iter(self) -> Self::IntoIter {
-        self.buf.iter()
+        self.buf.iter().take(self.len)
     }
 }

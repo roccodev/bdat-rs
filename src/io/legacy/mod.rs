@@ -1,8 +1,10 @@
 pub mod float;
 pub mod scramble;
 
+mod hash;
 pub(crate) mod read;
 mod util;
+mod write;
 
 use scramble::ScrambleType;
 use std::ops::Range;
