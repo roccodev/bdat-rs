@@ -22,6 +22,10 @@ struct TableWriter<'a, 't, E, W> {
     names: StringTable,
     strings: StringTable,
     columns: Option<ColumnTables>,
+    hash_table_offset: usize,
+    row_data_offset: usize,
+    row_size: usize,
+    final_padding: usize,
     _endianness: PhantomData<E>,
 }
 
@@ -86,6 +90,10 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
             names: StringTable::new(HEADER_SIZE),
             strings: StringTable::new(0),
             columns: None,
+            hash_table_offset: 0,
+            row_data_offset: 0,
+            row_size: 0,
+            final_padding: 0,
             _endianness: PhantomData,
         }
     }
@@ -94,13 +102,16 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         let table_start = self.buf.stream_position()?;
 
         self.make_layout()?;
-        self.write_header()?;
+        // Header space
+        self.buf.write_all(&[0u8; 64])?;
 
         let columns = self.columns.as_ref().unwrap();
 
         columns.write_infos::<E>(&mut self.buf)?;
         self.names.write(&mut self.buf)?;
         columns.write_defs::<E>(&mut self.buf)?;
+
+        self.hash_table_offset = self.buf.stream_position()? as usize;
         columns.name_table.write_first_level::<E>(&mut self.buf)?;
 
         // Can now update other levels of the hash table
@@ -113,11 +124,13 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         }
 
         let row_start = self.buf.stream_position()?;
+        self.row_data_offset = row_start as usize;
         for row in self.table.rows() {
             RowWriter::<_, E>::new(row, &self.table.columns, &mut self.strings, &mut self.buf)
                 .write()?;
         }
         let row_size = (self.buf.stream_position()? - row_start) as usize;
+        self.row_size = row_size / self.table.rows.len();
         for _ in row_size..pad_32(row_size) {
             self.buf.write_u8(0)?;
         }
@@ -128,6 +141,7 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         let table_size = (self.buf.stream_position()? - table_start) as usize;
         for _ in table_size..pad_64(table_size) {
             self.buf.write_u8(0)?;
+            self.final_padding += 1;
         }
 
         // TODO - temporary solution: rows double pass
@@ -136,6 +150,10 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
             RowWriter::<_, E>::new(row, &self.table.columns, &mut self.strings, &mut self.buf)
                 .write()?;
         }
+
+        // Write header when we have all the necessary information
+        self.buf.seek(SeekFrom::Start(0))?;
+        self.write_header()?;
 
         Ok(())
     }
@@ -169,6 +187,7 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
     }
 
     fn write_header(&mut self) -> Result<()> {
+        // TODO remove try_intos by checking earlier
         let columns = self.columns.as_ref().unwrap();
 
         self.buf.write_u32::<E>(0x54_41_44_42)?; // "BDAT"
@@ -177,33 +196,53 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         // Name table offset = header size + column info table size
         self.buf
             .write_u16::<E>((HEADER_SIZE + columns.info_len) as u16)?;
-        // Size of each row - TODO
-        self.buf.write_u16::<E>(0)?;
-        // Hash table offset = - TODO
-        self.buf.write_u16::<E>(0)?;
+        // Size of each row
+        self.buf.write_u16::<E>(self.row_size.try_into().unwrap())?;
+        // Hash table offset
+        self.buf
+            .write_u16::<E>(self.hash_table_offset.try_into().unwrap())?;
         // Hash table modulo factor - TODO
         self.buf.write_u16::<E>(61)?;
-        // Row table offset - TODO
-        self.buf.write_u16::<E>(0)?;
+        // Row table offset
+        self.buf
+            .write_u16::<E>(self.row_data_offset.try_into().unwrap())?;
         // Number of rows
         self.buf
             .write_u16::<E>(self.table.rows.len().try_into().unwrap())?;
-        // ID of the first row - TODO
-        self.buf.write_u16::<E>(0)?;
+        // ID of the first row
+        self.buf.write_u16::<E>(
+            self.table
+                .rows
+                .first()
+                .map(Row::id)
+                .unwrap_or_default()
+                .try_into()
+                .unwrap(),
+        )?;
         // UNKNOWN - asserted 2 when reading
         self.buf.write_u16::<E>(2)?;
         // Checksum - TODO
         self.buf.write_u16::<E>(0)?;
-        // String table offset - TODO
-        self.buf.write_u32::<E>(0)?;
-        // String table size - TODO
-        self.buf.write_u32::<E>(0)?;
-        // Column definition table offset - TODO
-        self.buf.write_u16::<E>(0)?;
-        // Column count (includes flags) - TODO
-        self.buf.write_u16::<E>(0)?;
+        // String table offset
+        self.buf
+            .write_u32::<E>(self.strings.base_offset.try_into().unwrap())?;
+        // String table size, includes final table padding
+        self.buf.write_u32::<E>(
+            (self.strings.size_bytes() + self.final_padding)
+                .try_into()
+                .unwrap(),
+        )?;
+        // Column definition table offset
+        self.buf.write_u16::<E>(
+            (self.names.base_offset + self.names.size_bytes())
+                .try_into()
+                .unwrap(),
+        )?;
+        // Column count (includes flags)
+        self.buf
+            .write_u16::<E>(columns.definitions.len().try_into().unwrap())?;
         // Padding
-        self.buf.write_all(&[0u8; 64 - 36])?;
+        self.buf.write_all(&[0u8; HEADER_SIZE - 36])?;
 
         Ok(())
     }
