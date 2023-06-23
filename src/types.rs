@@ -461,11 +461,16 @@ impl<'b> Row<'b> {
 impl ColumnDef {
     /// Creates a new [`ColumnDef`].
     pub fn new(ty: ValueType, label: Label) -> Self {
+        Self::with_flags(ty, label, Vec::new())
+    }
+
+    /// Creates a new [`ColumnDef`] that holds flag values. (Legacy BDAT only)
+    pub fn with_flags(ty: ValueType, label: Label, flags: Vec<FlagDef>) -> Self {
         Self {
             value_type: ty,
             label,
             offset: 0,
-            flags: Vec::new(),
+            flags,
             count: 1,
         }
     }

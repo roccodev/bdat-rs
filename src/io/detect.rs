@@ -27,9 +27,10 @@ pub enum VersionSlice<'b> {
 /// Version and endianness will be automatically detected. To force a different endianness and/or
 /// version, use the specialized functions from [`bdat::legacy`] and [`bdat::modern`].  
 /// Notably, only the legacy implementation needs a mutable reference to the data (as it may
-/// need to unscramble text), while this function is forced to carry that restriction.
+/// need to unscramble text), while this function is forced to carry that restriction, even when
+/// effectively dealing with modern tables.
 ///
-/// This function will only read the file header. To parse tables, call [`FileReader::get_tables`].
+/// This function will only read the file header. To parse tables, call [`BdatFile::get_tables`].
 ///
 /// ```
 /// use std::fs::File;

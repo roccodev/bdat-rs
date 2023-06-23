@@ -28,7 +28,6 @@ struct TableWriter<'a, 't, E, W> {
     // TODO maybe regroup into header struct
     hash_table_offset: usize,
     row_data_offset: usize,
-    row_size: usize,
     final_padding: usize,
     _endianness: PhantomData<E>,
 }
@@ -78,6 +77,7 @@ struct ColumnTables {
     definitions: Vec<ColumnDefinition>,
     name_table: HashTable,
     info_len: usize,
+    row_data_len: usize,
 }
 
 struct StringTable {
@@ -133,8 +133,10 @@ impl<W: Write + Seek, E: ByteOrder> FileWriter<W, E> {
 
         self.writer.write_u32::<E>(table_count as u32)?;
         self.writer.write_u32::<E>(total_len.try_into().unwrap())?;
+        let offsets = table_offsets.len();
         for offset in table_offsets {
-            self.writer.write_u32::<E>(offset.try_into().unwrap())?;
+            self.writer
+                .write_u32::<E>((offset + 8 + offsets * 4).try_into().unwrap())?;
         }
         self.writer.write_all(&table_bytes)?;
 
@@ -153,7 +155,6 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
             columns: None,
             hash_table_offset: 0,
             row_data_offset: 0,
-            row_size: 0,
             final_padding: 0,
             _endianness: PhantomData,
         }
@@ -197,7 +198,6 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
             .write()?;
         }
         let row_size = (self.buf.stream_position()? - row_start) as usize;
-        self.row_size = row_size / self.table.rows.len();
         for _ in row_size..pad_32(row_size) {
             self.buf.write_u8(0)?;
         }
@@ -270,7 +270,8 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         self.buf
             .write_u16::<E>((HEADER_SIZE + columns.info_len) as u16)?;
         // Size of each row
-        self.buf.write_u16::<E>(self.row_size.try_into().unwrap())?;
+        self.buf
+            .write_u16::<E>(columns.row_data_len.try_into().unwrap())?;
         // Hash table offset
         self.buf
             .write_u16::<E>(self.hash_table_offset.try_into().unwrap())?;
@@ -323,7 +324,14 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
 
 impl ColumnTables {
     fn from_columns(cols: &[ColumnDef], name_table: &mut StringTable) -> Self {
-        let mut infos = cols.iter().map(ColumnInfo::new).collect::<Vec<_>>();
+        let (row_len, mut infos) = cols
+            .iter()
+            .fold((0, Vec::new()), |(offset, mut cols), col| {
+                let info = ColumnInfo::new(col, offset);
+                let next = offset + info.data_size();
+                cols.push(info);
+                (next, cols)
+            });
         infos.extend(
             cols.iter()
                 .flat_map(|c| c.flags().iter())
@@ -384,6 +392,7 @@ impl ColumnTables {
             definitions,
             name_table: hash_table,
             info_len: info_table_size,
+            row_data_len: row_len,
         }
     }
 
@@ -474,17 +483,17 @@ impl<'a, 'b, 't, W: Write, E: ByteOrder> RowWriter<'a, 'b, 't, W, E> {
 }
 
 impl ColumnInfo {
-    fn new(col: &ColumnDef) -> Self {
+    fn new(col: &ColumnDef, offset: usize) -> Self {
         let cell = if col.count > 1 {
             CellHeader::List {
                 ty: col.value_type,
-                offset: col.offset,
+                offset,
                 count: col.count,
             }
         } else {
             CellHeader::Value {
                 ty: col.value_type,
-                offset: col.offset,
+                offset,
             }
         };
         Self { cell }
@@ -508,6 +517,14 @@ impl ColumnInfo {
         }
     }
 
+    fn data_size(&self) -> usize {
+        match self.cell {
+            CellHeader::Value { ty, .. } => Self::value_size(ty),
+            CellHeader::List { ty, count, .. } => Self::value_size(ty) * count,
+            CellHeader::Flags { .. } => 0,
+        }
+    }
+
     fn write<E: ByteOrder>(&self, mut writer: impl Write) -> Result<()> {
         writer.write_u8(match self.cell {
             CellHeader::Value { .. } => 1,
@@ -515,6 +532,19 @@ impl ColumnInfo {
             CellHeader::Flags { .. } => 3,
         })?;
         self.cell.write::<E>(&mut writer)
+    }
+
+    fn value_size(value_type: ValueType) -> usize {
+        match value_type {
+            ValueType::Unknown => 0,
+            ValueType::UnsignedByte | ValueType::SignedByte => 1,
+            ValueType::UnsignedShort | ValueType::SignedShort => 2,
+            ValueType::UnsignedInt
+            | ValueType::UnsignedInt
+            | ValueType::String
+            | ValueType::Float => 4,
+            _ => panic!("unsupported value type for legacy bdats"),
+        }
     }
 }
 

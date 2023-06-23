@@ -134,7 +134,11 @@ impl BdatDeserialize for JsonConverter {
                 (Vec::new(), HashMap::default(), 0),
                 |(mut cols, mut map, idx), col| {
                     let label = Label::parse(col.name.clone(), col.hashed);
-                    let def = ColumnDef::new(col.ty, label.clone());
+                    let def = if col.flags.is_empty() {
+                        ColumnDef::new(col.ty, label.clone())
+                    } else {
+                        ColumnDef::with_flags(col.ty, label.clone(), col.flags)
+                    };
                     // Only keep the first occurrence: there's a table in XC2 (likely more) with
                     // a duplicate column (FLD_RequestItemSet)
                     let (indices, dup_col) = map

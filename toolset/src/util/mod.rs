@@ -1,7 +1,8 @@
 use anyhow::{Context, Result};
-use bdat::BdatVersion;
+use bdat::{BdatResult, BdatVersion, SwitchEndian, Table, WiiEndian};
 use clap::{Args, ValueEnum};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use std::io::{Seek, Write};
 use std::path::{Path, PathBuf};
 
 pub mod fixed_vec;
@@ -26,6 +27,36 @@ pub enum BdatGame {
     Legacy,
     Xcx,
     Modern,
+}
+
+impl BdatGame {
+    pub fn version_default(version: BdatVersion) -> Self {
+        match version {
+            BdatVersion::Legacy => Self::Legacy,
+            BdatVersion::LegacyX => Self::Xcx,
+            BdatVersion::Modern => Self::Modern,
+        }
+    }
+
+    pub fn to_writer<W: Write + Seek>(self, writer: W, tables: &[Table]) -> BdatResult<()> {
+        match self {
+            Self::Legacy => {
+                bdat::legacy::to_writer::<_, SwitchEndian>(writer, tables, BdatVersion::Legacy)
+            }
+            Self::Xcx => {
+                bdat::legacy::to_writer::<_, WiiEndian>(writer, tables, BdatVersion::LegacyX)
+            }
+            Self::Modern => bdat::modern::to_writer::<_, SwitchEndian>(writer, tables),
+        }
+    }
+
+    pub fn to_vec<W: Write + Seek>(self, tables: &[Table]) -> BdatResult<Vec<u8>> {
+        match self {
+            Self::Legacy => bdat::legacy::to_vec::<SwitchEndian>(tables, BdatVersion::Legacy),
+            Self::Xcx => bdat::legacy::to_vec::<WiiEndian>(tables, BdatVersion::LegacyX),
+            Self::Modern => bdat::modern::to_vec::<SwitchEndian>(tables),
+        }
+    }
 }
 
 impl ProgressBarState {

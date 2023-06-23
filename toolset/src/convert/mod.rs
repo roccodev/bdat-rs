@@ -15,7 +15,7 @@ use clap::Args;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 
-use crate::util::{ProgressBarState, RayonPoolJobs};
+use crate::util::{BdatGame, ProgressBarState, RayonPoolJobs};
 use crate::{
     error::Error,
     filter::{Filter, FilterArg},
@@ -291,8 +291,8 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
             let out_dir = out_dir.join(relative_path);
             std::fs::create_dir_all(&out_dir)?;
             let out_file = File::create(out_dir.join(format!("{}.bdat", schema_file.file_name)))?;
-            // TODO
-            bdat::modern::to_writer::<_, SwitchEndian>(out_file, tables)?;
+            let game = BdatGame::version_default(schema_file.version);
+            game.to_writer(out_file, &tables)?;
             progress_bar.master_bar.inc(1);
             Ok(())
         })
