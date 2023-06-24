@@ -1,5 +1,6 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::hash::Hasher;
 use std::io::{Cursor, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -165,7 +166,7 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
 
         self.make_layout()?;
         // Header space
-        self.buf.write_all(&[0u8; 64])?;
+        self.buf.write_all(&[0u8; HEADER_SIZE])?;
 
         let columns = self.columns.as_ref().unwrap();
 
@@ -397,8 +398,13 @@ impl ColumnTables {
     }
 
     fn write_infos<E: ByteOrder>(&self, mut writer: impl Write) -> Result<()> {
+        let mut size = 0;
         for info in &self.infos {
             info.write::<E>(&mut writer)?;
+            size += info.get_size();
+        }
+        for _ in size..self.info_len {
+            writer.write_u8(0)?;
         }
         Ok(())
     }
@@ -504,7 +510,7 @@ impl ColumnInfo {
             cell: CellHeader::Flags {
                 shift: flag.flag_index.try_into().unwrap(),
                 mask: flag.mask,
-                parent: 0xDDBA, // bad data - TODO
+                parent: 0xDDBA, // bad data - overwritten later
             },
         }
     }
@@ -540,7 +546,7 @@ impl ColumnInfo {
             ValueType::UnsignedByte | ValueType::SignedByte => 1,
             ValueType::UnsignedShort | ValueType::SignedShort => 2,
             ValueType::UnsignedInt
-            | ValueType::UnsignedInt
+            | ValueType::SignedInt
             | ValueType::String
             | ValueType::Float => 4,
             _ => panic!("unsupported value type for legacy bdats"),

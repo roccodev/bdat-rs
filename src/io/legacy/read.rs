@@ -38,8 +38,8 @@ use super::{FileHeader, TableHeader};
 
 type Utf<'t> = Cow<'t, str>; // TODO: export to use in XC3 bdats
 
-pub struct LegacySlice<'t, E> {
-    data: &'t [u8],
+pub struct LegacyBytes<'t, E> {
+    data: Cow<'t, [u8]>,
     header: FileHeader,
     version: BdatVersion,
     _endianness: PhantomData<E>,
@@ -101,6 +101,7 @@ enum ColumnCell {
     Array(ValueData, usize), // array size
 }
 
+#[derive(Debug)]
 struct Flags<'t>(Vec<ColumnData<'t>>);
 
 impl<R: Read + Seek, E: ByteOrder> LegacyReader<R, E> {
@@ -115,7 +116,7 @@ impl<R: Read + Seek, E: ByteOrder> LegacyReader<R, E> {
     }
 }
 
-impl<'t, E: ByteOrder> LegacySlice<'t, E> {
+impl<'t, E: ByteOrder> LegacyBytes<'t, E> {
     pub fn new(bytes: &'t mut [u8], version: BdatVersion) -> Result<Self> {
         let header = FileHeader::read::<_, E>(Cursor::new(&bytes))?;
         // TODO
@@ -128,7 +129,17 @@ impl<'t, E: ByteOrder> LegacySlice<'t, E> {
         Ok(Self {
             header,
             version,
-            data: bytes,
+            data: Cow::Borrowed(bytes),
+            _endianness: PhantomData,
+        })
+    }
+
+    pub fn new_copy(bytes: &[u8], version: BdatVersion) -> Result<Self> {
+        let header = FileHeader::read::<_, E>(Cursor::new(&bytes))?;
+        Ok(Self {
+            header,
+            version,
+            data: Cow::Owned(bytes.to_vec()),
             _endianness: PhantomData,
         })
     }
@@ -510,7 +521,11 @@ impl<'a, 't, E: ByteOrder> RowReader<'a, 't, E> {
             if !col.flags.is_empty() {
                 // Flags
                 let value = value.into_integer();
-                let flags = col.flags.iter().map(|f| value & f.mask).collect::<Vec<_>>();
+                let flags = col
+                    .flags
+                    .iter()
+                    .map(|f| (value & f.mask) >> f.flag_index)
+                    .collect::<Vec<_>>();
                 self.cells[i] = Some(Cell::Flags(flags));
                 continue;
             }
@@ -569,13 +584,14 @@ impl<'t> Flags<'t> {
     }
 
     fn get_from_parent(&self, parent_info_offset: usize) -> impl Iterator<Item = &ColumnData> {
-        let first_idx = self
-            .0
-            .binary_search_by_key(&parent_info_offset, Self::extract)
-            .unwrap_or(self.0.len());
+        /*let first_idx = self
+        .0
+        .binary_search_by_key(&parent_info_offset, Self::extract)
+        .unwrap_or(self.0.len());*/
+        // TODO
         self.0
             .iter()
-            .skip(first_idx)
+            .skip_while(move |c| Self::extract(c) != parent_info_offset)
             .take_while(move |c| Self::extract(c) == parent_info_offset)
     }
 
@@ -602,11 +618,19 @@ impl<'b, R: Read + Seek, E: ByteOrder> BdatFile<'b> for LegacyReader<R, E> {
     }
 }
 
-impl<'b, E: ByteOrder> BdatFile<'b> for LegacySlice<'b, E> {
+impl<'b, E: ByteOrder> BdatFile<'b> for LegacyBytes<'b, E> {
     fn get_tables(&mut self) -> Result<Vec<Table<'b>>> {
         let mut tables = Vec::with_capacity(self.header.table_count);
         for offset in &self.header.table_offsets {
-            tables.push(TableReader::<E>::from_slice(&self.data[*offset..], self.version)?.read()?);
+            tables.push(match &self.data {
+                Cow::Owned(buf) => {
+                    TableReader::<E>::from_reader(Cursor::new(&buf[*offset..]), self.version)?
+                        .read()?
+                }
+                Cow::Borrowed(data) => {
+                    TableReader::<E>::from_slice(&data[*offset..], self.version)?.read()?
+                }
+            });
         }
         Ok(tables)
     }

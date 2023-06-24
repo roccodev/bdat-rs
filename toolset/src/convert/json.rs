@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::{Context, Result};
 use bdat::types::{Cell, ColumnDef, Label, Row, Table, TableBuilder, ValueType};
-use bdat::FlagDef;
+use bdat::{ColumnBuilder, FlagDef};
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
 use serde_json::Map;
@@ -45,6 +45,12 @@ struct ColumnSchema {
     hashed: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     flags: Vec<FlagDef>,
+    #[serde(default, skip_serializing_if = "col_skip_count")]
+    count: usize,
+}
+
+fn col_skip_count(c: &usize) -> bool {
+    *c <= 1
 }
 
 pub struct JsonConverter {
@@ -74,6 +80,7 @@ impl BdatSerialize for JsonConverter {
                     ty: c.value_type(),
                     hashed: matches!(c.label(), Label::Unhashed(_)),
                     flags: c.flags().to_vec(),
+                    count: c.count(),
                 })
                 .collect::<Vec<_>>()
         });
@@ -134,11 +141,10 @@ impl BdatDeserialize for JsonConverter {
                 (Vec::new(), HashMap::default(), 0),
                 |(mut cols, mut map, idx), col| {
                     let label = Label::parse(col.name.clone(), col.hashed);
-                    let def = if col.flags.is_empty() {
-                        ColumnDef::new(col.ty, label.clone())
-                    } else {
-                        ColumnDef::with_flags(col.ty, label.clone(), col.flags)
-                    };
+                    let def = ColumnBuilder::new(col.ty, label.clone())
+                        .set_flags(col.flags)
+                        .set_count(col.count.max(1))
+                        .build();
                     // Only keep the first occurrence: there's a table in XC2 (likely more) with
                     // a duplicate column (FLD_RequestItemSet)
                     let (indices, dup_col) = map

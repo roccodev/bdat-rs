@@ -5,7 +5,7 @@ use byteorder::{NativeEndian, ReadBytesExt};
 
 use crate::error::Result;
 use crate::io::read::{BdatFile, BdatReader, BdatSlice};
-use crate::legacy::read::{LegacyReader, LegacySlice};
+use crate::legacy::read::{LegacyBytes, LegacyReader};
 use crate::modern::FileReader;
 use crate::{BdatVersion, SwitchEndian, Table, WiiEndian};
 
@@ -16,8 +16,8 @@ pub enum VersionReader<R: Read + Seek> {
 }
 
 pub enum VersionSlice<'b> {
-    Legacy(LegacySlice<'b, SwitchEndian>),
-    LegacyX(LegacySlice<'b, WiiEndian>),
+    Legacy(LegacyBytes<'b, SwitchEndian>),
+    LegacyX(LegacyBytes<'b, WiiEndian>),
     Modern(FileReader<BdatSlice<'b, SwitchEndian>, SwitchEndian>),
 }
 
@@ -43,11 +43,11 @@ pub enum VersionSlice<'b> {
 /// ```
 pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
     match detect_version(Cursor::new(&bytes))? {
-        BdatVersion::Legacy => Ok(VersionSlice::Legacy(LegacySlice::new(
+        BdatVersion::Legacy => Ok(VersionSlice::Legacy(LegacyBytes::new(
             bytes,
             BdatVersion::Legacy,
         )?)),
-        BdatVersion::LegacyX => Ok(VersionSlice::LegacyX(LegacySlice::new(
+        BdatVersion::LegacyX => Ok(VersionSlice::LegacyX(LegacyBytes::new(
             bytes,
             BdatVersion::LegacyX,
         )?)),
@@ -92,6 +92,12 @@ pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<VersionReader<R>> {
             FileReader::<_, SwitchEndian>::read_file(BdatReader::<_, SwitchEndian>::new(reader))?,
         )),
     }
+}
+
+/// Attempts to detect the BDAT version used in the given slice. The slice must include the
+/// full file header.
+pub fn detect_bytes_version(bytes: &[u8]) -> Result<BdatVersion> {
+    detect_version(Cursor::new(bytes))
 }
 
 /// Attempts to detect the BDAT version used in a file.

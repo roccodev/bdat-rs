@@ -56,6 +56,9 @@ pub struct ColumnDef {
     pub(crate) flags: Vec<FlagDef>,
 }
 
+/// A builder interface for [`ColumnDef`].
+pub struct ColumnBuilder(ColumnDef);
+
 /// A row from a Bdat table
 #[derive(Debug, Clone, PartialEq)]
 pub struct Row<'b> {
@@ -505,6 +508,27 @@ impl ColumnDef {
     /// Returns this column's defined set of sub-flags.
     pub fn flags(&self) -> &[FlagDef] {
         &self.flags
+    }
+}
+
+impl ColumnBuilder {
+    pub fn new(value_type: ValueType, label: Label) -> Self {
+        Self(ColumnDef::new(value_type, label))
+    }
+
+    pub fn set_flags(mut self, flags: Vec<FlagDef>) -> Self {
+        self.0.flags = flags;
+        self
+    }
+
+    pub fn set_count(mut self, count: usize) -> Self {
+        assert!(count > 0);
+        self.0.count = count;
+        self
+    }
+
+    pub fn build(self) -> ColumnDef {
+        self.0
     }
 }
 
