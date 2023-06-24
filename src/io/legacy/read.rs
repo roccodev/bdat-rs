@@ -26,6 +26,7 @@ use std::ops::{Deref, Range, RangeFrom};
 use byteorder::{ByteOrder, NativeEndian, ReadBytesExt};
 
 use crate::error::{Result, Scope};
+use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
 use crate::legacy::scramble::{unscramble, ScrambleType};
 use crate::legacy::COLUMN_DEFINITION_SIZE;
@@ -189,7 +190,9 @@ impl FileHeader {
 
 impl TableHeader {
     pub fn read<E: ByteOrder>(mut reader: impl Read) -> Result<Self> {
-        if reader.read_u32::<NativeEndian>()? != 0x54_41_44_42 {
+        let mut magic = [0u8; 4];
+        reader.read_exact(&mut magic)?;
+        if magic != BDAT_MAGIC {
             // BDAT - doesn't change with endianness
             return Err(BdatError::MalformedBdat(Scope::Table));
         }

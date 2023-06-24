@@ -7,6 +7,8 @@ mod read;
 
 pub use read::BdatFile;
 
+const BDAT_MAGIC: [u8; 4] = [b'B', b'D', b'A', b'T'];
+
 /// Alias for [`byteorder::LittleEndian`], i.e. the byte order used in the Switch games.
 pub type SwitchEndian = byteorder::LittleEndian;
 /// Alias for [`byteorder::BigEndian`], i.e. the byte order used in the Wii/Wii U games.

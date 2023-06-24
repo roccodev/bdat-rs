@@ -8,6 +8,7 @@ use std::rc::Rc;
 use byteorder::{ByteOrder, WriteBytesExt};
 
 use crate::error::Result;
+use crate::io::BDAT_MAGIC;
 use crate::legacy::hash::HashTable;
 use crate::legacy::util::{pad_2, pad_32, pad_4, pad_64};
 use crate::legacy::{COLUMN_DEFINITION_SIZE, HEADER_SIZE};
@@ -264,7 +265,7 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         // TODO remove try_intos by checking earlier
         let columns = self.columns.as_ref().unwrap();
 
-        self.buf.write_u32::<E>(0x54_41_44_42)?; // "BDAT"
+        self.buf.write_all(&BDAT_MAGIC)?; // "BDAT"
         self.buf.write_u16::<E>(0)?; // Scramble type
 
         // Name table offset = header size + column info table size
@@ -626,24 +627,5 @@ impl StringTable {
 
     fn size_bytes(&self) -> usize {
         self.len
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::fs::File;
-
-    use crate::legacy::write::TableWriter;
-    use crate::{BdatFile, BdatVersion, SwitchEndian};
-
-    #[test]
-    fn write_v1() {
-        let orig = File::open("/tmp/orig.bdat").unwrap();
-        let new = File::create("/tmp/new.bdat").unwrap();
-
-        let tables = crate::from_reader(orig).unwrap().get_tables().unwrap();
-
-        let writer = TableWriter::<SwitchEndian, _>::new(&tables[0], new, BdatVersion::Legacy);
-        writer.write().unwrap();
     }
 }

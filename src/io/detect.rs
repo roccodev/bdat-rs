@@ -1,10 +1,10 @@
-use std::borrow::Borrow;
-use std::io::{Cursor, Read, Seek, SeekFrom, Write};
+use std::io::{Cursor, Read, Seek, SeekFrom};
 
-use byteorder::{NativeEndian, ReadBytesExt};
+use byteorder::ReadBytesExt;
 
 use crate::error::Result;
 use crate::io::read::{BdatFile, BdatReader, BdatSlice};
+use crate::io::BDAT_MAGIC;
 use crate::legacy::read::{LegacyBytes, LegacyReader};
 use crate::modern::FileReader;
 use crate::{BdatVersion, SwitchEndian, Table, WiiEndian};
@@ -106,8 +106,9 @@ pub fn detect_file_version<R: Read + Seek>(reader: R) -> Result<BdatVersion> {
 }
 
 fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
-    let magic = reader.read_u32::<NativeEndian>()?;
-    if magic == 0x54_41_44_42 {
+    let mut magic = [0u8; 4];
+    reader.read_exact(&mut magic)?;
+    if magic == BDAT_MAGIC {
         // XC3 BDAT files start with "BDAT"
         reader.seek(SeekFrom::Start(0))?;
         return Ok(BdatVersion::Modern);
@@ -117,9 +118,9 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
     // the table offset list is (reading until we meet "BDAT", which marks the start of the first
     // table), we can figure out endianness by checking against the table count.
 
-    let file_size = reader.read_u32::<NativeEndian>()?;
+    let file_size = reader.read_u32::<SwitchEndian>()?;
 
-    if magic == 0 {
+    if magic == [0, 0, 0, 0] {
         // No tables, meaning we will have a very small file size. If the size is too large
         // it means we have the wrong endianness
         reader.seek(SeekFrom::Start(0))?;
@@ -131,16 +132,17 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
     }
 
     let mut actual_table_count = 0;
+    let mut new_magic = [0u8; 4];
     loop {
-        let n = reader.read_u32::<NativeEndian>()?;
-        if n == 0x54_41_44_42 {
+        reader.read_exact(&mut new_magic)?;
+        if new_magic == BDAT_MAGIC {
             break;
         }
         actual_table_count += 1;
     }
 
     reader.seek(SeekFrom::Start(0))?;
-    Ok(if actual_table_count == magic {
+    Ok(if actual_table_count == u32::from_le_bytes(magic) {
         BdatVersion::Legacy
     } else {
         BdatVersion::LegacyX

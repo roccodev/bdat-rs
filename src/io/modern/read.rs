@@ -9,6 +9,7 @@ use std::{
 use byteorder::{ByteOrder, ReadBytesExt};
 
 use crate::io::read::{BdatReader, BdatSlice};
+use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
 use crate::{
     error::{BdatError, Result, Scope},
@@ -59,7 +60,7 @@ where
     E: ByteOrder,
 {
     pub(crate) fn read_file(mut reader: R) -> Result<Self> {
-        if reader.read_u32()? == 0x54_41_44_42 {
+        if reader.read_u32()? == u32::from_le_bytes(BDAT_MAGIC) {
             if reader.read_u32()? != 0x01_00_10_04 {
                 return Err(BdatError::MalformedBdat(Scope::File));
             }
@@ -138,7 +139,9 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
     }
 
     fn read_table_v2(&mut self) -> Result<Table<'b>> {
-        if self.reader.read_u32()? != 0x54_41_44_42 || self.reader.read_u32()? != 0x3004 {
+        if self.reader.read_u32()? != u32::from_le_bytes(BDAT_MAGIC)
+            || self.reader.read_u32()? != 0x3004
+        {
             return Err(BdatError::MalformedBdat(Scope::Table));
         }
 

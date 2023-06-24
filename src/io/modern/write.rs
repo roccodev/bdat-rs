@@ -9,6 +9,7 @@ use std::{
 
 use byteorder::{ByteOrder, WriteBytesExt};
 
+use crate::io::BDAT_MAGIC;
 use crate::{
     error::Result,
     types::{Cell, Label, Row, Table, Value},
@@ -87,7 +88,7 @@ where
 
     pub fn write_header(&mut self, header: FileHeader, table_data_len: usize) -> Result<()> {
         let magic_len = {
-            self.w_u32(0x54_41_44_42)?;
+            self.stream.write_all(&BDAT_MAGIC)?;
             self.w_u32(0x01_00_10_04)?;
             8
         };
@@ -185,7 +186,7 @@ where
 
         let ser_strings_table = label_table.write::<E>()?;
 
-        self.w_u32(0x54_41_44_42)?; // "BDAT"
+        self.stream.write_all(&BDAT_MAGIC)?; // "BDAT"
         self.w_u32(0x30_04)?; // Table
 
         self.w_u32(column_count)?;
