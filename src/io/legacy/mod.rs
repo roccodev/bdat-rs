@@ -20,6 +20,8 @@ use crate::{BdatVersion, Table};
 const HEADER_SIZE: usize = 64;
 const COLUMN_DEFINITION_SIZE: usize = 6;
 
+pub use hash::HashTable as LegacyHashTable;
+
 #[derive(Debug)]
 pub struct FileHeader {
     pub table_count: usize,

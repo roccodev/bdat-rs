@@ -5,7 +5,7 @@ use std::io::{Seek, SeekFrom, Write};
 
 /// A simple hash table with separate chaining.
 /// When the table is written, chain nodes are linked together in column info tables.
-pub(super) struct HashTable {
+pub struct HashTable {
     slots: Vec<Vec<u16>>,
     hash_mod: u32,
 }
@@ -31,7 +31,7 @@ impl HashTable {
         self.slots = vec![Vec::new(); self.hash_mod as usize];
     }
 
-    fn hash(&self, text: &str) -> u32 {
+    pub fn hash(&self, text: &str) -> u32 {
         if text.is_empty() {
             return 0;
         }

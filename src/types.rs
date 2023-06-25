@@ -513,6 +513,26 @@ impl ColumnDef {
 }
 
 impl FlagDef {
+    /// Creates a flag definition with an arbitrary mask and shift amount.
+    pub fn new(label: impl Into<String>, mask: u32, shift_amount: usize) -> Self {
+        Self {
+            label: label.into(),
+            mask,
+            flag_index: shift_amount,
+        }
+    }
+
+    /// Creates a flag definition that only masks a single bit.
+    ///
+    /// Bits are numbered starting from 0, i.e. the least significant bit of the parent value
+    /// is the bit at index 0.
+    ///
+    /// Note: the bit must not be greater than the parent value's bit count.
+    /// For example, a bit of 14 is invalid for an 8-bit value.
+    pub fn new_bit(label: impl Into<String>, bit: u32) -> Self {
+        Self::new(label, 1 << bit, bit as usize)
+    }
+
     /// Returns this flag's name.
     pub fn label(&self) -> &str {
         &self.label
