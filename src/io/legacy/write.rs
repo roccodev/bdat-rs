@@ -11,7 +11,7 @@ use crate::io::BDAT_MAGIC;
 use crate::legacy::hash::HashTable;
 use crate::legacy::util::{pad_2, pad_32, pad_4, pad_64};
 use crate::legacy::{LegacyWriteOptions, COLUMN_DEFINITION_SIZE, HEADER_SIZE};
-use crate::{BdatVersion, Cell, ColumnDef, FlagDef, Row, Table, Value, ValueType};
+use crate::{BdatError, BdatVersion, Cell, ColumnDef, FlagDef, Row, Table, Value, ValueType};
 
 pub struct FileWriter<W, E> {
     writer: W,
@@ -136,11 +136,11 @@ impl<W: Write + Seek, E: ByteOrder> FileWriter<W, E> {
             )?;
 
         self.writer.write_u32::<E>(table_count as u32)?;
-        self.writer.write_u32::<E>(total_len.try_into().unwrap())?;
+        self.writer.write_u32::<E>(total_len.try_into()?)?;
         let offsets = table_offsets.len();
         for offset in table_offsets {
             self.writer
-                .write_u32::<E>((offset + 8 + offsets * 4).try_into().unwrap())?;
+                .write_u32::<E>((offset + 8 + offsets * 4).try_into()?)?;
         }
         self.writer.write_all(&table_bytes)?;
 
@@ -247,7 +247,7 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         let columns = ColumnTables::from_columns(
             &self.table.columns,
             &mut self.names,
-            self.opts.hash_slots.try_into().unwrap(),
+            self.opts.hash_slots.try_into()?,
         );
 
         self.names.base_offset += columns.info_len;
@@ -274,7 +274,6 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
     }
 
     fn write_header(&mut self) -> Result<()> {
-        // TODO remove try_intos by checking earlier
         let columns = self.columns.as_ref().unwrap();
 
         self.buf.write_all(&BDAT_MAGIC)?; // "BDAT"
@@ -284,20 +283,16 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         self.buf
             .write_u16::<E>((HEADER_SIZE + columns.info_len) as u16)?;
         // Size of each row
-        self.buf
-            .write_u16::<E>(columns.row_data_len.try_into().unwrap())?;
+        self.buf.write_u16::<E>(columns.row_data_len.try_into()?)?;
         // Hash table offset
         self.buf
-            .write_u16::<E>(self.hash_table_offset.try_into().unwrap())?;
+            .write_u16::<E>(self.hash_table_offset.try_into()?)?;
         // Hash table modulo factor
-        self.buf
-            .write_u16::<E>(self.opts.hash_slots.try_into().unwrap())?;
+        self.buf.write_u16::<E>(self.opts.hash_slots.try_into()?)?;
         // Row table offset
-        self.buf
-            .write_u16::<E>(self.row_data_offset.try_into().unwrap())?;
+        self.buf.write_u16::<E>(self.row_data_offset.try_into()?)?;
         // Number of rows
-        self.buf
-            .write_u16::<E>(self.table.rows.len().try_into().unwrap())?;
+        self.buf.write_u16::<E>(self.table.rows.len().try_into()?)?;
         // ID of the first row
         self.buf.write_u16::<E>(
             self.table
@@ -314,22 +309,16 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         self.buf.write_u16::<E>(0)?;
         // String table offset
         self.buf
-            .write_u32::<E>(self.strings.base_offset.try_into().unwrap())?;
+            .write_u32::<E>(self.strings.base_offset.try_into()?)?;
         // String table size, includes final table padding
-        self.buf.write_u32::<E>(
-            (self.strings.size_bytes() + self.final_padding)
-                .try_into()
-                .unwrap(),
-        )?;
+        self.buf
+            .write_u32::<E>((self.strings.size_bytes() + self.final_padding).try_into()?)?;
         // Column definition table offset
-        self.buf.write_u16::<E>(
-            (self.names.base_offset + self.names.size_bytes())
-                .try_into()
-                .unwrap(),
-        )?;
+        self.buf
+            .write_u16::<E>((self.names.base_offset + self.names.size_bytes()).try_into()?)?;
         // Column count (includes flags)
         self.buf
-            .write_u16::<E>(columns.definitions.len().try_into().unwrap())?;
+            .write_u16::<E>(columns.definitions.len().try_into()?)?;
         // Padding
         self.buf.write_all(&[0u8; HEADER_SIZE - 36])?;
 
@@ -476,15 +465,13 @@ impl<'a, 'b, 't, W: Write, E: ByteOrder> RowWriter<'a, 'b, 't, W, E> {
             Value::SignedByte(b) => writer.write_i8(*b),
             Value::SignedShort(s) => writer.write_i16::<E>(*s),
             Value::SignedInt(i) => writer.write_i32::<E>(*i),
-            Value::String(s) => {
-                writer.write_u32::<E>(self.strings.get_offset(s).try_into().unwrap())
-            }
+            Value::String(s) => writer.write_u32::<E>(self.strings.get_offset(s).try_into()?),
             Value::Float(f) => {
                 let mut f = *f;
                 f.make_known(self.version);
                 writer.write_u32::<E>(f.to_bits())
             }
-            _ => panic!("unsupported value type for legacy bdats"),
+            t => return Err(BdatError::UnsupportedType(t.into(), self.version)),
         }?)
     }
 
@@ -497,7 +484,7 @@ impl<'a, 'b, 't, W: Write, E: ByteOrder> RowWriter<'a, 'b, 't, W, E> {
             ValueType::SignedByte => writer.write_i8(num as i8),
             ValueType::SignedShort => writer.write_i16::<E>(num as i16),
             ValueType::SignedInt => writer.write_i32::<E>(num as i32),
-            _ => panic!("invalid value type for flag"),
+            t => return Err(BdatError::InvalidFlagType(t)),
         }?)
     }
 }
@@ -570,9 +557,9 @@ impl ColumnInfo {
 
 impl ColumnDefinition {
     fn write<E: ByteOrder>(&self, mut writer: impl Write) -> Result<()> {
-        writer.write_u16::<E>(self.info_ptr.try_into().unwrap())?;
+        writer.write_u16::<E>(self.info_ptr.try_into()?)?;
         writer.write_u16::<E>(0)?; // linked node, to be written later if applicable
-        writer.write_u16::<E>(self.name_ptr.try_into().unwrap())?;
+        writer.write_u16::<E>(self.name_ptr.try_into()?)?;
         Ok(())
     }
 }
@@ -587,16 +574,16 @@ impl CellHeader {
             } => {
                 writer.write_u8(*shift)?;
                 writer.write_u32::<E>(*mask)?;
-                writer.write_u16::<E>((*parent).try_into().unwrap())?;
+                writer.write_u16::<E>((*parent).try_into()?)?;
             }
             CellHeader::Value { ty, offset } => {
                 writer.write_u8(*ty as u8)?;
-                writer.write_u16::<E>((*offset).try_into().unwrap())?;
+                writer.write_u16::<E>((*offset).try_into()?)?;
             }
             CellHeader::List { ty, offset, count } => {
                 writer.write_u8(*ty as u8)?;
-                writer.write_u16::<E>((*offset).try_into().unwrap())?;
-                writer.write_u16::<E>((*count).try_into().unwrap())?;
+                writer.write_u16::<E>((*offset).try_into()?)?;
+                writer.write_u16::<E>((*count).try_into()?)?;
             }
         }
         Ok(())

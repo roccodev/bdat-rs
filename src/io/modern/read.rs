@@ -11,6 +11,7 @@ use byteorder::{ByteOrder, ReadBytesExt};
 use crate::io::read::{BdatReader, BdatSlice};
 use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
+use crate::types::Utf;
 use crate::{
     error::{BdatError, Result, Scope},
     types::{Cell, ColumnDef, Label, Row, Table, Value, ValueType},
@@ -182,7 +183,8 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
         let mut data_offset = 0;
         for i in 0..columns {
             let col = &table_data.data[offset_col + i * LEN_COLUMN_DEF_V2..];
-            let ty = ValueType::try_from(col[0]).expect("unsupported value type");
+            let ty =
+                ValueType::try_from(col[0]).map_err(|_| BdatError::UnknownValueType(col[0]))?;
             let name_offset = (&col[1..]).read_u16::<E>()?;
             let label = table_data.get_label::<E>(name_offset as usize)?;
 
@@ -263,7 +265,7 @@ impl<'r> TableData<'r> {
     }
 
     /// Reads a null-terminated UTF-8 encoded string from the string table at the given offset
-    fn get_string(&self, offset: usize, limit: usize) -> Result<Cow<'r, str>> {
+    fn get_string(&self, offset: usize, limit: usize) -> Result<Utf<'r>> {
         let str_ptr = self.string_table_offset + offset;
         let len = self.data[str_ptr..]
             .split(|&b| b == 0)

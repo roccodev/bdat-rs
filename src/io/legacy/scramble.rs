@@ -1,7 +1,6 @@
 #[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
 pub enum ScrambleType {
     None,
-    Unknown,
     Scrambled(u16),
 }
 

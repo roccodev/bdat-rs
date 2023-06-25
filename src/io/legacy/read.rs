@@ -10,14 +10,13 @@ use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
 use crate::legacy::scramble::{unscramble, ScrambleType};
 use crate::legacy::COLUMN_DEFINITION_SIZE;
+use crate::types::Utf;
 use crate::{
     BdatError, BdatFile, BdatVersion, Cell, ColumnDef, FlagDef, Label, Row, Table, TableBuilder,
     Value, ValueType,
 };
 
 use super::{FileHeader, TableHeader};
-
-type Utf<'t> = Cow<'t, str>; // TODO: export to use in XC3 bdats
 
 pub struct LegacyBytes<'t, E> {
     data: Cow<'t, [u8]>,
@@ -195,7 +194,7 @@ impl TableHeader {
             scramble_type: match scramble_id {
                 0 => ScrambleType::None,
                 0x300 /* XCX */ | 2 => ScrambleType::Scrambled(scramble_key),
-                _ => ScrambleType::Unknown,
+                s => return Err(BdatError::UnknownScrambleType(s as u16)),
             },
             hashes: (offset_hashes, hash_slot_count * 2).into(),
             strings: (offset_strings, strings_len).into(),
@@ -238,15 +237,14 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         let table_len = header.get_table_len();
         let mut table_data: Vec<u8> = Vec::with_capacity(table_len);
         let bytes_read = reader
-            .take(table_len.try_into().unwrap())
+            .take(table_len.try_into()?)
             .read_to_end(&mut table_data)?;
         if bytes_read != table_len {
-            todo!("unexpected eof");
+            return Err(eof(()));
         }
 
         match header.scramble_type {
             ScrambleType::Scrambled(_) => header.unscramble_data(&mut table_data),
-            ScrambleType::Unknown => panic!("Unknown scramble type"),
             ScrambleType::None => {}
         };
 
@@ -264,12 +262,6 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         let header = TableHeader::read::<E>(&mut reader)?;
         reader.seek(SeekFrom::Start(original_pos))?;
 
-        match header.scramble_type {
-            ScrambleType::Scrambled(_) => {} /*header.unscramble_data(bytes)*/
-            ScrambleType::Unknown => panic!("Unknown scramble type"),
-            ScrambleType::None => {}
-        };
-
         Ok(Self {
             header,
             version,
@@ -279,10 +271,9 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
     }
 
     fn read(mut self) -> Result<Table<'t>> {
-        let name = self.read_name(0)?.to_string(); // TODO
-        self.data.seek(SeekFrom::Start(
-            self.header.offset_columns.try_into().unwrap(),
-        ))?;
+        let name = self.read_string(self.header.offset_names)?.to_string();
+        self.data
+            .seek(SeekFrom::Start(self.header.offset_columns.try_into()?))?;
         let mut seek = self.data.position();
         let (flags, columns) = (0..self.header.column_count)
             .map(|_| {
@@ -331,7 +322,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
             .collect::<Vec<_>>();
 
         self.data
-            .seek(SeekFrom::Start(self.header.offset_rows.try_into().unwrap()))?;
+            .seek(SeekFrom::Start(self.header.offset_rows.try_into()?))?;
 
         let mut rows = vec![];
         let row_count = self.header.row_count;
@@ -352,29 +343,19 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
 
     /// Reads a string from an absolute offset from the start of the table.
     fn read_string(&self, offset: usize) -> Result<Utf<'t>> {
-        // TODO: use results?
         let res = match self.data.get_ref() {
             // To get a Utf of lifetime 't, we need to extract the 't slice from Cow::Borrowed,
             // or keep using owned values
             Cow::Owned(owned) => {
-                let c_str =
-                    CStr::from_bytes_until_nul(&owned[offset..]).expect("no string terminator");
-                Ok(Cow::Owned(
-                    c_str.to_str().expect("invalid utf8").to_string(),
-                ))
+                let c_str = CStr::from_bytes_until_nul(&owned[offset..]).map_err(eof)?;
+                Ok(Cow::Owned(c_str.to_str()?.to_string()))
             }
             Cow::Borrowed(borrowed) => {
-                let c_str =
-                    CStr::from_bytes_until_nul(&borrowed[offset..]).expect("no string terminator");
-                Ok(Cow::Borrowed(c_str.to_str().expect("invalid utf8")))
+                let c_str = CStr::from_bytes_until_nul(&borrowed[offset..]).map_err(eof)?;
+                Ok(Cow::Borrowed(c_str.to_str()?))
             }
         };
         res
-    }
-
-    /// Reads a string relative to the names offset.
-    fn read_name(&self, offset: usize) -> Result<Utf<'t>> {
-        self.read_string(offset + self.header.offset_names)
     }
 }
 
@@ -415,7 +396,7 @@ impl<'a, 't, E: ByteOrder> ColumnReader<'a, 't, E> {
                 ColumnCell::Array(val, sz)
             }
             3 => ColumnCell::Flag(self.read_flag()?),
-            i => panic!("Unknown cell type {i}"), // TODO use error, also in XC3
+            i => return Err(BdatError::UnknownCellType(i)),
         })
     }
 
@@ -434,8 +415,9 @@ impl<'a, 't, E: ByteOrder> ColumnReader<'a, 't, E> {
 
     fn read_value(&self) -> Result<ValueData> {
         let mut info_table = &self.data.get_ref()[self.info_ptr..];
+        let value_type = info_table.read_u8()?;
         let value_type =
-            ValueType::try_from(info_table.read_u8()?).expect("unsupported value type"); // TODO use error, also in XC3
+            ValueType::try_from(value_type).map_err(|_| BdatError::UnknownValueType(value_type))?;
         let value_offset = info_table.read_u16::<E>()?;
         Ok(ValueData {
             value_type,
@@ -445,8 +427,9 @@ impl<'a, 't, E: ByteOrder> ColumnReader<'a, 't, E> {
 
     fn read_array(&self) -> Result<(ValueData, usize)> {
         let mut info_table = &self.data.get_ref()[self.info_ptr..];
+        let value_type = info_table.read_u8()?;
         let value_type =
-            ValueType::try_from(info_table.read_u8()?).expect("unsupported value type");
+            ValueType::try_from(value_type).map_err(|_| BdatError::UnknownValueType(value_type))?;
         let value_offset = info_table.read_u16::<E>()?;
         let array_size = info_table.read_u16::<E>()?;
         Ok((
@@ -528,7 +511,7 @@ impl<'a, 't, E: ByteOrder> RowReader<'a, 't, E> {
                 buf.read_u32::<E>()?,
                 self.table.version,
             )),
-            _ => panic!("not supported in legacy bdat"), // TODO: results
+            t => return Err(BdatError::UnsupportedType(t, self.table.version)),
         })
     }
 
@@ -611,4 +594,13 @@ impl<'b, E: ByteOrder> BdatFile<'b> for LegacyBytes<'b, E> {
     fn table_count(&self) -> usize {
         self.header.table_count
     }
+}
+
+#[inline]
+fn eof<T>(_: T) -> BdatError {
+    std::io::Error::new(
+        std::io::ErrorKind::UnexpectedEof,
+        "failed to fill whole buffer",
+    )
+    .into()
 }

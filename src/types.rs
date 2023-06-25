@@ -147,14 +147,14 @@ pub enum Value<'b> {
     SignedByte(i8),
     SignedShort(i16),
     SignedInt(i32),
-    String(Cow<'b, str>),
+    String(Utf<'b>),
     Float(BdatReal),
     /// A hash referencing a row in the same or some other table
     HashRef(u32),
     Percent(u8),
     /// It points to a (generally empty) string in the string table,
     /// mostly used for `DebugName` fields.
-    DebugString(Cow<'b, str>),
+    DebugString(Utf<'b>),
     /// [`BdatVersion::Modern`] unknown type (0xc)
     Unknown2(u8),
     /// [`BdatVersion::Modern`] unknown type (0xd)
@@ -162,6 +162,9 @@ pub enum Value<'b> {
     /// `Name` and `Caption` fields.
     Unknown3(u16),
 }
+
+/// An optionally-borrowed clone-on-write UTF-8 string.
+pub type Utf<'t> = Cow<'t, str>;
 
 /// A name for a BDAT element (table, column, ID, etc.)
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
@@ -196,7 +199,7 @@ impl Label {
     ///
     /// If `force_hash` is `true`, the label will be re-hashed
     /// if it is either [`Label::String`] or [`Label::Unhashed`].
-    pub fn parse<'a, S: Into<Cow<'a, str>>>(text: S, force_hash: bool) -> Self {
+    pub fn parse<'a, S: Into<Utf<'a>>>(text: S, force_hash: bool) -> Self {
         let text = text.into();
         if text.len() == 10 && text.as_bytes()[0] == b'<' {
             if let Ok(n) = u32::from_str_radix(&text[1..=8], 16) {
@@ -248,7 +251,7 @@ impl Label {
 
     /// An alternative to [`ToString::to_string`] that returns a reference to the label if it's
     /// already a string.
-    pub fn to_string_convert(&self) -> Cow<str> {
+    pub fn to_string_convert(&self) -> Utf {
         match self {
             Self::String(s) | Self::Unhashed(s) => Cow::Borrowed(s.as_str()),
             _ => Cow::Owned(self.to_string()),

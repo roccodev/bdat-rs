@@ -9,6 +9,7 @@ use crate::error::Error;
 use bdat::{
     io::BdatVersion,
     types::{Label, Table},
+    Utf,
 };
 use serde::{Deserialize, Serialize};
 
@@ -27,7 +28,7 @@ pub struct FileSchema {
 }
 
 pub trait AsFileName {
-    fn as_file_name(&self) -> Cow<str>;
+    fn as_file_name(&self) -> Utf;
 }
 
 impl FileSchema {
@@ -101,7 +102,7 @@ impl FileSchema {
 }
 
 impl AsFileName for Label {
-    fn as_file_name(&self) -> Cow<str> {
+    fn as_file_name(&self) -> Utf {
         match self {
             // {:+} displays hashed names without brackets (<>)
             l @ Label::Hash(_) => Cow::Owned(format!("{:+}", l)),

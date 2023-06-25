@@ -1,3 +1,4 @@
+use crate::{BdatVersion, ValueType};
 use std::num::TryFromIntError;
 use std::str::Utf8Error;
 use thiserror::Error;
@@ -14,6 +15,16 @@ pub enum BdatError {
     MalformedBdat(Scope),
     #[error(transparent)]
     InvalidLength(#[from] TryFromIntError),
+    #[error("Unknown cell type: {0}")]
+    UnknownCellType(u8),
+    #[error("Unknown value type: {0}")]
+    UnknownValueType(u8),
+    #[error("Unsupported type: BDAT version {0:?} does not support value type {1:?}")]
+    UnsupportedType(ValueType, BdatVersion),
+    #[error("Invalid flag type: value type {0:?} does not support flags")]
+    InvalidFlagType(ValueType),
+    #[error("Unknown scramble type: {0}")]
+    UnknownScrambleType(u16),
 }
 
 #[derive(Debug)]
