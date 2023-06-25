@@ -1,29 +1,9 @@
-// Flag notes
-//
-// BDAT column definition
-// - [u32] Info offset
-// - [u16] Name
-// ------> INFO ------>
-// - [u8] Cell type (Flag, Value, Array)
-// --------> extra INFO for Flag ------->
-// - [u8] Flag Index
-// - [u32] Flag Mask
-// - [u32] Parent Offset (pointer to Column definition)
-// -------> extra INFO for Value ------->
-// - [u8] Value Type
-// - [u16] Value Offset
-// -------> extra INFO for Array ------->
-// - [u8] Value Type
-// - [u16] Value Offset
-// - [u16] Array Size
-
 use std::borrow::Cow;
 use std::ffi::CStr;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::marker::PhantomData;
-use std::ops::{Deref, Range, RangeFrom};
 
-use byteorder::{ByteOrder, NativeEndian, ReadBytesExt};
+use byteorder::{ByteOrder, ReadBytesExt};
 
 use crate::error::{Result, Scope};
 use crate::io::BDAT_MAGIC;
@@ -374,10 +354,6 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
             .set_columns(columns)
             .set_rows(rows)
             .build())
-    }
-
-    fn as_slice(&self, range: RangeFrom<usize>) -> &[u8] {
-        &self.data.get_ref()[range]
     }
 
     /// Reads a string from an absolute offset from the start of the table.

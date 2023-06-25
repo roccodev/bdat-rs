@@ -1,6 +1,5 @@
 use std::borrow::Borrow;
 use std::collections::HashMap;
-use std::hash::Hasher;
 use std::io::{Cursor, Seek, SeekFrom, Write};
 use std::marker::PhantomData;
 use std::rc::Rc;
@@ -12,7 +11,7 @@ use crate::io::BDAT_MAGIC;
 use crate::legacy::hash::HashTable;
 use crate::legacy::util::{pad_2, pad_32, pad_4, pad_64};
 use crate::legacy::{COLUMN_DEFINITION_SIZE, HEADER_SIZE};
-use crate::{BdatVersion, Cell, ColumnDef, FlagDef, Label, Row, Table, Value, ValueType};
+use crate::{BdatVersion, Cell, ColumnDef, FlagDef, Row, Table, Value, ValueType};
 
 pub struct FileWriter<W, E> {
     writer: W,

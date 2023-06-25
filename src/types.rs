@@ -731,7 +731,16 @@ impl<'b> Display for Cell<'b> {
                 }
                 write!(f, "]")
             }
-            Cell::Flags(b) => todo!(), /*b.fmt(f) */
+            Cell::Flags(nums) => {
+                write!(f, "{{")?;
+                for (i, value) in nums.iter().enumerate() {
+                    if i != 0 {
+                        write!(f, ", ")?;
+                    }
+                    value.fmt(f)?;
+                }
+                write!(f, "}}")
+            }
         }
     }
 }

@@ -14,9 +14,8 @@ use indicatif::ProgressBar;
 use itertools::Itertools;
 use rayon::{iter::Either, prelude::*};
 
-use bdat::{BdatFile, Cell, Label, RowRef, SwitchEndian, Table};
+use bdat::{BdatFile, Cell, Label, RowRef, Table};
 
-use crate::util::BdatGame;
 use crate::{hash::MurmurHashSet, InputData};
 
 #[derive(Args)]

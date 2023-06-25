@@ -7,9 +7,8 @@ use std::{
 
 use anyhow::{Context, Result};
 use bdat::{
-    io::BdatVersion,
     types::{Label, Table},
-    BdatFile, SwitchEndian,
+    BdatFile,
 };
 use clap::Args;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
