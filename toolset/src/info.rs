@@ -65,6 +65,15 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
                         col.value_type(),
                         extra
                     );
+
+                    for flag in col.flags() {
+                        println!(
+                            "      + [(v & 0x{:X}) >> {}] {}: Flag",
+                            flag.mask(),
+                            flag.shift_amount(),
+                            format_unhashed_label(flag.label(), &hash_table),
+                        );
+                    }
                 }
             }
         }

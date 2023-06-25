@@ -511,6 +511,23 @@ impl ColumnDef {
     }
 }
 
+impl FlagDef {
+    /// Returns this flag's name.
+    pub fn label(&self) -> &Label {
+        &self.label
+    }
+
+    /// Returns this flag's bit mask.
+    pub fn mask(&self) -> u32 {
+        self.mask
+    }
+
+    /// Returns this flag's right shift amount.
+    pub fn shift_amount(&self) -> usize {
+        self.flag_index
+    }
+}
+
 impl ColumnBuilder {
     pub fn new(value_type: ValueType, label: Label) -> Self {
         Self(ColumnDef::new(value_type, label))
