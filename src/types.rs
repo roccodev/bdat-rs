@@ -70,8 +70,9 @@ pub struct Row<'b> {
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct FlagDef {
-    /// The flag's identifier
-    pub(crate) label: Label,
+    /// The flag's identifier. Because flags are only supported in legacy BDATs, this is
+    /// equivalent to a [`Label::String`].
+    pub(crate) label: String,
     /// The bits this flag is setting on the parent
     pub(crate) mask: u32,
     /// The index in the parent cell's flag list
@@ -513,7 +514,7 @@ impl ColumnDef {
 
 impl FlagDef {
     /// Returns this flag's name.
-    pub fn label(&self) -> &Label {
+    pub fn label(&self) -> &str {
         &self.label
     }
 

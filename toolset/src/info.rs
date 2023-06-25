@@ -71,7 +71,7 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
                             "      + [(v & 0x{:X}) >> {}] {}: Flag",
                             flag.mask(),
                             flag.shift_amount(),
-                            format_unhashed_label(flag.label(), &hash_table),
+                            flag.label()
                         );
                     }
                 }

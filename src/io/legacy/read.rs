@@ -346,7 +346,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
                         .map(|f| {
                             let ColumnCell::Flag(flag) = &f.cell else { unreachable!() };
                             FlagDef {
-                                label: Label::String(f.name.to_string()),
+                                label: f.name.to_string(),
                                 flag_index: flag.index,
                                 mask: flag.mask,
                             }

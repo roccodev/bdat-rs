@@ -60,12 +60,9 @@ impl<'a, 'b, 't> Serialize for SerializeCell<'a, 'b, 't> {
                 let keys = self.column.flags();
                 let mut map = serializer.serialize_map(Some(flag_values.len()))?;
                 for (i, val) in flag_values.iter().enumerate() {
-                    let name = keys
-                        .get(i)
-                        .map(|f| f.label.to_string_convert())
-                        .ok_or_else(|| {
-                            ser::Error::custom(format!("no name for flag at index {i}"))
-                        })?;
+                    let name = keys.get(i).map(|f| &f.label).ok_or_else(|| {
+                        ser::Error::custom(format!("no name for flag at index {i}"))
+                    })?;
                     map.serialize_entry(&name, val)?;
                 }
                 map.end()
@@ -324,7 +321,7 @@ impl<'a, 'de> DeserializeSeed<'de> for CellSeed<'a> {
                     .0
                     .flags
                     .iter()
-                    .filter_map(|f| map.get(f.label.to_string_convert().as_ref()))
+                    .filter_map(|f| map.get(&f.label))
                     .copied()
                     .collect();
                 Ok(Cell::Flags(values))
@@ -504,17 +501,17 @@ mod tests {
             offset: 0, // TODO better way of initializing the entire thing
             flags: vec![
                 FlagDef {
-                    label: Label::parse("Flag1", false),
+                    label: "Flag1".to_string(),
                     mask: 1 << 2,
                     flag_index: 0,
                 },
                 FlagDef {
-                    label: Label::parse("Flag2", false),
+                    label: "Flag2".to_string(),
                     mask: 1 << 3,
                     flag_index: 1,
                 },
                 FlagDef {
-                    label: Label::parse("Flag3", false),
+                    label: "Flag3".to_string(),
                     mask: 1 << 4,
                     flag_index: 2,
                 },

@@ -71,7 +71,7 @@ struct ColumnDefinition {
     info_ptr: usize,
     parent: usize,
     name_ptr: usize,
-    name: Label,
+    name: String,
 }
 
 struct ColumnTables {
@@ -257,7 +257,7 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
             self.names.get_offset(&col.label.to_string_convert());
         }
         for flag in self.table.columns().flat_map(|c| c.flags().iter()) {
-            self.names.get_offset(&flag.label.to_string_convert());
+            self.names.get_offset(&flag.label);
         }
     }
 
@@ -352,12 +352,12 @@ impl ColumnTables {
 
         let definitions = cols
             .iter()
-            .map(|c| (None, &c.label))
-            .chain(
-                cols.iter()
-                    .enumerate()
-                    .flat_map(|(i, c)| c.flags().iter().map(move |f| (Some(i), &f.label))),
-            )
+            .map(|c| (None, c.label.to_string_convert().to_string()))
+            .chain(cols.iter().enumerate().flat_map(|(i, c)| {
+                c.flags()
+                    .iter()
+                    .map(move |f| (Some(i), f.label.to_string()))
+            }))
             .enumerate()
             .map(|(i, (cell_idx, label))| ColumnDefinition {
                 info_ptr: info_offsets[i],
@@ -367,8 +367,8 @@ impl ColumnTables {
                     .map(|i| defs_offset + i * COLUMN_DEFINITION_SIZE)
                     .unwrap_or_default(),
                 // Initially, the name table base offset is just before the info table
-                name_ptr: name_table.get_offset(&label.to_string_convert()) + info_table_size,
-                name: label.clone(),
+                name_ptr: name_table.get_offset(&label) + info_table_size,
+                name: label,
             })
             .collect::<Vec<_>>();
 
@@ -382,7 +382,7 @@ impl ColumnTables {
         for (i, def) in definitions.iter().enumerate() {
             // TODO what happens with duplicate columns?
             hash_table.insert_unique(
-                &def.name.to_string_convert(),
+                &def.name,
                 (defs_offset + i * COLUMN_DEFINITION_SIZE)
                     .try_into()
                     .unwrap(),
