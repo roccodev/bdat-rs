@@ -1,6 +1,6 @@
 //! Tests the hash table found in legacy BDAT files.
 
-use bdat::legacy::LegacyHashTable;
+use bdat::legacy::{LegacyHashTable, LegacyWriteOptions};
 use bdat::{
     BdatVersion, ColumnBuilder, ColumnDef, FlagDef, SwitchEndian, Table, TableBuilder, ValueType,
     WiiEndian,
@@ -11,12 +11,16 @@ use std::ffi::CStr;
 
 #[test]
 fn hash_table_legacy() {
-    test_table(&create_table(), BdatVersion::Legacy);
+    for slots in [1, 5, 10, 32, 61, 128] {
+        test_table(&create_table(), BdatVersion::Legacy, slots);
+    }
 }
 
 #[test]
 fn hash_table_xcx() {
-    test_table(&create_table(), BdatVersion::LegacyX);
+    for slots in [1, 5, 10, 32, 61, 128] {
+        test_table(&create_table(), BdatVersion::LegacyX, slots);
+    }
 }
 
 fn create_table<'b>() -> Table<'b> {
@@ -46,10 +50,20 @@ fn create_table<'b>() -> Table<'b> {
         .build()
 }
 
-fn test_table(table: &Table, version: BdatVersion) {
+fn test_table(table: &Table, version: BdatVersion, slots: usize) {
     let written = match version {
-        BdatVersion::Legacy => bdat::legacy::to_vec::<SwitchEndian>([table], version).unwrap(),
-        BdatVersion::LegacyX => bdat::legacy::to_vec::<WiiEndian>([table], version).unwrap(),
+        BdatVersion::Legacy => bdat::legacy::to_vec_options::<SwitchEndian>(
+            [table],
+            version,
+            LegacyWriteOptions::new().hash_slots(slots),
+        )
+        .unwrap(),
+        BdatVersion::LegacyX => bdat::legacy::to_vec_options::<WiiEndian>(
+            [table],
+            version,
+            LegacyWriteOptions::new().hash_slots(slots),
+        )
+        .unwrap(),
         _ => unreachable!(),
     };
 
@@ -67,8 +81,9 @@ fn test_table(table: &Table, version: BdatVersion) {
     {
         assert!(
             match version {
-                BdatVersion::Legacy => find_col_def::<SwitchEndian>(table_bytes, &col),
-                BdatVersion::LegacyX => find_col_def::<WiiEndian>(table_bytes, &col),
+                BdatVersion::Legacy =>
+                    find_col_def::<SwitchEndian>(table_bytes, &col, slots as u32),
+                BdatVersion::LegacyX => find_col_def::<WiiEndian>(table_bytes, &col, slots as u32),
                 _ => unreachable!(),
             },
             "column {col} not found"
@@ -77,8 +92,8 @@ fn test_table(table: &Table, version: BdatVersion) {
 }
 
 // Based on Bdat::getMember (XC2/DE)
-fn find_col_def<E: ByteOrder>(table: &[u8], name: &str) -> bool {
-    let hash = LegacyHashTable::new(61).hash(name) as usize;
+fn find_col_def<E: ByteOrder>(table: &[u8], name: &str, slots: u32) -> bool {
+    let hash = LegacyHashTable::new(slots).hash(name) as usize;
     let hash_table = &table[E::read_u16(&table[10..]) as usize..];
 
     let mut visited = HashSet::new();

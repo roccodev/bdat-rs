@@ -22,6 +22,11 @@ const COLUMN_DEFINITION_SIZE: usize = 6;
 
 pub use hash::HashTable as LegacyHashTable;
 
+#[derive(Copy, Clone)]
+pub struct LegacyWriteOptions {
+    pub(crate) hash_slots: usize,
+}
+
 #[derive(Debug)]
 pub struct FileHeader {
     pub table_count: usize,
@@ -170,7 +175,35 @@ pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
     tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
     version: BdatVersion,
 ) -> Result<()> {
-    let mut writer = FileWriter::<W, E>::new(writer, version);
+    to_writer_options::<W, E>(writer, tables, version, LegacyWriteOptions::new())
+}
+
+/// Writes legacy BDAT tables to a [`std::io::Write`] implementation
+/// that also implements [`std::io::Seek`].
+///
+/// This function also allows customization of a few write options, using
+/// [`LegacyWriteOptions`].
+///
+/// ```
+/// use std::fs::File;
+/// use bdat::{BdatResult, Table, SwitchEndian, BdatVersion};
+/// use bdat::legacy::LegacyWriteOptions;
+///
+/// fn write_file(name: &str, tables: &[Table]) -> BdatResult<()> {
+///     let file = File::create(name)?;
+///     // The legacy writer supports BdatVersion::Legacy and BdatVersion::LegacyX
+///     bdat::legacy::to_writer_options::<_, SwitchEndian>(file, tables, BdatVersion::Legacy,
+///             LegacyWriteOptions::new().hash_slots(10))?;
+///     Ok(())
+/// }
+/// ```
+pub fn to_writer_options<'t, W: Write + Seek, E: ByteOrder>(
+    writer: W,
+    tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
+    version: BdatVersion,
+    opts: LegacyWriteOptions,
+) -> Result<()> {
+    let mut writer = FileWriter::<W, E>::new(writer, version, opts);
     writer.write_file(tables)
 }
 
@@ -190,7 +223,62 @@ pub fn to_vec<'t, E: ByteOrder>(
     tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
     version: BdatVersion,
 ) -> Result<Vec<u8>> {
+    to_vec_options::<E>(tables, version, LegacyWriteOptions::new())
+}
+
+/// Writes legacy BDAT tables to a `Vec<u8>`.
+///
+/// This function also allows customization of a few write options, using
+/// [`LegacyWriteOptions`].
+///
+/// ```
+/// use std::fs::File;
+/// use bdat::{BdatResult, Table, SwitchEndian, BdatVersion};
+/// use bdat::legacy::LegacyWriteOptions;
+///
+/// fn write_vec(tables: &[Table]) -> BdatResult<()> {
+///     // The legacy writer supports BdatVersion::Legacy and BdatVersion::LegacyX
+///     let vec = bdat::legacy::to_vec_options::<SwitchEndian>(tables, BdatVersion::Legacy,
+///             LegacyWriteOptions::new().hash_slots(10))?;
+///     Ok(())
+/// }
+/// ```
+pub fn to_vec_options<'t, E: ByteOrder>(
+    tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
+    version: BdatVersion,
+    opts: LegacyWriteOptions,
+) -> Result<Vec<u8>> {
     let mut vec = Vec::new();
-    to_writer::<_, E>(Cursor::new(&mut vec), tables, version)?;
+    to_writer_options::<_, E>(Cursor::new(&mut vec), tables, version, opts)?;
     Ok(vec)
+}
+
+impl LegacyWriteOptions {
+    pub const fn new() -> Self {
+        Self {
+            hash_slots: 61, // used in all tables in X/2/DE
+        }
+    }
+
+    /// Sets how big the generated hash table will be.
+    ///
+    /// A rule of thumb is that more slots translates to fewer collisions, however, due to the
+    /// way the hashing algorithm works, some names might always hash to the same value, no
+    /// matter the hash table size.
+    ///
+    /// The default value is 61.
+    ///
+    /// ## Panics
+    /// Panics if `slots == 0`.
+    pub fn hash_slots(mut self, slots: usize) -> Self {
+        assert_ne!(0, slots);
+        self.hash_slots = slots;
+        self
+    }
+}
+
+impl Default for LegacyWriteOptions {
+    fn default() -> Self {
+        Self::new()
+    }
 }

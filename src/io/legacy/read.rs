@@ -180,7 +180,7 @@ impl TableHeader {
         let offset_names = reader.read_u16::<E>()? as usize;
         let row_len = reader.read_u16::<E>()? as usize;
         let offset_hashes = reader.read_u16::<E>()? as usize;
-        let hashes_len = reader.read_u16::<E>()? as usize;
+        let hash_slot_count = reader.read_u16::<E>()? as usize;
         let offset_rows = reader.read_u16::<E>()? as usize;
         let row_count = reader.read_u16::<E>()? as usize;
         let base_id = reader.read_u16::<E>()? as usize;
@@ -197,7 +197,7 @@ impl TableHeader {
                 0x300 /* XCX */ | 2 => ScrambleType::Scrambled(scramble_key),
                 _ => ScrambleType::Unknown,
             },
-            hashes: (offset_hashes, hashes_len).into(),
+            hashes: (offset_hashes, hash_slot_count * 2).into(),
             strings: (offset_strings, strings_len).into(),
             offset_columns,
             offset_names,
@@ -223,15 +223,9 @@ impl TableHeader {
     }
 
     fn get_table_len(&self) -> usize {
-        [
-            self.hashes.max_offset(),
-            self.strings.max_offset(),
-            self.offset_rows + self.row_len * self.row_count,
-            self.offset_columns + COLUMN_DEFINITION_SIZE * self.column_count,
-        ]
-        .into_iter()
-        .max()
-        .unwrap()
+        // All legacy games expect the table length to be determined by the last byte
+        // of the string table. (see Bdat::calcCheckSum)
+        self.strings.max_offset()
     }
 }
 

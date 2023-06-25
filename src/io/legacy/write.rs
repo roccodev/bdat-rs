@@ -10,12 +10,13 @@ use crate::error::Result;
 use crate::io::BDAT_MAGIC;
 use crate::legacy::hash::HashTable;
 use crate::legacy::util::{pad_2, pad_32, pad_4, pad_64};
-use crate::legacy::{COLUMN_DEFINITION_SIZE, HEADER_SIZE};
+use crate::legacy::{LegacyWriteOptions, COLUMN_DEFINITION_SIZE, HEADER_SIZE};
 use crate::{BdatVersion, Cell, ColumnDef, FlagDef, Row, Table, Value, ValueType};
 
 pub struct FileWriter<W, E> {
     writer: W,
     version: BdatVersion,
+    opts: LegacyWriteOptions,
     _endianness: PhantomData<E>,
 }
 
@@ -23,6 +24,7 @@ struct TableWriter<'a, 't, E, W> {
     table: &'a Table<'t>,
     buf: W,
     version: BdatVersion,
+    opts: LegacyWriteOptions,
     names: StringTable,
     strings: StringTable,
     columns: Option<ColumnTables>,
@@ -89,10 +91,11 @@ struct StringTable {
 }
 
 impl<W: Write + Seek, E: ByteOrder> FileWriter<W, E> {
-    pub fn new(writer: W, version: BdatVersion) -> Self {
+    pub fn new(writer: W, version: BdatVersion, opts: LegacyWriteOptions) -> Self {
         Self {
             writer,
             version,
+            opts,
             _endianness: PhantomData,
         }
     }
@@ -107,7 +110,7 @@ impl<W: Write + Seek, E: ByteOrder> FileWriter<W, E> {
                 let mut data = vec![];
                 let cursor = Cursor::new(&mut data);
 
-                TableWriter::<E, _>::new(table.borrow(), cursor, self.version)
+                TableWriter::<E, _>::new(table.borrow(), cursor, self.version, self.opts)
                     .write()
                     .map(|_| data)
             })
@@ -146,11 +149,17 @@ impl<W: Write + Seek, E: ByteOrder> FileWriter<W, E> {
 }
 
 impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
-    fn new(table: &'a Table<'t>, writer: W, version: BdatVersion) -> Self {
+    fn new(
+        table: &'a Table<'t>,
+        writer: W,
+        version: BdatVersion,
+        opts: LegacyWriteOptions,
+    ) -> Self {
         Self {
             table,
             buf: writer,
             version,
+            opts,
             names: StringTable::new(HEADER_SIZE),
             strings: StringTable::new(0),
             columns: None,
@@ -235,7 +244,11 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
     fn make_layout(&mut self) -> Result<()> {
         self.init_names();
 
-        let columns = ColumnTables::from_columns(&self.table.columns, &mut self.names);
+        let columns = ColumnTables::from_columns(
+            &self.table.columns,
+            &mut self.names,
+            self.opts.hash_slots.try_into().unwrap(),
+        );
 
         self.names.base_offset += columns.info_len;
         self.columns = Some(columns);
@@ -276,8 +289,9 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         // Hash table offset
         self.buf
             .write_u16::<E>(self.hash_table_offset.try_into().unwrap())?;
-        // Hash table modulo factor - TODO
-        self.buf.write_u16::<E>(61)?;
+        // Hash table modulo factor
+        self.buf
+            .write_u16::<E>(self.opts.hash_slots.try_into().unwrap())?;
         // Row table offset
         self.buf
             .write_u16::<E>(self.row_data_offset.try_into().unwrap())?;
@@ -324,7 +338,7 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
 }
 
 impl ColumnTables {
-    fn from_columns(cols: &[ColumnDef], name_table: &mut StringTable) -> Self {
+    fn from_columns(cols: &[ColumnDef], name_table: &mut StringTable, hash_slots: u32) -> Self {
         let (row_len, mut infos) = cols
             .iter()
             .fold((0, Vec::new()), |(offset, mut cols), col| {
@@ -377,7 +391,7 @@ impl ColumnTables {
             }
         }
 
-        let mut hash_table = HashTable::new(61); // TODO
+        let mut hash_table = HashTable::new(hash_slots);
         for (i, def) in definitions.iter().enumerate() {
             // TODO what happens with duplicate columns?
             hash_table.insert_unique(
