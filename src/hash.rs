@@ -48,6 +48,8 @@ pub const fn murmur3_with_seed(data: &[u8], seed: u32) -> u32 {
     let mut i = 0;
     let iterator = slice_size / 4;
     while i < iterator {
+        // Relax the bounds-checker
+        assert!(data.len() > i * 4 + 3);
         let data = [
             data[i * 4],
             data[i * 4 + 1],
@@ -113,6 +115,7 @@ mod tests {
 
     #[test]
     fn test_murmur3() {
+        assert_eq!(murmur3_str("abc"), 0xB3DD93FA);
         assert_eq!(murmur3_str("FLD_EnemyData"), 0x2521C473);
         assert_eq!(murmur3_str("EVT_listEv"), 0x23EE284B);
     }
