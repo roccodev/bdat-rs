@@ -88,7 +88,7 @@ impl From<(usize, usize)> for OffsetAndLen {
 ///
 /// fn read_file(name: &str) -> BdatResult<()> {
 ///     let file = File::open(name)?;
-///     let tables = bdat::legacy::from_reader::<_, SwitchEndian>(file, BdatVersion::Legacy)?.get_tables();
+///     let tables = bdat::legacy::from_reader::<_, SwitchEndian>(file, BdatVersion::LegacySwitch)?.get_tables();
 ///     Ok(())
 /// }
 /// ```
@@ -117,7 +117,7 @@ pub fn from_reader<R: Read + Seek, E: ByteOrder>(
 /// use bdat::{BdatFile, BdatResult, BdatVersion, SwitchEndian};
 ///
 /// fn read(data: &mut [u8]) -> BdatResult<()> {
-///     let tables = bdat::legacy::from_bytes::<SwitchEndian>(data, BdatVersion::Legacy)?.get_tables();
+///     let tables = bdat::legacy::from_bytes::<SwitchEndian>(data, BdatVersion::LegacySwitch)?.get_tables();
 ///     Ok(())
 /// }
 /// ```
@@ -145,7 +145,7 @@ pub fn from_bytes<E: ByteOrder>(
 /// use bdat::{BdatFile, BdatResult, BdatVersion, SwitchEndian};
 ///
 /// fn read(data: &mut [u8]) -> BdatResult<()> {
-///     let tables = bdat::legacy::from_bytes::<SwitchEndian>(data, BdatVersion::Legacy)?.get_tables();
+///     let tables = bdat::legacy::from_bytes::<SwitchEndian>(data, BdatVersion::LegacySwitch)?.get_tables();
 ///     Ok(())
 /// }
 /// ```
@@ -166,7 +166,7 @@ pub fn from_bytes_copy<E: ByteOrder>(
 /// fn write_file(name: &str, tables: &[Table]) -> BdatResult<()> {
 ///     let file = File::create(name)?;
 ///     // The legacy writer supports BdatVersion::Legacy and BdatVersion::LegacyX
-///     bdat::legacy::to_writer::<_, SwitchEndian>(file, tables, BdatVersion::Legacy)?;
+///     bdat::legacy::to_writer::<_, SwitchEndian>(file, tables, BdatVersion::LegacySwitch)?;
 ///     Ok(())
 /// }
 /// ```
@@ -192,7 +192,7 @@ pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
 /// fn write_file(name: &str, tables: &[Table]) -> BdatResult<()> {
 ///     let file = File::create(name)?;
 ///     // The legacy writer supports BdatVersion::Legacy and BdatVersion::LegacyX
-///     bdat::legacy::to_writer_options::<_, SwitchEndian>(file, tables, BdatVersion::Legacy,
+///     bdat::legacy::to_writer_options::<_, SwitchEndian>(file, tables, BdatVersion::LegacySwitch,
 ///             LegacyWriteOptions::new().hash_slots(10))?;
 ///     Ok(())
 /// }
@@ -215,7 +215,7 @@ pub fn to_writer_options<'t, W: Write + Seek, E: ByteOrder>(
 ///
 /// fn write_vec(tables: &[Table]) -> BdatResult<()> {
 ///     // The legacy writer supports BdatVersion::Legacy and BdatVersion::LegacyX
-///     let vec = bdat::legacy::to_vec::<SwitchEndian>(tables, BdatVersion::Legacy)?;
+///     let vec = bdat::legacy::to_vec::<SwitchEndian>(tables, BdatVersion::LegacySwitch)?;
 ///     Ok(())
 /// }
 /// ```
@@ -238,7 +238,7 @@ pub fn to_vec<'t, E: ByteOrder>(
 ///
 /// fn write_vec(tables: &[Table]) -> BdatResult<()> {
 ///     // The legacy writer supports BdatVersion::Legacy and BdatVersion::LegacyX
-///     let vec = bdat::legacy::to_vec_options::<SwitchEndian>(tables, BdatVersion::Legacy,
+///     let vec = bdat::legacy::to_vec_options::<SwitchEndian>(tables, BdatVersion::LegacySwitch,
 ///             LegacyWriteOptions::new().hash_slots(10))?;
 ///     Ok(())
 /// }

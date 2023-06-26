@@ -32,7 +32,7 @@ pub enum BdatGame {
 impl BdatGame {
     pub fn version_default(version: BdatVersion) -> Self {
         match version {
-            BdatVersion::Legacy => Self::Legacy,
+            BdatVersion::LegacySwitch => Self::Legacy,
             BdatVersion::LegacyX => Self::Xcx,
             BdatVersion::Modern => Self::Modern,
         }
@@ -40,9 +40,11 @@ impl BdatGame {
 
     pub fn to_writer<W: Write + Seek>(self, writer: W, tables: &[Table]) -> BdatResult<()> {
         match self {
-            Self::Legacy => {
-                bdat::legacy::to_writer::<_, SwitchEndian>(writer, tables, BdatVersion::Legacy)
-            }
+            Self::Legacy => bdat::legacy::to_writer::<_, SwitchEndian>(
+                writer,
+                tables,
+                BdatVersion::LegacySwitch,
+            ),
             Self::Xcx => {
                 bdat::legacy::to_writer::<_, WiiEndian>(writer, tables, BdatVersion::LegacyX)
             }
@@ -52,7 +54,7 @@ impl BdatGame {
 
     pub fn to_vec<W: Write + Seek>(self, tables: &[Table]) -> BdatResult<Vec<u8>> {
         match self {
-            Self::Legacy => bdat::legacy::to_vec::<SwitchEndian>(tables, BdatVersion::Legacy),
+            Self::Legacy => bdat::legacy::to_vec::<SwitchEndian>(tables, BdatVersion::LegacySwitch),
             Self::Xcx => bdat::legacy::to_vec::<WiiEndian>(tables, BdatVersion::LegacyX),
             Self::Modern => bdat::modern::to_vec::<SwitchEndian>(tables),
         }
@@ -130,7 +132,7 @@ impl ValueEnum for BdatGame {
 impl From<BdatGame> for BdatVersion {
     fn from(value: BdatGame) -> Self {
         match value {
-            BdatGame::Legacy => BdatVersion::Legacy,
+            BdatGame::Legacy => BdatVersion::LegacySwitch,
             BdatGame::Xcx => BdatVersion::LegacyX,
             BdatGame::Modern => BdatVersion::Modern,
         }

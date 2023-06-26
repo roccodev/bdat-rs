@@ -7,17 +7,18 @@ static TEST_FILE_1: &[u8] = include_bytes!("res/test_legacy_1.bdat");
 #[test]
 fn version_detect() {
     assert_eq!(
-        BdatVersion::Legacy,
+        BdatVersion::LegacySwitch,
         bdat::detect_bytes_version(TEST_FILE_1).unwrap()
     );
 }
 
 #[test]
 fn basic_read() {
-    let tables = bdat::legacy::from_bytes_copy::<FileEndian>(TEST_FILE_1, BdatVersion::Legacy)
-        .unwrap()
-        .get_tables()
-        .unwrap();
+    let tables =
+        bdat::legacy::from_bytes_copy::<FileEndian>(TEST_FILE_1, BdatVersion::LegacySwitch)
+            .unwrap()
+            .get_tables()
+            .unwrap();
     assert_eq!(1, tables.len());
 
     let table = &tables[0];
@@ -94,14 +95,17 @@ fn basic_read() {
 
 #[test]
 fn write_back() {
-    let tables = bdat::legacy::from_bytes_copy::<FileEndian>(TEST_FILE_1, BdatVersion::Legacy)
-        .unwrap()
-        .get_tables()
-        .unwrap();
-    let mut new_out = bdat::legacy::to_vec::<FileEndian>(&tables, BdatVersion::Legacy).unwrap();
-    let new_tables = bdat::legacy::from_bytes::<FileEndian>(&mut new_out, BdatVersion::Legacy)
-        .unwrap()
-        .get_tables()
-        .unwrap();
+    let tables =
+        bdat::legacy::from_bytes_copy::<FileEndian>(TEST_FILE_1, BdatVersion::LegacySwitch)
+            .unwrap()
+            .get_tables()
+            .unwrap();
+    let mut new_out =
+        bdat::legacy::to_vec::<FileEndian>(&tables, BdatVersion::LegacySwitch).unwrap();
+    let new_tables =
+        bdat::legacy::from_bytes::<FileEndian>(&mut new_out, BdatVersion::LegacySwitch)
+            .unwrap()
+            .get_tables()
+            .unwrap();
     assert_eq!(tables, new_tables);
 }

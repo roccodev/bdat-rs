@@ -13,6 +13,10 @@ pub enum Error {
     MissingRequiredArgument(&'static str),
     #[error("Unsupported file type '{0}'")]
     UnknownFileType(String),
+    #[error("Not a legacy BDAT file")]
+    NotLegacy,
+    #[error("Not a modern BDAT file")]
+    NotModern,
     #[error("No schema files found, please run 'extract' without '--no-schema'")]
     DeserMissingSchema,
     #[error(

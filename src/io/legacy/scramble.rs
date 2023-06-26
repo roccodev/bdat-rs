@@ -10,6 +10,10 @@ pub fn unscramble(data: &mut [u8], key: u16) {
     unscramble_chunks(data, key)
 }
 
+pub fn calc_checksum(full_table: &[u8]) -> u32 {
+    0
+}
+
 // Various unscramble implementations - all correct (unit-tested below) and benchmarked
 // (see benches/scramble.rs)
 

@@ -104,6 +104,16 @@ impl<W: Write + Seek, E: ByteOrder> FileWriter<W, E> {
         &mut self,
         tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
     ) -> Result<()> {
+        let tables = tables.into_iter().by_ref().collect::<Vec<_>>();
+        let mut tables = tables.iter().map(|t| t.borrow()).collect::<Vec<_>>();
+        // Tables must be ordered by name
+        tables.sort_unstable_by_key(|t| {
+            t.name
+                .as_ref()
+                .expect("no name in legacy table")
+                .to_string_convert()
+        });
+
         let (table_bytes, table_offsets, total_len, table_count) = tables
             .into_iter()
             .map(|table| {

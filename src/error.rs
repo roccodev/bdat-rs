@@ -1,4 +1,4 @@
-use crate::{BdatVersion, ValueType};
+use crate::{BdatVersion, DetectError, ValueType};
 use std::num::TryFromIntError;
 use std::str::Utf8Error;
 use thiserror::Error;
@@ -25,6 +25,8 @@ pub enum BdatError {
     InvalidFlagType(ValueType),
     #[error("Unknown scramble type: {0}")]
     UnknownScrambleType(u16),
+    #[error("Could not detect version: {0}")]
+    VersionDetect(#[from] DetectError),
 }
 
 #[derive(Debug)]

@@ -12,7 +12,7 @@ use std::ffi::CStr;
 #[test]
 fn hash_table_legacy() {
     for slots in [1, 5, 10, 32, 61, 128] {
-        test_table(&create_table(), BdatVersion::Legacy, slots);
+        test_table(&create_table(), BdatVersion::LegacySwitch, slots);
     }
 }
 
@@ -52,7 +52,7 @@ fn create_table<'b>() -> Table<'b> {
 
 fn test_table(table: &Table, version: BdatVersion, slots: usize) {
     let written = match version {
-        BdatVersion::Legacy => bdat::legacy::to_vec_options::<SwitchEndian>(
+        BdatVersion::LegacySwitch => bdat::legacy::to_vec_options::<SwitchEndian>(
             [table],
             version,
             LegacyWriteOptions::new().hash_slots(slots),
@@ -81,7 +81,7 @@ fn test_table(table: &Table, version: BdatVersion, slots: usize) {
     {
         assert!(
             match version {
-                BdatVersion::Legacy =>
+                BdatVersion::LegacySwitch =>
                     find_col_def::<SwitchEndian>(table_bytes, &col, slots as u32),
                 BdatVersion::LegacyX => find_col_def::<WiiEndian>(table_bytes, &col, slots as u32),
                 _ => unreachable!(),

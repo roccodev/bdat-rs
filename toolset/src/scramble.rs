@@ -1,8 +1,9 @@
+use crate::error::Error;
 use crate::util::{ProgressBarState, RayonPoolJobs};
 use crate::InputData;
 use anyhow::{Context, Result};
 use bdat::legacy::{FileHeader, TableHeader};
-use bdat::SwitchEndian;
+use bdat::{BdatVersion, SwitchEndian, WiiEndian};
 use clap::Args;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::io::Cursor;
@@ -75,15 +76,23 @@ pub fn unscramble(input: InputData, args: ScrambleArgs) -> Result<()> {
 
 fn unscramble_file(path_in: PathBuf, path_out: PathBuf, progress: &ProgressBarState) -> Result<()> {
     let mut bytes = std::fs::read(path_in)?;
+    let version = bdat::detect_bytes_version(&bytes)?;
     let cursor = Cursor::new(&bytes);
-    // TODO: endianness
-    let header = FileHeader::read::<_, SwitchEndian>(cursor)?;
+    let header = match version {
+        BdatVersion::LegacySwitch => FileHeader::read::<_, SwitchEndian>(cursor),
+        BdatVersion::LegacyX => FileHeader::read::<_, WiiEndian>(cursor),
+        _ => return Err(Error::NotLegacy.into()),
+    }?;
 
     let table_bar = progress.add_child(header.table_count);
     table_bar.inc(0);
 
     header.for_each_table_mut(&mut bytes, |table| {
-        let header = TableHeader::read::<SwitchEndian>(Cursor::new(&table))?;
+        let header = match version {
+            BdatVersion::LegacySwitch => TableHeader::read::<SwitchEndian>(Cursor::new(&table)),
+            BdatVersion::LegacyX => TableHeader::read::<WiiEndian>(Cursor::new(&table)),
+            _ => unreachable!(),
+        }?;
         header.unscramble_data(table);
         table[4] = 0; // Change scramble type to none
         table_bar.inc(1);

@@ -1,6 +1,6 @@
 use std::io::{Cursor, Read, Seek, SeekFrom};
 
-use byteorder::ReadBytesExt;
+use byteorder::{ByteOrder, ReadBytesExt};
 
 use crate::error::Result;
 use crate::io::read::{BdatFile, BdatReader, BdatSlice};
@@ -10,15 +10,21 @@ use crate::modern::FileReader;
 use crate::{BdatVersion, SwitchEndian, Table, WiiEndian};
 
 pub enum VersionReader<R: Read + Seek> {
-    Legacy(LegacyReader<R, SwitchEndian>),
-    LegacyX(LegacyReader<R, WiiEndian>),
+    LegacyWii(LegacyReader<R, WiiEndian>),
+    LegacySwitch(LegacyReader<R, SwitchEndian>),
     Modern(FileReader<BdatReader<R, SwitchEndian>, SwitchEndian>),
 }
 
 pub enum VersionSlice<'b> {
-    Legacy(LegacyBytes<'b, SwitchEndian>),
-    LegacyX(LegacyBytes<'b, WiiEndian>),
+    LegacyWii(LegacyBytes<'b, WiiEndian>),
+    LegacySwitch(LegacyBytes<'b, SwitchEndian>),
     Modern(FileReader<BdatSlice<'b, SwitchEndian>, SwitchEndian>),
+}
+
+#[derive(thiserror::Error, Debug)]
+pub enum DetectError {
+    #[error("Can't determine legacy platform: no tables found")]
+    LegacyNoTables,
 }
 
 /// Reads a BDAT file from a slice. The slice needs to have the **full** file data, though any
@@ -43,14 +49,13 @@ pub enum VersionSlice<'b> {
 /// ```
 pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
     match detect_version(Cursor::new(&bytes))? {
-        BdatVersion::Legacy => Ok(VersionSlice::Legacy(LegacyBytes::new(
+        BdatVersion::LegacySwitch => Ok(VersionSlice::LegacySwitch(LegacyBytes::new(
             bytes,
-            BdatVersion::Legacy,
+            BdatVersion::LegacySwitch,
         )?)),
-        BdatVersion::LegacyX => Ok(VersionSlice::LegacyX(LegacyBytes::new(
-            bytes,
-            BdatVersion::LegacyX,
-        )?)),
+        v @ BdatVersion::LegacyWii | v @ BdatVersion::LegacyX => {
+            Ok(VersionSlice::LegacyWii(LegacyBytes::new(bytes, v)?))
+        }
         BdatVersion::Modern => Ok(VersionSlice::Modern(
             FileReader::<_, SwitchEndian>::read_file(BdatSlice::<SwitchEndian>::new(bytes))?,
         )),
@@ -80,14 +85,13 @@ pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
 /// ```
 pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<VersionReader<R>> {
     match detect_version(&mut reader)? {
-        BdatVersion::Legacy => Ok(VersionReader::Legacy(LegacyReader::new(
+        BdatVersion::LegacySwitch => Ok(VersionReader::LegacySwitch(LegacyReader::new(
             reader,
-            BdatVersion::Legacy,
+            BdatVersion::LegacySwitch,
         )?)),
-        BdatVersion::LegacyX => Ok(VersionReader::LegacyX(LegacyReader::new(
-            reader,
-            BdatVersion::LegacyX,
-        )?)),
+        v @ BdatVersion::LegacyWii | v @ BdatVersion::LegacyX => {
+            Ok(VersionReader::LegacyWii(LegacyReader::new(reader, v)?))
+        }
         BdatVersion::Modern => Ok(VersionReader::Modern(
             FileReader::<_, SwitchEndian>::read_file(BdatReader::<_, SwitchEndian>::new(reader))?,
         )),
@@ -96,11 +100,17 @@ pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<VersionReader<R>> {
 
 /// Attempts to detect the BDAT version used in the given slice. The slice must include the
 /// full file header.
+///
+/// An error ([`BdatError::VersionDetect`]) might be returned if the version couldn't be detected
+/// because of ambiguous details.
 pub fn detect_bytes_version(bytes: &[u8]) -> Result<BdatVersion> {
     detect_version(Cursor::new(bytes))
 }
 
 /// Attempts to detect the BDAT version used in a file.
+///
+/// An error ([`BdatError::VersionDetect`]) might be returned if the version couldn't be detected
+/// because of ambiguous details.
 pub fn detect_file_version<R: Read + Seek>(reader: R) -> Result<BdatVersion> {
     detect_version(reader)
 }
@@ -124,62 +134,104 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
         // No tables, meaning we will have a very small file size. If the size is too large
         // it means we have the wrong endianness
         reader.seek(SeekFrom::Start(0))?;
-        return Ok(if file_size > 1000 {
-            BdatVersion::LegacyX
-        } else {
-            BdatVersion::Legacy
-        });
+        if file_size > 1000 {
+            // In this case, we can't distinguish between Wii/X, as they only differ in table
+            // format.
+            return Err(DetectError::LegacyNoTables.into());
+        }
+        return Ok(BdatVersion::LegacySwitch);
     }
 
     let mut actual_table_count = 0;
     let mut new_magic = [0u8; 4];
+    let mut first_offset = 0;
     loop {
         reader.read_exact(&mut new_magic)?;
-        if new_magic == BDAT_MAGIC {
+        if new_magic == [0, 0, 0, 0] || new_magic == BDAT_MAGIC {
             break;
+        }
+        if first_offset == 0 {
+            first_offset = WiiEndian::read_u32(&new_magic);
         }
         actual_table_count += 1;
     }
 
     reader.seek(SeekFrom::Start(0))?;
-    Ok(if actual_table_count == u32::from_le_bytes(magic) {
-        BdatVersion::Legacy
-    } else {
-        BdatVersion::LegacyX
+    if actual_table_count == u32::from_le_bytes(magic) {
+        return Ok(BdatVersion::LegacySwitch);
+    }
+
+    // If we've reached this point, we either have a XC1 (Wii) file or a XCX file, which are both
+    // big-endian formats.
+    // In XC1, headers are only 32 bytes long
+    //
+    // To disambiguate, we check the 16-bit value at table+32 and the 32-bit value at table+36.
+    // In XCX, table+32 is the address of the first column node, while in XC1 this can either be:
+    // - The first column info (starting with either 0x01, 0x02, or 0x03 for the cell type)
+    // - A string from the name table, if there are no columns
+    // No other data can be at that location, because if there are no columns, there are also
+    // no rows and no strings.
+    //
+    // In XCX, table+36 is always [0; 4]. In XC1, this can also be [0; 4] if e.g. table+32 contains
+    // a string (the table name) that is 5 bytes long (4+nul), as padding would add
+    // 3 extra zeroes at the end.
+    //
+    // Table+32 is guaranteed to exist, because all tables need a name and the shortest name you
+    // can have is '\0'. If any location between +32 and +36 doesn't exist, then it's 100% a XC1
+    // table.
+    //
+    // If table+36 is [0; 4] and table+32 (16-bit) is a valid offset (i.e. <= string table max
+    // offset), then the table is from XCX.
+    // In any other case, it's the XC1 format.
+
+    reader.seek(SeekFrom::Start(first_offset as u64 + 32 - 4 - 4))?;
+    let string_table_offset = reader.read_u32::<WiiEndian>()?;
+    let string_table_len = reader.read_u32::<WiiEndian>()?;
+    let final_offset = string_table_offset + string_table_len;
+
+    if first_offset + 36 > final_offset {
+        return Ok(BdatVersion::LegacyWii);
+    }
+
+    let t_32 = reader.read_u32::<WiiEndian>()? >> 16;
+    let t_36 = reader.read_u32::<WiiEndian>()?;
+    Ok(match (t_32, t_36) {
+        (x, 0) if x <= final_offset => BdatVersion::LegacyX,
+        (_, _) => BdatVersion::LegacyWii,
     })
 }
 
 impl<'b, R: Read + Seek> BdatFile<'b> for VersionReader<R> {
-    fn get_tables(&mut self) -> Result<Vec<Table<'b>>> {
+    fn get_tables(&mut self) -> crate::error::Result<Vec<Table<'b>>> {
         match self {
-            Self::Legacy(r) => r.get_tables(),
-            Self::LegacyX(r) => r.get_tables(),
+            Self::LegacySwitch(r) => r.get_tables(),
+            Self::LegacyWii(r) => r.get_tables(),
             Self::Modern(r) => r.get_tables(),
         }
     }
 
     fn table_count(&self) -> usize {
         match self {
-            Self::Legacy(r) => r.table_count(),
-            Self::LegacyX(r) => r.table_count(),
+            Self::LegacySwitch(r) => r.table_count(),
+            Self::LegacyWii(r) => r.table_count(),
             Self::Modern(r) => r.table_count(),
         }
     }
 }
 
 impl<'b> BdatFile<'b> for VersionSlice<'b> {
-    fn get_tables(&mut self) -> Result<Vec<Table<'b>>> {
+    fn get_tables(&mut self) -> crate::error::Result<Vec<Table<'b>>> {
         match self {
-            Self::Legacy(r) => r.get_tables(),
-            Self::LegacyX(r) => r.get_tables(),
+            Self::LegacySwitch(r) => r.get_tables(),
+            Self::LegacyWii(r) => r.get_tables(),
             Self::Modern(r) => r.get_tables(),
         }
     }
 
     fn table_count(&self) -> usize {
         match self {
-            Self::Legacy(r) => r.table_count(),
-            Self::LegacyX(r) => r.table_count(),
+            Self::LegacySwitch(r) => r.table_count(),
+            Self::LegacyWii(r) => r.table_count(),
             Self::Modern(r) => r.table_count(),
         }
     }
