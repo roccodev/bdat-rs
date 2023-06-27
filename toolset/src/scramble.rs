@@ -80,7 +80,7 @@ fn unscramble_file(path_in: PathBuf, path_out: PathBuf, progress: &ProgressBarSt
     let cursor = Cursor::new(&bytes);
     let header = match version {
         BdatVersion::LegacySwitch => FileHeader::read::<_, SwitchEndian>(cursor),
-        BdatVersion::LegacyX => FileHeader::read::<_, WiiEndian>(cursor),
+        BdatVersion::LegacyX | BdatVersion::LegacyWii => FileHeader::read::<_, WiiEndian>(cursor),
         _ => return Err(Error::NotLegacy.into()),
     }?;
 
@@ -89,8 +89,12 @@ fn unscramble_file(path_in: PathBuf, path_out: PathBuf, progress: &ProgressBarSt
 
     header.for_each_table_mut(&mut bytes, |table| {
         let header = match version {
-            BdatVersion::LegacySwitch => TableHeader::read::<SwitchEndian>(Cursor::new(&table)),
-            BdatVersion::LegacyX => TableHeader::read::<WiiEndian>(Cursor::new(&table)),
+            BdatVersion::LegacySwitch => {
+                TableHeader::read::<SwitchEndian>(Cursor::new(&table), version)
+            }
+            BdatVersion::LegacyX | BdatVersion::LegacyWii => {
+                TableHeader::read::<WiiEndian>(Cursor::new(&table), version)
+            }
             _ => unreachable!(),
         }?;
         header.unscramble_data(table);

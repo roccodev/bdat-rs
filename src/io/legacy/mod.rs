@@ -18,6 +18,7 @@ use crate::legacy::write::FileWriter;
 use crate::{BdatVersion, Table};
 
 const HEADER_SIZE: usize = 64;
+const HEADER_SIZE_WII: usize = 32;
 const COLUMN_DEFINITION_SIZE: usize = 6;
 
 pub use hash::HashTable as LegacyHashTable;
@@ -40,12 +41,17 @@ pub struct TableHeader {
     hashes: OffsetAndLen,
     strings: OffsetAndLen,
     offset_names: usize,
-    offset_columns: usize,
     offset_rows: usize,
-    column_count: usize,
     row_count: usize,
     row_len: usize,
     base_id: usize,
+    columns: Option<ColumnNodeInfo>,
+}
+
+#[derive(Debug)]
+struct ColumnNodeInfo {
+    offset_columns: usize,
+    column_count: usize,
 }
 
 #[derive(Debug)]

@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::collections::{HashSet, VecDeque};
 use std::ffi::CStr;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::marker::PhantomData;
@@ -9,7 +10,7 @@ use crate::error::{Result, Scope};
 use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
 use crate::legacy::scramble::{unscramble, ScrambleType};
-use crate::legacy::COLUMN_DEFINITION_SIZE;
+use crate::legacy::{ColumnNodeInfo, COLUMN_DEFINITION_SIZE};
 use crate::types::Utf;
 use crate::{
     BdatError, BdatFile, BdatVersion, Cell, ColumnDef, FlagDef, Label, Row, Table, TableBuilder,
@@ -41,8 +42,8 @@ struct TableReader<'t, E> {
 
 struct ColumnReader<'a, 't, E> {
     table: &'a TableReader<'t, E>,
-    data: Cursor<&'a Cow<'t, [u8]>>,
-    info_ptr: usize,
+    data: &'a Cow<'t, [u8]>,
+    node_offset: u64,
     _endianness: PhantomData<E>,
 }
 
@@ -82,6 +83,12 @@ enum ColumnCell {
 }
 
 #[derive(Debug)]
+struct TableColumns<'t> {
+    columns: Vec<ColumnData<'t>>,
+    flags: Flags<'t>,
+}
+
+#[derive(Debug)]
 struct Flags<'t>(Vec<ColumnData<'t>>);
 
 impl<R: Read + Seek, E: ByteOrder> LegacyReader<R, E> {
@@ -101,7 +108,7 @@ impl<'t, E: ByteOrder> LegacyBytes<'t, E> {
         let header = FileHeader::read::<_, E>(Cursor::new(&bytes))?;
         // TODO
         header.for_each_table_mut(bytes, |table| {
-            let header = TableHeader::read::<E>(Cursor::new(&table))?;
+            let header = TableHeader::read::<E>(Cursor::new(&table), version)?;
             header.unscramble_data(table);
             table[4] = 0;
             Ok::<_, BdatError>(())
@@ -168,7 +175,7 @@ impl FileHeader {
 }
 
 impl TableHeader {
-    pub fn read<E: ByteOrder>(mut reader: impl Read) -> Result<Self> {
+    pub fn read<E: ByteOrder>(mut reader: impl Read, version: BdatVersion) -> Result<Self> {
         let mut magic = [0u8; 4];
         reader.read_exact(&mut magic)?;
         if magic != BDAT_MAGIC {
@@ -187,8 +194,16 @@ impl TableHeader {
         let scramble_key = reader.read_u16::<E>()?;
         let offset_strings = reader.read_u32::<E>()? as usize;
         let strings_len = reader.read_u32::<E>()? as usize;
-        let offset_columns = reader.read_u16::<E>()? as usize;
-        let column_count = reader.read_u16::<E>()? as usize;
+        let columns = if version != BdatVersion::LegacyWii {
+            let offset_columns = reader.read_u16::<E>()? as usize;
+            let column_count = reader.read_u16::<E>()? as usize;
+            Some(ColumnNodeInfo {
+                offset_columns,
+                column_count,
+            })
+        } else {
+            None
+        };
 
         Ok(Self {
             scramble_type: match scramble_id {
@@ -198,13 +213,12 @@ impl TableHeader {
             },
             hashes: (offset_hashes, hash_slot_count * 2).into(),
             strings: (offset_strings, strings_len).into(),
-            offset_columns,
             offset_names,
             offset_rows,
-            column_count,
             row_count,
             row_len,
             base_id,
+            columns,
         })
     }
 
@@ -231,7 +245,7 @@ impl TableHeader {
 impl<'t, E: ByteOrder> TableReader<'t, E> {
     fn from_reader<R: Read + Seek>(mut reader: R, version: BdatVersion) -> Result<Self> {
         let original_pos = reader.stream_position()?;
-        let header = TableHeader::read::<E>(&mut reader)?;
+        let header = TableHeader::read::<E>(&mut reader, version)?;
         reader.seek(SeekFrom::Start(original_pos))?;
 
         let table_len = header.get_table_len();
@@ -259,7 +273,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
     fn from_slice(bytes: &'t [u8], version: BdatVersion) -> Result<TableReader<'t, E>> {
         let mut reader = Cursor::new(&bytes);
         let original_pos = reader.stream_position()?;
-        let header = TableHeader::read::<E>(&mut reader)?;
+        let header = TableHeader::read::<E>(&mut reader, version)?;
         reader.seek(SeekFrom::Start(original_pos))?;
 
         Ok(Self {
@@ -272,29 +286,16 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
 
     fn read(mut self) -> Result<Table<'t>> {
         let name = self.read_string(self.header.offset_names)?.to_string();
-        self.data
-            .seek(SeekFrom::Start(self.header.offset_columns.try_into()?))?;
-        let mut seek = self.data.position();
-        let (flags, columns) = (0..self.header.column_count)
-            .map(|_| {
-                let col = ColumnReader::new(&self, seek)?.read_column()?;
-                seek += COLUMN_DEFINITION_SIZE as u64;
-                Ok(col)
-            })
-            .partition::<Vec<_>, _>(|c| {
-                c.as_ref()
-                    .ok()
-                    .and_then(|c| c.cell.is_flag().then_some(()))
-                    .is_some()
-            });
-        let (columns_src, flags): (Vec<ColumnData>, Flags) = (
-            columns.into_iter().collect::<Result<_>>()?,
-            Flags::new(flags.into_iter().collect::<Result<_>>()?),
-        );
+        let TableColumns {
+            columns: columns_src,
+            flags,
+        } = match self.header.columns.as_ref() {
+            Some(info) => self.discover_columns_from_nodes(info),
+            None => self.discover_columns_from_hash(),
+        }?;
 
         // De-flag-ify
         let columns = columns_src
-            .clone() // TODO
             .into_iter()
             .map(|c| {
                 ColumnDef {
@@ -341,6 +342,59 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
             .build())
     }
 
+    fn discover_columns_from_nodes(&self, info: &ColumnNodeInfo) -> Result<TableColumns> {
+        let mut seek = info.offset_columns.try_into()?;
+        let (flags, columns) = (0..info.column_count)
+            .map(|_| {
+                let col = ColumnReader::new(self, seek).read_column_from_node()?;
+                seek += COLUMN_DEFINITION_SIZE as u64;
+                Ok(col)
+            })
+            .partition::<Vec<_>, _>(|c| {
+                c.as_ref()
+                    .ok()
+                    .and_then(|c| c.cell.is_flag().then_some(()))
+                    .is_some()
+            });
+        Ok(TableColumns {
+            flags: Flags::new(flags.into_iter().collect::<Result<_>>()?),
+            columns: columns.into_iter().collect::<Result<_>>()?,
+        })
+    }
+
+    fn discover_columns_from_hash(&self) -> Result<TableColumns> {
+        // In XC1, column nodes are part of the name table, but we can enumerate columns
+        // from the hash table, so we get easy access to both info data and name
+
+        let mut to_visit = self.data.get_ref()[self.header.hashes.range()]
+            .chunks_exact(2)
+            .map(|b| E::read_u16(b) as u64)
+            .filter(|&i| i != 0)
+            .collect::<VecDeque<_>>();
+        let mut visited = HashSet::new(); // safeguard
+
+        let (mut columns, mut flags) = (vec![], vec![]);
+
+        while let Some(node_ptr) = to_visit.pop_front() {
+            let (column, next) = ColumnReader::new(self, node_ptr).read_column_from_hash_node()?;
+            if next != 0 && visited.insert(next) {
+                to_visit.push_back(next.try_into()?);
+            }
+            if column.cell.is_flag() {
+                flags.push(column);
+            } else {
+                columns.push(column);
+            }
+        }
+
+        columns.sort_unstable_by_key(|c| c.cell.value().offset);
+
+        Ok(TableColumns {
+            flags: Flags::new(flags),
+            columns,
+        })
+    }
+
     /// Reads a string from an absolute offset from the start of the table.
     fn read_string(&self, offset: usize) -> Result<Utf<'t>> {
         let res = match self.data.get_ref() {
@@ -359,53 +413,77 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
     }
 }
 
-impl<'a, 't, E: ByteOrder> ColumnReader<'a, 't, E> {
-    fn new(table: &'a TableReader<'t, E>, seek: u64) -> Result<Self> {
-        let mut data = Cursor::new(table.data.get_ref());
-        data.seek(SeekFrom::Start(seek))?;
-        let info_ptr = data.read_u16::<E>()? as usize;
-        Ok(Self {
+impl<'a, 't: 'a, E: ByteOrder + 'a> ColumnReader<'a, 't, E> {
+    fn new(table: &'a TableReader<'t, E>, node_offset: u64) -> Self {
+        Self {
             table,
-            data,
-            info_ptr,
+            data: table.data.get_ref(),
+            node_offset,
             _endianness: PhantomData,
-        })
+        }
     }
 
-    fn read_column(mut self) -> Result<ColumnData<'a>> {
-        self.data.read_u16::<E>()?; // hash table linked node
-        let name_offset = self.data.read_u16::<E>()?;
+    fn read_column_from_node(self) -> Result<ColumnData<'a>> {
+        let mut data = Cursor::new(self.data);
+        data.set_position(self.node_offset);
+        let info_ptr = data.read_u16::<E>()? as u64;
+        data.read_u16::<E>()?; // hash table linked node
+        let name_offset = data.read_u16::<E>()?;
+
+        let cell = self.read_cell(info_ptr)?;
         let name = self.table.read_string(name_offset as usize)?;
-        let cell = self.read_cell()?;
+
         Ok(ColumnData {
             name,
             cell,
-            info_offset: self.info_ptr - 1,
+            info_offset: info_ptr as usize,
         })
     }
 
-    fn read_cell(&mut self) -> Result<ColumnCell> {
+    /// Wii only.
+    fn read_column_from_hash_node(self) -> Result<(ColumnData<'a>, usize)> {
+        let mut data = Cursor::new(self.data);
+        data.set_position(self.node_offset);
+        let info_ptr = data.read_u16::<E>()? as u64;
+        let next = data.read_u16::<E>()? as usize; // hash table linked node
+
+        // Not a pointer, the string is embedded here.
+        let name = self.table.read_string(data.position() as usize)?;
+        let cell = self.read_cell(info_ptr)?;
+
+        Ok((
+            ColumnData {
+                name,
+                cell,
+                info_offset: info_ptr as usize,
+            },
+            next,
+        ))
+    }
+
+    fn read_cell(&self, info_ptr: u64) -> Result<ColumnCell> {
+        let mut info_table = Cursor::new(self.data);
+        info_table.set_position(info_ptr);
+
         // Flag, Value, Array
-        let cell_type = self.data.get_ref()[self.info_ptr];
-        self.info_ptr += 1;
+        let cell_type = info_table.read_u8()?;
 
         Ok(match cell_type {
-            1 => ColumnCell::Value(self.read_value()?),
+            1 => ColumnCell::Value(Self::read_value(info_table)?),
             2 => {
-                let (val, sz) = self.read_array()?;
+                let (val, sz) = Self::read_array(info_table)?;
                 ColumnCell::Array(val, sz)
             }
-            3 => ColumnCell::Flag(self.read_flag()?),
+            3 => ColumnCell::Flag(Self::read_flag(info_table, self.data)?),
             i => return Err(BdatError::UnknownCellType(i)),
         })
     }
 
-    fn read_flag(&self) -> Result<FlagData> {
-        let mut info_table = &self.data.get_ref()[self.info_ptr..];
+    fn read_flag(mut info_table: impl Read, full_table: &[u8]) -> Result<FlagData> {
         let flag_index = info_table.read_u8()?;
         let flag_mask = info_table.read_u32::<E>()?;
         let parent_offset = info_table.read_u16::<E>()? as usize;
-        let parent_info_offset = (&self.data.get_ref()[parent_offset..]).read_u16::<E>()? as usize;
+        let parent_info_offset = (&full_table[parent_offset..]).read_u16::<E>()? as usize;
         Ok(FlagData {
             index: flag_index as usize,
             mask: flag_mask,
@@ -413,8 +491,7 @@ impl<'a, 't, E: ByteOrder> ColumnReader<'a, 't, E> {
         })
     }
 
-    fn read_value(&self) -> Result<ValueData> {
-        let mut info_table = &self.data.get_ref()[self.info_ptr..];
+    fn read_value(mut info_table: impl Read) -> Result<ValueData> {
         let value_type = info_table.read_u8()?;
         let value_type =
             ValueType::try_from(value_type).map_err(|_| BdatError::UnknownValueType(value_type))?;
@@ -425,8 +502,7 @@ impl<'a, 't, E: ByteOrder> ColumnReader<'a, 't, E> {
         })
     }
 
-    fn read_array(&self) -> Result<(ValueData, usize)> {
-        let mut info_table = &self.data.get_ref()[self.info_ptr..];
+    fn read_array(mut info_table: impl Read) -> Result<(ValueData, usize)> {
         let value_type = info_table.read_u8()?;
         let value_type =
             ValueType::try_from(value_type).map_err(|_| BdatError::UnknownValueType(value_type))?;

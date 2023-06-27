@@ -24,15 +24,17 @@ pub struct RayonPoolJobs {
 
 #[derive(Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
 pub enum BdatGame {
-    Legacy,
+    Wii,
     Xcx,
+    LegacySwitch,
     Modern,
 }
 
 impl BdatGame {
     pub fn version_default(version: BdatVersion) -> Self {
         match version {
-            BdatVersion::LegacySwitch => Self::Legacy,
+            BdatVersion::LegacyWii => Self::Wii,
+            BdatVersion::LegacySwitch => Self::LegacySwitch,
             BdatVersion::LegacyX => Self::Xcx,
             BdatVersion::Modern => Self::Modern,
         }
@@ -40,7 +42,10 @@ impl BdatGame {
 
     pub fn to_writer<W: Write + Seek>(self, writer: W, tables: &[Table]) -> BdatResult<()> {
         match self {
-            Self::Legacy => bdat::legacy::to_writer::<_, SwitchEndian>(
+            Self::Wii => {
+                bdat::legacy::to_writer::<_, WiiEndian>(writer, tables, BdatVersion::LegacyWii)
+            }
+            Self::LegacySwitch => bdat::legacy::to_writer::<_, SwitchEndian>(
                 writer,
                 tables,
                 BdatVersion::LegacySwitch,
@@ -54,7 +59,10 @@ impl BdatGame {
 
     pub fn to_vec<W: Write + Seek>(self, tables: &[Table]) -> BdatResult<Vec<u8>> {
         match self {
-            Self::Legacy => bdat::legacy::to_vec::<SwitchEndian>(tables, BdatVersion::LegacySwitch),
+            Self::Wii => bdat::legacy::to_vec::<WiiEndian>(tables, BdatVersion::LegacyWii),
+            Self::LegacySwitch => {
+                bdat::legacy::to_vec::<SwitchEndian>(tables, BdatVersion::LegacySwitch)
+            }
             Self::Xcx => bdat::legacy::to_vec::<WiiEndian>(tables, BdatVersion::LegacyX),
             Self::Modern => bdat::modern::to_vec::<SwitchEndian>(tables),
         }
@@ -117,12 +125,13 @@ impl RayonPoolJobs {
 
 impl ValueEnum for BdatGame {
     fn value_variants<'a>() -> &'a [Self] {
-        &[Self::Legacy, Self::Xcx, Self::Modern]
+        &[Self::Wii, Self::Xcx, Self::Modern]
     }
 
     fn to_possible_value<'a>(&self) -> Option<clap::builder::PossibleValue> {
         match self {
-            Self::Legacy => Some(clap::builder::PossibleValue::new("xc1")),
+            Self::Wii => Some(clap::builder::PossibleValue::new("xc1")),
+            Self::LegacySwitch => Some(clap::builder::PossibleValue::new("xc2de")),
             Self::Xcx => Some(clap::builder::PossibleValue::new("xcx")),
             Self::Modern => Some(clap::builder::PossibleValue::new("xc3")),
         }
@@ -132,8 +141,9 @@ impl ValueEnum for BdatGame {
 impl From<BdatGame> for BdatVersion {
     fn from(value: BdatGame) -> Self {
         match value {
-            BdatGame::Legacy => BdatVersion::LegacySwitch,
+            BdatGame::Wii => BdatVersion::LegacyWii,
             BdatGame::Xcx => BdatVersion::LegacyX,
+            BdatGame::LegacySwitch => BdatVersion::LegacySwitch,
             BdatGame::Modern => BdatVersion::Modern,
         }
     }
