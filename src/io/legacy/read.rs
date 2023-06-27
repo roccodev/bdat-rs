@@ -10,7 +10,7 @@ use crate::error::{Result, Scope};
 use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
 use crate::legacy::scramble::{unscramble, ScrambleType};
-use crate::legacy::{ColumnNodeInfo, COLUMN_DEFINITION_SIZE};
+use crate::legacy::{ColumnNodeInfo, COLUMN_NODE_SIZE};
 use crate::types::Utf;
 use crate::{
     BdatError, BdatFile, BdatVersion, Cell, ColumnDef, FlagDef, Label, Row, Table, TableBuilder,
@@ -347,7 +347,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         let (flags, columns) = (0..info.column_count)
             .map(|_| {
                 let col = ColumnReader::new(self, seek).read_column_from_node()?;
-                seek += COLUMN_DEFINITION_SIZE as u64;
+                seek += COLUMN_NODE_SIZE as u64;
                 Ok(col)
             })
             .partition::<Vec<_>, _>(|c| {
@@ -368,17 +368,18 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
 
         let mut to_visit = self.data.get_ref()[self.header.hashes.range()]
             .chunks_exact(2)
-            .map(|b| E::read_u16(b) as u64)
+            .map(|b| E::read_u16(b) as usize)
             .filter(|&i| i != 0)
             .collect::<VecDeque<_>>();
-        let mut visited = HashSet::new(); // safeguard
+        let mut visited = to_visit.iter().copied().collect::<HashSet<_>>(); // safeguard
 
         let (mut columns, mut flags) = (vec![], vec![]);
 
         while let Some(node_ptr) = to_visit.pop_front() {
-            let (column, next) = ColumnReader::new(self, node_ptr).read_column_from_hash_node()?;
+            let (column, next) =
+                ColumnReader::new(self, node_ptr.try_into()?).read_column_from_hash_node()?;
             if next != 0 && visited.insert(next) {
-                to_visit.push_back(next.try_into()?);
+                to_visit.push_back(next);
             }
             if column.cell.is_flag() {
                 flags.push(column);
@@ -388,6 +389,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         }
 
         columns.sort_unstable_by_key(|c| c.cell.value().offset);
+        flags.sort_unstable_by_key(|f| f.info_offset);
 
         Ok(TableColumns {
             flags: Flags::new(flags),
@@ -616,11 +618,6 @@ impl<'t> Flags<'t> {
     }
 
     fn get_from_parent(&self, parent_info_offset: usize) -> impl Iterator<Item = &ColumnData> {
-        /*let first_idx = self
-        .0
-        .binary_search_by_key(&parent_info_offset, Self::extract)
-        .unwrap_or(self.0.len());*/
-        // TODO
         self.0
             .iter()
             .skip_while(move |c| Self::extract(c) != parent_info_offset)

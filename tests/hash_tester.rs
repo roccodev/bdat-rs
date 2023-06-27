@@ -23,6 +23,9 @@ fn hash_table_xcx() {
     }
 }
 
+// There is no need to adapt/test the hash table on wii, because it is already used (and tested)
+// when reading
+
 fn create_table<'b>() -> Table<'b> {
     TableBuilder::new()
         .set_name(Some("Table1".to_string().into()))

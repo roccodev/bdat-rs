@@ -10,8 +10,12 @@ use crate::error::Result;
 use crate::io::BDAT_MAGIC;
 use crate::legacy::hash::HashTable;
 use crate::legacy::util::{pad_2, pad_32, pad_4, pad_64};
-use crate::legacy::{LegacyWriteOptions, COLUMN_DEFINITION_SIZE, HEADER_SIZE};
-use crate::{BdatError, BdatVersion, Cell, ColumnDef, FlagDef, Row, Table, Value, ValueType};
+use crate::legacy::{
+    LegacyWriteOptions, COLUMN_NODE_SIZE, COLUMN_NODE_SIZE_WII, HEADER_SIZE, HEADER_SIZE_WII,
+};
+use crate::{
+    BdatError, BdatVersion, Cell, ColumnDef, FlagDef, Row, Table, Value, ValueType, WiiEndian,
+};
 
 pub struct FileWriter<W, E> {
     writer: W,
@@ -64,30 +68,54 @@ enum CellHeader {
 
 #[derive(Debug)]
 struct ColumnInfo {
+    name: Rc<str>,
+    parent: Option<usize>,
     cell: CellHeader,
 }
 
 #[derive(Debug)]
-struct ColumnDefinition {
+struct ColumnNode {
     info_ptr: usize,
     parent: usize,
     name_ptr: usize,
-    name: String,
+    name: Rc<str>,
+}
+
+struct ColumnTableBuilder<'a> {
+    tables: ColumnTables,
+    name_table: &'a mut StringTable,
+    info_offsets: Vec<usize>,
+    info_offset: usize,
 }
 
 struct ColumnTables {
     infos: Vec<ColumnInfo>,
-    definitions: Vec<ColumnDefinition>,
-    name_table: HashTable,
+    nodes: Vec<ColumnNode>,
+    hash_table: HashTable,
     info_len: usize,
     row_data_len: usize,
 }
 
+#[derive(Debug)]
+struct WiiColumnNode {
+    info_ptr: usize,
+    linked_ptr: usize,
+    name: Rc<str>,
+}
+
+#[derive(Debug)]
+enum StringNode {
+    String(Rc<str>),
+    WiiColumn(WiiColumnNode),
+}
+
+#[derive(Debug)]
 struct StringTable {
-    table: Vec<Rc<str>>,
+    table: Vec<StringNode>,
     offsets: HashMap<Rc<str>, usize>,
     base_offset: usize,
     len: usize,
+    max_len: usize,
 }
 
 impl<W: Write + Seek, E: ByteOrder> FileWriter<W, E> {
@@ -170,7 +198,10 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
             buf: writer,
             version,
             opts,
-            names: StringTable::new(HEADER_SIZE),
+            names: StringTable::new(match version {
+                BdatVersion::LegacyWii => HEADER_SIZE_WII,
+                _ => HEADER_SIZE,
+            }),
             strings: StringTable::new(0),
             columns: None,
             hash_table_offset: 0,
@@ -184,23 +215,26 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         let table_start = self.buf.stream_position()?;
 
         self.make_layout()?;
-        // Header space
-        self.buf.write_all(&[0u8; HEADER_SIZE])?;
+        // Header space - nice workaround for a non-const (but with an upper bound) header size
+        self.buf
+            .write_all(&[0u8; HEADER_SIZE][..self.header_size()])?;
 
         let columns = self.columns.as_ref().unwrap();
 
         columns.write_infos::<E>(&mut self.buf)?;
         self.names.write(&mut self.buf)?;
-        columns.write_defs::<E>(&mut self.buf)?;
+        if self.version != BdatVersion::LegacyWii {
+            columns.write_nodes::<E>(&mut self.buf)?;
+        }
 
         self.hash_table_offset = self.buf.stream_position()? as usize;
-        columns.name_table.write_first_level::<E>(&mut self.buf)?;
+        columns.hash_table.write_first_level::<E>(&mut self.buf)?;
 
         // Can now update other levels of the hash table
         {
             let pos = self.buf.stream_position()?;
             columns
-                .name_table
+                .hash_table
                 .write_other_levels::<E, _>(&mut self.buf)?;
             self.buf.seek(SeekFrom::Start(pos))?;
         }
@@ -254,13 +288,18 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
     fn make_layout(&mut self) -> Result<()> {
         self.init_names();
 
-        let columns = ColumnTables::from_columns(
+        let info_offset = self.header_size();
+
+        let columns = ColumnTableBuilder::from_columns(
             &self.table.columns,
             &mut self.names,
             self.opts.hash_slots.try_into()?,
+            info_offset,
         );
-
-        self.names.base_offset += columns.info_len;
+        let columns = match self.version {
+            BdatVersion::LegacyWii => columns.build_wii()?,
+            _ => columns.build_regular()?,
+        };
         self.columns = Some(columns);
 
         Ok(())
@@ -268,18 +307,19 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
 
     fn init_names(&mut self) {
         // Table name is the first name
-        self.names.get_offset(
-            &self
-                .table
-                .name()
-                .expect("no name in legacy table")
-                .to_string_convert(),
-        );
+        let table_name = &self
+            .table
+            .name()
+            .expect("no name in legacy table")
+            .to_string_convert();
+        self.names.make_space(table_name);
+        self.names.insert(table_name);
         for col in self.table.columns() {
-            self.names.get_offset(&col.label.to_string_convert());
+            self.names
+                .make_space_names(&col.label.to_string_convert(), self.version);
         }
         for flag in self.table.columns().flat_map(|c| c.flags().iter()) {
-            self.names.get_offset(&flag.label);
+            self.names.make_space_names(&flag.label, self.version);
         }
     }
 
@@ -291,7 +331,7 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
 
         // Name table offset = header size + column info table size
         self.buf
-            .write_u16::<E>((HEADER_SIZE + columns.info_len) as u16)?;
+            .write_u16::<E>((self.header_size() + columns.info_len) as u16)?;
         // Size of each row
         self.buf.write_u16::<E>(columns.row_data_len.try_into()?)?;
         // Hash table offset
@@ -322,22 +362,37 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
             .write_u32::<E>(self.strings.base_offset.try_into()?)?;
         // String table size, includes final table padding
         self.buf
-            .write_u32::<E>((self.strings.size_bytes() + self.final_padding).try_into()?)?;
-        // Column definition table offset
-        self.buf
-            .write_u16::<E>((self.names.base_offset + self.names.size_bytes()).try_into()?)?;
-        // Column count (includes flags)
-        self.buf
-            .write_u16::<E>(columns.definitions.len().try_into()?)?;
-        // Padding
-        self.buf.write_all(&[0u8; HEADER_SIZE - 36])?;
+            .write_u32::<E>((self.strings.size_bytes_current() + self.final_padding).try_into()?)?;
+
+        if self.version != BdatVersion::LegacyWii {
+            // Column node table offset
+            self.buf.write_u16::<E>(
+                (self.names.base_offset + self.names.size_bytes_current()).try_into()?,
+            )?;
+            // Column count (includes flags)
+            self.buf.write_u16::<E>(columns.nodes.len().try_into()?)?;
+            // Padding
+            self.buf.write_all(&[0u8; HEADER_SIZE - 36])?;
+        }
 
         Ok(())
     }
+
+    const fn header_size(&self) -> usize {
+        match self.version {
+            BdatVersion::LegacyWii => HEADER_SIZE_WII,
+            _ => HEADER_SIZE,
+        }
+    }
 }
 
-impl ColumnTables {
-    fn from_columns(cols: &[ColumnDef], name_table: &mut StringTable, hash_slots: u32) -> Self {
+impl<'a> ColumnTableBuilder<'a> {
+    fn from_columns(
+        cols: &[ColumnDef],
+        name_table: &'a mut StringTable,
+        hash_slots: u32,
+        info_offset: usize,
+    ) -> Self {
         let (row_len, mut infos) = cols
             .iter()
             .fold((0, Vec::new()), |(offset, mut cols), col| {
@@ -348,10 +403,10 @@ impl ColumnTables {
             });
         infos.extend(
             cols.iter()
-                .flat_map(|c| c.flags().iter())
-                .map(ColumnInfo::new_flag),
+                .enumerate()
+                .flat_map(|(i, c)| c.flags().iter().map(move |c| (i, c)))
+                .map(|(parent, f)| ColumnInfo::new_flag(f, parent)),
         );
-        let info_offset = HEADER_SIZE;
         let (info_table_size, info_offsets) =
             infos.iter().fold((0, Vec::new()), |(sz, mut vec), next| {
                 vec.push(sz + info_offset);
@@ -360,56 +415,87 @@ impl ColumnTables {
             });
 
         let info_table_size = pad_4(info_table_size);
-        let defs_offset = info_offset + name_table.size_bytes() + info_table_size;
+        name_table.base_offset += info_table_size;
 
-        let definitions = cols
+        Self {
+            info_offset,
+            tables: ColumnTables {
+                infos,
+                nodes: Vec::new(),
+                hash_table: HashTable::new(hash_slots),
+                info_len: info_table_size,
+                row_data_len: row_len,
+            },
+            name_table,
+            info_offsets,
+        }
+    }
+
+    fn build_wii(mut self) -> Result<ColumnTables> {
+        for (i, info) in self.tables.infos.iter().enumerate() {
+            let node_ptr = self.name_table.insert_wii_name(WiiColumnNode {
+                info_ptr: self.info_offsets[i],
+                linked_ptr: 0, // written later
+                name: info.name.clone(),
+            });
+            self.tables
+                .hash_table
+                .insert_unique(&info.name, node_ptr.try_into()?);
+        }
+
+        // TODO how does this work with duplicate columns?
+        for info in self.tables.infos.iter_mut() {
+            if let (Some(parent_id), CellHeader::Flags { parent, .. }) =
+                (info.parent, &mut info.cell)
+            {
+                *parent = self.name_table.get_offset(parent_id + 1).unwrap();
+            }
+        }
+        Ok(self.tables)
+    }
+
+    fn build_regular(mut self) -> Result<ColumnTables> {
+        let nodes_offset =
+            self.info_offset + self.name_table.size_bytes_max() + self.tables.info_len;
+
+        let nodes = self
+            .tables
+            .infos
             .iter()
-            .map(|c| (None, c.label.to_string_convert().to_string()))
-            .chain(cols.iter().enumerate().flat_map(|(i, c)| {
-                c.flags()
-                    .iter()
-                    .map(move |f| (Some(i), f.label.to_string()))
-            }))
             .enumerate()
-            .map(|(i, (cell_idx, label))| ColumnDefinition {
-                info_ptr: info_offsets[i],
-                // For flags, this is the offset to the parent column's definition. For regular
+            .map(|(i, info)| ColumnNode {
+                info_ptr: self.info_offsets[i],
+                // For flags, this is the offset to the parent column's node. For regular
                 // cells, this is 0
-                parent: cell_idx
-                    .map(|i| defs_offset + i * COLUMN_DEFINITION_SIZE)
+                parent: info
+                    .parent
+                    .map(|i| nodes_offset + i * COLUMN_NODE_SIZE)
                     .unwrap_or_default(),
-                // Initially, the name table base offset is just before the info table
-                name_ptr: name_table.get_offset(&label) + info_table_size,
-                name: label,
+                name_ptr: self.name_table.insert(&info.name),
+                name: info.name.clone(),
             })
             .collect::<Vec<_>>();
 
-        for (info, def) in infos.iter_mut().zip(definitions.iter()) {
+        for (info, def) in self.tables.infos.iter_mut().zip(nodes.iter()) {
             if let CellHeader::Flags { parent, .. } = &mut info.cell {
                 *parent = def.parent;
             }
         }
 
-        let mut hash_table = HashTable::new(hash_slots);
-        for (i, def) in definitions.iter().enumerate() {
+        for (i, def) in nodes.iter().enumerate() {
             // TODO what happens with duplicate columns?
-            hash_table.insert_unique(
+            self.tables.hash_table.insert_unique(
                 &def.name,
-                (defs_offset + i * COLUMN_DEFINITION_SIZE)
-                    .try_into()
-                    .unwrap(),
+                (nodes_offset + i * COLUMN_NODE_SIZE).try_into().unwrap(),
             );
         }
 
-        Self {
-            infos,
-            definitions,
-            name_table: hash_table,
-            info_len: info_table_size,
-            row_data_len: row_len,
-        }
+        self.tables.nodes = nodes;
+        Ok(self.tables)
     }
+}
 
+impl ColumnTables {
     fn write_infos<E: ByteOrder>(&self, mut writer: impl Write) -> Result<()> {
         let mut size = 0;
         for info in &self.infos {
@@ -422,8 +508,9 @@ impl ColumnTables {
         Ok(())
     }
 
-    fn write_defs<E: ByteOrder>(&self, mut writer: impl Write) -> Result<()> {
-        for info in &self.definitions {
+    /// Not to be used with Wii bdats.
+    fn write_nodes<E: ByteOrder>(&self, mut writer: impl Write) -> Result<()> {
+        for info in &self.nodes {
             info.write::<E>(&mut writer)?;
         }
         Ok(())
@@ -475,7 +562,7 @@ impl<'a, 'b, 't, W: Write, E: ByteOrder> RowWriter<'a, 'b, 't, W, E> {
             Value::SignedByte(b) => writer.write_i8(*b),
             Value::SignedShort(s) => writer.write_i16::<E>(*s),
             Value::SignedInt(i) => writer.write_i32::<E>(*i),
-            Value::String(s) => writer.write_u32::<E>(self.strings.get_offset(s).try_into()?),
+            Value::String(s) => writer.write_u32::<E>(self.strings.insert(s).try_into()?),
             Value::Float(f) => {
                 let mut f = *f;
                 f.make_known(self.version);
@@ -513,11 +600,17 @@ impl ColumnInfo {
                 offset,
             }
         };
-        Self { cell }
+        Self {
+            name: Rc::from(col.label.to_string_convert()),
+            parent: None,
+            cell,
+        }
     }
 
-    fn new_flag(flag: &FlagDef) -> Self {
+    fn new_flag(flag: &FlagDef, parent: usize) -> Self {
         Self {
+            name: Rc::from(flag.label.as_str()),
+            parent: Some(parent),
             cell: CellHeader::Flags {
                 shift: flag.flag_index.try_into().unwrap(),
                 mask: flag.mask,
@@ -565,7 +658,8 @@ impl ColumnInfo {
     }
 }
 
-impl ColumnDefinition {
+impl ColumnNode {
+    /// Not used in Wii bdats.
     fn write<E: ByteOrder>(&self, mut writer: impl Write) -> Result<()> {
         writer.write_u16::<E>(self.info_ptr.try_into()?)?;
         writer.write_u16::<E>(0)?; // linked node, to be written later if applicable
@@ -604,38 +698,88 @@ impl StringTable {
     fn new(base_offset: usize) -> Self {
         Self {
             table: vec![],
-            offsets: Default::default(),
             base_offset,
+            offsets: Default::default(),
             len: 0,
+            max_len: 0,
         }
     }
 
-    fn get_offset(&mut self, text: &str) -> usize {
-        if let Some(offset) = self.offsets.get(text) {
-            return *offset + self.base_offset;
+    fn make_space_names(&mut self, text: &str, version: BdatVersion) {
+        self.make_space(text);
+        if version == BdatVersion::LegacyWii {
+            self.max_len += COLUMN_NODE_SIZE_WII;
+        }
+    }
+
+    fn make_space(&mut self, text: &str) {
+        self.max_len += pad_2(text.len() + 1);
+    }
+
+    fn insert(&mut self, text: &str) -> usize {
+        if let Some(ptr) = self.offsets.get(text) {
+            return *ptr + self.base_offset;
         }
         let len = text.len();
         let text: Rc<str> = Rc::from(text);
         let offset = self.len;
         self.len += pad_2(len + 1);
-        self.table.push(text.clone());
+        self.table.push(StringNode::String(text.clone()));
         self.offsets.insert(text, offset);
         offset + self.base_offset
     }
 
+    fn insert_wii_name(&mut self, node: WiiColumnNode) -> usize {
+        let len = node.name.len();
+        let offset = self.len;
+        self.len += pad_2(len + 1) + COLUMN_NODE_SIZE_WII;
+        self.offsets.insert(node.name.clone(), offset);
+        self.table.push(StringNode::WiiColumn(node));
+        offset + self.base_offset
+    }
+
+    fn get_offset(&self, chronological: usize) -> Option<usize> {
+        self.table
+            .get(chronological)
+            .and_then(|entry| match entry {
+                StringNode::String(s) => self.offsets.get(s),
+                StringNode::WiiColumn(c) => self.offsets.get(&c.name),
+            })
+            .copied()
+            .map(|o| o + self.base_offset)
+    }
+
     fn write(&self, mut writer: impl Write) -> Result<()> {
         for text in &self.table {
-            let len = text.len() + 1;
-            writer.write_all(text.as_bytes())?;
-            writer.write_u8(0)?;
-            for _ in len..pad_2(len) {
-                writer.write_u8(0)?;
+            match text {
+                StringNode::String(text) => {
+                    let len = text.len() + 1;
+                    writer.write_all(text.as_bytes())?;
+                    writer.write_u8(0)?;
+                    for _ in len..pad_2(len) {
+                        writer.write_u8(0)?;
+                    }
+                }
+                StringNode::WiiColumn(node) => {
+                    writer.write_u16::<WiiEndian>(node.info_ptr.try_into()?)?;
+                    writer.write_u16::<WiiEndian>(node.linked_ptr.try_into()?)?;
+                    let len = node.name.len() + 1;
+                    writer.write_all(node.name.as_bytes())?;
+                    writer.write_u8(0)?;
+                    for _ in len..pad_2(len) {
+                        writer.write_u8(0)?;
+                    }
+                }
             }
         }
         Ok(())
     }
 
-    fn size_bytes(&self) -> usize {
+    fn size_bytes_current(&self) -> usize {
         self.len
+    }
+
+    fn size_bytes_max(&self) -> usize {
+        self.max_len
     }
 }

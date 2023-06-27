@@ -19,7 +19,8 @@ use crate::{BdatVersion, Table};
 
 const HEADER_SIZE: usize = 64;
 const HEADER_SIZE_WII: usize = 32;
-const COLUMN_DEFINITION_SIZE: usize = 6;
+const COLUMN_NODE_SIZE: usize = 6;
+const COLUMN_NODE_SIZE_WII: usize = 4;
 
 pub use hash::HashTable as LegacyHashTable;
 
