@@ -177,7 +177,7 @@ pub fn from_bytes_copy<E: ByteOrder>(
 ///     Ok(())
 /// }
 /// ```
-pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
+pub fn to_writer<'t, W: Write + Seek, E: ByteOrder + 'static>(
     writer: W,
     tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
     version: BdatVersion,
@@ -204,7 +204,7 @@ pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
 ///     Ok(())
 /// }
 /// ```
-pub fn to_writer_options<'t, W: Write + Seek, E: ByteOrder>(
+pub fn to_writer_options<'t, W: Write + Seek, E: ByteOrder + 'static>(
     writer: W,
     tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
     version: BdatVersion,
@@ -226,7 +226,7 @@ pub fn to_writer_options<'t, W: Write + Seek, E: ByteOrder>(
 ///     Ok(())
 /// }
 /// ```
-pub fn to_vec<'t, E: ByteOrder>(
+pub fn to_vec<'t, E: ByteOrder + 'static>(
     tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
     version: BdatVersion,
 ) -> Result<Vec<u8>> {
@@ -250,7 +250,7 @@ pub fn to_vec<'t, E: ByteOrder>(
 ///     Ok(())
 /// }
 /// ```
-pub fn to_vec_options<'t, E: ByteOrder>(
+pub fn to_vec_options<'t, E: ByteOrder + 'static>(
     tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
     version: BdatVersion,
     opts: LegacyWriteOptions,

@@ -33,6 +33,7 @@ pub struct DiffArgs {
     no_file_names: bool,
 }
 
+#[derive(Debug)]
 struct TableWithSource<'f, 't> {
     table: Table<'t>,
     source_file: &'f Path,
@@ -57,6 +58,7 @@ struct ColumnChange<'t, 'tb> {
     value: &'t Cell<'tb>,
 }
 
+#[derive(Debug)]
 struct ValueOrderedLabel(Label);
 
 pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {

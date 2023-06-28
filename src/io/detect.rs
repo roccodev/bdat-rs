@@ -84,7 +84,10 @@ pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
 /// }
 /// ```
 pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<VersionReader<R>> {
-    match detect_version(&mut reader)? {
+    let pos = reader.stream_position()?;
+    let version = detect_version(&mut reader)?;
+    reader.seek(SeekFrom::Start(pos))?;
+    match version {
         BdatVersion::LegacySwitch => Ok(VersionReader::LegacySwitch(LegacyReader::new(
             reader,
             BdatVersion::LegacySwitch,

@@ -1,3 +1,4 @@
+use std::any::TypeId;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::io::{Cursor, Seek, SeekFrom, Write};
@@ -17,6 +18,7 @@ use crate::{
     BdatError, BdatVersion, Cell, ColumnDef, FlagDef, Row, Table, Value, ValueType, WiiEndian,
 };
 
+/// Writes a full BDAT file to a writer.
 pub struct FileWriter<W, E> {
     writer: W,
     version: BdatVersion,
@@ -24,6 +26,7 @@ pub struct FileWriter<W, E> {
     _endianness: PhantomData<E>,
 }
 
+/// Writes a single table.
 struct TableWriter<'a, 't, E, W> {
     table: &'a Table<'t>,
     buf: W,
@@ -39,13 +42,10 @@ struct TableWriter<'a, 't, E, W> {
     _endianness: PhantomData<E>,
 }
 
+/// Writes cells from a row.
 struct RowWriter<'a, 'b, 't, W, E> {
     row: &'a Row<'t>,
-    columns: &'a [ColumnDef],
-    writer: W,
-    strings: &'b mut StringTable,
-    version: BdatVersion,
-    _endianness: PhantomData<E>,
+    table: &'b mut TableWriter<'a, 't, E, W>,
 }
 
 #[derive(Debug)]
@@ -118,7 +118,7 @@ struct StringTable {
     max_len: usize,
 }
 
-impl<W: Write + Seek, E: ByteOrder> FileWriter<W, E> {
+impl<W: Write + Seek, E: ByteOrder + 'static> FileWriter<W, E> {
     pub fn new(writer: W, version: BdatVersion, opts: LegacyWriteOptions) -> Self {
         Self {
             writer,
@@ -186,7 +186,7 @@ impl<W: Write + Seek, E: ByteOrder> FileWriter<W, E> {
     }
 }
 
-impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
+impl<'a, 't, E: ByteOrder + 'static, W: Write + Seek> TableWriter<'a, 't, E, W> {
     fn new(
         table: &'a Table<'t>,
         writer: W,
@@ -242,14 +242,7 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         let row_start = self.buf.stream_position()?;
         self.row_data_offset = row_start as usize;
         for row in self.table.rows() {
-            RowWriter::<_, E>::new(
-                self.version,
-                row,
-                &self.table.columns,
-                &mut self.strings,
-                &mut self.buf,
-            )
-            .write()?;
+            RowWriter::<_, E>::new(&mut self, row).write()?;
         }
         let row_size = (self.buf.stream_position()? - row_start) as usize;
         for _ in row_size..pad_32(row_size) {
@@ -268,14 +261,7 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         // TODO - temporary solution: rows double pass
         self.buf.seek(SeekFrom::Start(row_start))?;
         for row in self.table.rows() {
-            RowWriter::<_, E>::new(
-                self.version,
-                row,
-                &self.table.columns,
-                &mut self.strings,
-                &mut self.buf,
-            )
-            .write()?;
+            RowWriter::<_, E>::new(&mut self, row).write()?;
         }
 
         // Write header when we have all the necessary information
@@ -327,7 +313,13 @@ impl<'a, 't, E: ByteOrder, W: Write + Seek> TableWriter<'a, 't, E, W> {
         let columns = self.columns.as_ref().unwrap();
 
         self.buf.write_all(&BDAT_MAGIC)?; // "BDAT"
-        self.buf.write_u16::<E>(0)?; // Scramble type
+
+        let mut flags = 0;
+        if TypeId::of::<E>() == TypeId::of::<WiiEndian>() {
+            flags |= 0b1;
+        }
+        // TODO scrambled flag
+        self.buf.write_all(&[flags, 0])?; // Flags
 
         // Name table offset = header size + column info table size
         self.buf
@@ -518,25 +510,12 @@ impl ColumnTables {
 }
 
 impl<'a, 'b, 't, W: Write, E: ByteOrder> RowWriter<'a, 'b, 't, W, E> {
-    fn new(
-        version: BdatVersion,
-        row: &'a Row<'t>,
-        columns: &'a [ColumnDef],
-        strings: &'b mut StringTable,
-        writer: W,
-    ) -> Self {
-        Self {
-            version,
-            row,
-            columns,
-            writer,
-            strings,
-            _endianness: PhantomData,
-        }
+    fn new(table: &'b mut TableWriter<'a, 't, E, W>, row: &'a Row<'t>) -> Self {
+        Self { table, row }
     }
 
     fn write(&mut self) -> Result<()> {
-        for (cell, col) in self.row.cells.iter().zip(self.columns.iter()) {
+        for (cell, col) in self.row.cells.iter().zip(self.table.table.columns.iter()) {
             match cell {
                 Cell::Single(v) => self.write_value(v),
                 Cell::List(values) => values.iter().try_for_each(|v| self.write_value(v)),
@@ -553,7 +532,7 @@ impl<'a, 'b, 't, W: Write, E: ByteOrder> RowWriter<'a, 'b, 't, W, E> {
     }
 
     fn write_value(&mut self, value: &Value) -> Result<()> {
-        let writer = &mut self.writer;
+        let writer = &mut self.table.buf;
         Ok(match value {
             Value::Unknown => panic!("tried to serialize unknown value"),
             Value::UnsignedByte(b) => writer.write_u8(*b),
@@ -562,18 +541,18 @@ impl<'a, 'b, 't, W: Write, E: ByteOrder> RowWriter<'a, 'b, 't, W, E> {
             Value::SignedByte(b) => writer.write_i8(*b),
             Value::SignedShort(s) => writer.write_i16::<E>(*s),
             Value::SignedInt(i) => writer.write_i32::<E>(*i),
-            Value::String(s) => writer.write_u32::<E>(self.strings.insert(s).try_into()?),
+            Value::String(s) => writer.write_u32::<E>(self.table.strings.insert(s).try_into()?),
             Value::Float(f) => {
                 let mut f = *f;
-                f.make_known(self.version);
+                f.make_known(self.table.version);
                 writer.write_u32::<E>(f.to_bits())
             }
-            t => return Err(BdatError::UnsupportedType(t.into(), self.version)),
+            t => return Err(BdatError::UnsupportedType(t.into(), self.table.version)),
         }?)
     }
 
     fn write_flags(&mut self, num: u32, value_type: ValueType) -> Result<()> {
-        let writer = &mut self.writer;
+        let writer = &mut self.table.buf;
         Ok(match value_type {
             ValueType::UnsignedByte => writer.write_u8(num as u8),
             ValueType::UnsignedShort => writer.write_u16::<E>(num as u16),

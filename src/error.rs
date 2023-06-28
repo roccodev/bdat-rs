@@ -23,8 +23,6 @@ pub enum BdatError {
     UnsupportedType(ValueType, BdatVersion),
     #[error("Invalid flag type: value type {0:?} does not support flags")]
     InvalidFlagType(ValueType),
-    #[error("Unknown scramble type: {0}")]
-    UnknownScrambleType(u16),
     #[error("Could not detect version: {0}")]
     VersionDetect(#[from] DetectError),
 }

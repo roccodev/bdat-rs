@@ -288,8 +288,6 @@ impl LabelTable {
         let mut cursor = Cursor::new(&mut data);
         let mut written = 1;
 
-        // TODO: if LabelTable is only used for Modern BDATs, this can be
-        // left hardcoded.
         // (whether labels are hashed)
         cursor.write_u8(0)?;
 

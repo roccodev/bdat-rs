@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::collections::{HashSet, VecDeque};
 use std::ffi::CStr;
 use std::io::{Cursor, Read, Seek, SeekFrom};
@@ -19,6 +20,7 @@ use crate::{
 
 use super::{FileHeader, TableHeader};
 
+/// A legacy BDAT reader holding a blob of bytes, which is expected to contain the full file.
 pub struct LegacyBytes<'t, E> {
     data: Cow<'t, [u8]>,
     header: FileHeader,
@@ -26,6 +28,7 @@ pub struct LegacyBytes<'t, E> {
     _endianness: PhantomData<E>,
 }
 
+/// A legacy BDAT reader wrapping a Read implementation.
 pub struct LegacyReader<R, E> {
     reader: R,
     header: FileHeader,
@@ -33,6 +36,7 @@ pub struct LegacyReader<R, E> {
     _endianness: PhantomData<E>,
 }
 
+/// Reads tables in a file.
 struct TableReader<'t, E> {
     header: TableHeader,
     version: BdatVersion,
@@ -40,6 +44,7 @@ struct TableReader<'t, E> {
     _endianness: PhantomData<E>,
 }
 
+/// Reads column infos and column nodes.
 struct ColumnReader<'a, 't, E> {
     table: &'a TableReader<'t, E>,
     data: &'a Cow<'t, [u8]>,
@@ -47,6 +52,7 @@ struct ColumnReader<'a, 't, E> {
     _endianness: PhantomData<E>,
 }
 
+/// Reads row and cell data.
 struct RowReader<'a, 't: 'a, E> {
     table: &'a mut TableReader<'t, E>,
     /// The cells for the row currently being read
@@ -66,6 +72,8 @@ struct ColumnData<'t> {
 struct FlagData {
     index: usize,
     mask: u32,
+    /// Points to the parent's column node, which can be in either
+    /// the name table (Wii), or in its own table (X/2/DE)
     parent_info_offset: usize,
 }
 
@@ -75,6 +83,7 @@ struct ValueData {
     offset: usize,
 }
 
+/// Defines what data a column cell can hold.
 #[derive(Debug, Clone, Copy)]
 enum ColumnCell {
     Flag(FlagData), // this is used in the flag's column, not the parent's
@@ -182,7 +191,10 @@ impl TableHeader {
             // BDAT - doesn't change with endianness
             return Err(BdatError::MalformedBdat(Scope::Table));
         }
-        let scramble_id = reader.read_u16::<E>()? as usize;
+        // Bit 0: seems to be 1 for Big Endian, 0 for Little Endian
+        // Bit 1: whether the table is scrambled
+        let flags = reader.read_u8()? as usize;
+        reader.read_u8()?;
         let offset_names = reader.read_u16::<E>()? as usize;
         let row_len = reader.read_u16::<E>()? as usize;
         let offset_hashes = reader.read_u16::<E>()? as usize;
@@ -206,10 +218,10 @@ impl TableHeader {
         };
 
         Ok(Self {
-            scramble_type: match scramble_id {
-                0 => ScrambleType::None,
-                0x300 /* XCX */ | 2 => ScrambleType::Scrambled(scramble_key),
-                s => return Err(BdatError::UnknownScrambleType(s as u16)),
+            scramble_type: if flags & 0b10 != 0 {
+                ScrambleType::Scrambled(scramble_key)
+            } else {
+                ScrambleType::None
             },
             hashes: (offset_hashes, hash_slot_count * 2).into(),
             strings: (offset_strings, strings_len).into(),
@@ -297,28 +309,25 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         // De-flag-ify
         let columns = columns_src
             .into_iter()
-            .map(|c| {
-                ColumnDef {
-                    label: Label::String(c.name.to_string()),
-                    value_type: c.cell.value().value_type,
-                    offset: c.cell.value().offset,
-                    count: match c.cell {
-                        ColumnCell::Array(_, c) => c,
-                        _ => 1,
-                    },
-                    // TODO optimize?
-                    flags: flags
-                        .get_from_parent(c.info_offset)
-                        .map(|f| {
-                            let ColumnCell::Flag(flag) = &f.cell else { unreachable!() };
-                            FlagDef {
-                                label: f.name.to_string(),
-                                flag_index: flag.index,
-                                mask: flag.mask,
-                            }
-                        })
-                        .collect(),
-                }
+            .map(|c| ColumnDef {
+                label: Label::String(c.name.to_string()),
+                value_type: c.cell.value().value_type,
+                offset: c.cell.value().offset,
+                count: match c.cell {
+                    ColumnCell::Array(_, c) => c,
+                    _ => 1,
+                },
+                flags: flags
+                    .get_from_parent(c.info_offset)
+                    .map(|f| {
+                        let ColumnCell::Flag(flag) = &f.cell else { unreachable!() };
+                        FlagDef {
+                            label: f.name.to_string(),
+                            flag_index: flag.index,
+                            mask: flag.mask,
+                        }
+                    })
+                    .collect(),
             })
             .collect::<Vec<_>>();
 
@@ -618,16 +627,34 @@ impl<'t> Flags<'t> {
     }
 
     fn get_from_parent(&self, parent_info_offset: usize) -> impl Iterator<Item = &ColumnData> {
-        self.0
-            .iter()
-            .skip_while(move |c| Self::extract(c) != parent_info_offset)
-            .take_while(move |c| Self::extract(c) == parent_info_offset)
+        let upper = self
+            .0
+            .partition_point(|c| Self::extract(c) == parent_info_offset);
+        let lower = self.0[..upper].partition_point(|c| Self::extract(c) != parent_info_offset);
+        // If there is no match, lower == upper so the iterator is empty
+        self.0[lower..upper].iter()
     }
 
     fn extract(column: &ColumnData<'_>) -> usize {
         match &column.cell {
             ColumnCell::Flag(f) => f.parent_info_offset,
             _ => panic!("not a flag"),
+        }
+    }
+
+    fn cmp(column: &ColumnData, expected: usize, lt: bool) -> Ordering {
+        let val = Self::extract(column);
+        let res = val.cmp(&expected);
+        match (lt, res) {
+            (lt, Ordering::Equal) => {
+                if lt {
+                    Ordering::Greater
+                } else {
+                    Ordering::Less
+                }
+            }
+            (true, res) => res,
+            (false, res) => res.reverse(),
         }
     }
 }
