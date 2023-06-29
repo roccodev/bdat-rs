@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::io::{Read, Seek};
 use std::path::Path;
 use std::{fs::File, path::PathBuf};
 
@@ -61,8 +62,9 @@ pub struct InputData {
     #[arg(long, global = true)]
     hashes: Option<String>,
 
-    /// The Xenoblade Chronicles game to choose BDAT settings for. Not required for reading.
-    #[arg(long, short, value_enum)]
+    /// The Xenoblade Chronicles game to choose BDAT settings for. Automatically detected
+    /// for reading and writing, but it may be sometimes necessary to override.
+    #[arg(long, short, value_enum, global = true)]
     game: Option<BdatGame>,
 
     /// The input files. For "bdat-toolset diff", these are the "new" BDAT files.
@@ -130,5 +132,23 @@ impl InputData {
             }
             None => Ok(HashNameTable::empty()),
         }
+    }
+
+    pub fn game_from_bytes(&self, bytes: &[u8]) -> Result<BdatGame> {
+        if let Some(game) = self.game {
+            return Ok(game);
+        }
+        Ok(BdatGame::version_default(bdat::detect_bytes_version(
+            bytes,
+        )?))
+    }
+
+    pub fn game_from_reader<R: Read + Seek>(&self, reader: R) -> Result<BdatGame> {
+        if let Some(game) = self.game {
+            return Ok(game);
+        }
+        Ok(BdatGame::version_default(bdat::detect_file_version(
+            reader,
+        )?))
     }
 }

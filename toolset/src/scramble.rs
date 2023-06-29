@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 pub struct ScrambleArgs {
     /// The output directory that should contain the conversion result.
     /// If absent, output files will be in the same directory, but with the
-    /// .plain.bdat extension.
+    /// .plain.bdat/.scrambled.bdat extensions.
     #[arg(short, long)]
     out_dir: Option<String>,
     #[clap(flatten)]

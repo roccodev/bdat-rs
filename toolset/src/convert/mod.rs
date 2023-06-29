@@ -6,10 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::{
-    types::{Label, Table},
-    BdatFile,
-};
+use bdat::types::{Label, Table};
 use clap::Args;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
@@ -129,9 +126,12 @@ pub fn run_serialization(
         .into_par_iter()
         .panic_fuse()
         .map(|path| {
-            let mut file = BufReader::new(File::open(&path)?);
-            let version = bdat::detect_file_version(&mut file)?;
-            let mut file = bdat::from_reader(file).context("Failed to read BDAT file")?;
+            let mut file = std::fs::read(&path)?;
+            let game = input.game_from_bytes(&file)?;
+            let tables = game.from_bytes(&mut file).with_context(|| {
+                format!("Could not parse BDAT tables ({})", path.to_string_lossy())
+            })?;
+
             let file_name = path
                 .file_stem()
                 .and_then(OsStr::to_str)
@@ -139,9 +139,8 @@ pub fn run_serialization(
                 .unwrap();
 
             file_bar.inc(0);
-            let table_bar = multi_bar.add(
-                ProgressBar::new(file.table_count() as u64).with_style(table_bar_style.clone()),
-            );
+            let table_bar = multi_bar
+                .add(ProgressBar::new(tables.len() as u64).with_style(table_bar_style.clone()));
 
             let out_dir = out_dir.join(
                 path.strip_prefix(&base_path)
@@ -152,11 +151,9 @@ pub fn run_serialization(
             let tables_dir = out_dir.join(&file_name);
             std::fs::create_dir_all(&tables_dir)?;
 
-            let mut schema = (!args.no_schema).then(|| FileSchema::new(file_name, version));
+            let mut schema = (!args.no_schema).then(|| FileSchema::new(file_name, game.into()));
 
-            for mut table in file.get_tables().with_context(|| {
-                format!("Could not parse BDAT tables ({})", path.to_string_lossy())
-            })? {
+            for mut table in tables {
                 hash_table.convert_all(&mut table);
 
                 if let Some(schema) = &mut schema {
@@ -290,7 +287,9 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
             let out_dir = out_dir.join(relative_path);
             std::fs::create_dir_all(&out_dir)?;
             let out_file = File::create(out_dir.join(format!("{}.bdat", schema_file.file_name)))?;
-            let game = BdatGame::version_default(schema_file.version);
+            let game = input
+                .game
+                .unwrap_or_else(|| BdatGame::version_default(schema_file.version));
             game.to_writer(out_file, &tables)?;
             progress_bar.master_bar.inc(1);
             Ok(())

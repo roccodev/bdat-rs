@@ -1,5 +1,5 @@
 use anyhow::{Context, Result};
-use bdat::{BdatResult, BdatVersion, SwitchEndian, Table, WiiEndian};
+use bdat::{BdatFile, BdatResult, BdatVersion, SwitchEndian, Table, WiiEndian};
 use clap::{Args, ValueEnum};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use std::io::{Seek, Write};
@@ -37,6 +37,22 @@ impl BdatGame {
             BdatVersion::LegacySwitch => Self::LegacySwitch,
             BdatVersion::LegacyX => Self::Xcx,
             BdatVersion::Modern => Self::Modern,
+        }
+    }
+
+    pub fn from_bytes(self, bytes: &mut [u8]) -> BdatResult<Vec<Table>> {
+        match self {
+            Self::Wii => {
+                bdat::legacy::from_bytes::<WiiEndian>(bytes, BdatVersion::LegacyWii)?.get_tables()
+            }
+            Self::Xcx => {
+                bdat::legacy::from_bytes::<WiiEndian>(bytes, BdatVersion::LegacyX)?.get_tables()
+            }
+            Self::LegacySwitch => {
+                bdat::legacy::from_bytes::<SwitchEndian>(bytes, BdatVersion::LegacySwitch)?
+                    .get_tables()
+            }
+            Self::Modern => bdat::modern::from_bytes::<SwitchEndian>(bytes)?.get_tables(),
         }
     }
 

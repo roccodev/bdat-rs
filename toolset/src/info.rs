@@ -4,7 +4,7 @@ use crate::{
     InputData,
 };
 use anyhow::{Context, Result};
-use bdat::{types::Label, BdatFile};
+use bdat::types::Label;
 use clap::Args;
 use std::borrow::Cow;
 
@@ -26,11 +26,11 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
     for file in input.list_files("bdat", false)? {
         let path = file?;
         let mut file = std::fs::read(&path)?;
-        let mut file = bdat::from_bytes(&mut file).context("Failed to read BDAT file")?;
-        for table in file
-            .get_tables()
-            .with_context(|| format!("Could not parse BDAT tables ({})", path.to_string_lossy()))?
-        {
+        let tables = input
+            .game_from_bytes(&file)?
+            .from_bytes(&mut file)
+            .with_context(|| format!("Could not parse BDAT tables ({})", path.to_string_lossy()))?;
+        for table in tables {
             let name = match table.name() {
                 Some(n) => {
                     if !table_filter.contains(n) {
