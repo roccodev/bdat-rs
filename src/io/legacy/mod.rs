@@ -17,8 +17,8 @@ use crate::legacy::read::{LegacyBytes, LegacyReader};
 use crate::legacy::write::FileWriter;
 use crate::{BdatVersion, Table};
 
-const HEADER_SIZE: usize = 64;
-const HEADER_SIZE_WII: usize = 32;
+pub(super) const HEADER_SIZE: usize = 64;
+pub(super) const HEADER_SIZE_WII: usize = 32;
 const COLUMN_NODE_SIZE: usize = 6;
 const COLUMN_NODE_SIZE_WII: usize = 4;
 
@@ -27,6 +27,8 @@ pub use hash::HashTable as LegacyHashTable;
 #[derive(Copy, Clone)]
 pub struct LegacyWriteOptions {
     pub(crate) hash_slots: usize,
+    pub(crate) scramble: bool,
+    pub(crate) scramble_key: Option<u16>,
 }
 
 #[derive(Debug)]
@@ -263,7 +265,9 @@ pub fn to_vec_options<'t, E: ByteOrder + 'static>(
 impl LegacyWriteOptions {
     pub const fn new() -> Self {
         Self {
-            hash_slots: 61, // used in all tables in X/2/DE
+            hash_slots: 61, // used for all tables in 1/X/2/DE
+            scramble: false,
+            scramble_key: None, // calculated checksum by default
         }
     }
 
@@ -280,6 +284,23 @@ impl LegacyWriteOptions {
     pub fn hash_slots(mut self, slots: usize) -> Self {
         assert_ne!(0, slots);
         self.hash_slots = slots;
+        self
+    }
+
+    /// Sets whether tables should be scrambled during write.
+    ///
+    /// By default, tables are not scrambled.
+    pub fn scramble(mut self, scramble: bool) -> Self {
+        self.scramble = scramble;
+        self
+    }
+
+    /// Sets the key used to scramble tables, if scrambling is enabled
+    /// (see [`scramble`]).
+    ///
+    /// The default scramble key is calculated based on the table's checksum.
+    pub fn scramble_key(mut self, scramble_key: u16) -> Self {
+        self.scramble_key = Some(scramble_key);
         self
     }
 }

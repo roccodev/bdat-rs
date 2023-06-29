@@ -1,3 +1,4 @@
+use bdat::legacy::LegacyWriteOptions;
 use bdat::{BdatFile, BdatVersion, Cell, SwitchEndian, Value};
 
 type FileEndian = SwitchEndian;
@@ -100,8 +101,12 @@ fn write_back() {
             .unwrap()
             .get_tables()
             .unwrap();
-    let mut new_out =
-        bdat::legacy::to_vec::<FileEndian>(&tables, BdatVersion::LegacySwitch).unwrap();
+    let mut new_out = bdat::legacy::to_vec_options::<FileEndian>(
+        &tables,
+        BdatVersion::LegacySwitch,
+        LegacyWriteOptions::new().scramble(true),
+    )
+    .unwrap();
     let new_tables =
         bdat::legacy::from_bytes::<FileEndian>(&mut new_out, BdatVersion::LegacySwitch)
             .unwrap()

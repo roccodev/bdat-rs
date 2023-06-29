@@ -10,6 +10,7 @@ use byteorder::{ByteOrder, WriteBytesExt};
 use crate::error::Result;
 use crate::io::BDAT_MAGIC;
 use crate::legacy::hash::HashTable;
+use crate::legacy::scramble::{calc_checksum, scramble};
 use crate::legacy::util::{pad_2, pad_32, pad_4, pad_64};
 use crate::legacy::{
     LegacyWriteOptions, COLUMN_NODE_SIZE, COLUMN_NODE_SIZE_WII, HEADER_SIZE, HEADER_SIZE_WII,
@@ -27,25 +28,30 @@ pub struct FileWriter<W, E> {
 }
 
 /// Writes a single table.
-struct TableWriter<'a, 't, E, W> {
+struct TableWriter<'a, 't, E> {
     table: &'a Table<'t>,
-    buf: W,
+    buf: Cursor<Vec<u8>>,
     version: BdatVersion,
     opts: LegacyWriteOptions,
     names: StringTable,
     strings: StringTable,
     columns: Option<ColumnTables>,
-    // TODO maybe regroup into header struct
-    hash_table_offset: usize,
-    row_data_offset: usize,
-    final_padding: usize,
+    header: HeaderData,
     _endianness: PhantomData<E>,
 }
 
+#[derive(Default)]
+struct HeaderData {
+    hash_table_offset: usize,
+    row_data_offset: usize,
+    final_padding: usize,
+    checksum: u16,
+}
+
 /// Writes cells from a row.
-struct RowWriter<'a, 'b, 't, W, E> {
+struct RowWriter<'a, 'b, 't, E> {
     row: &'a Row<'t>,
-    table: &'b mut TableWriter<'a, 't, E, W>,
+    table: &'b mut TableWriter<'a, 't, E>,
 }
 
 #[derive(Debug)]
@@ -144,14 +150,7 @@ impl<W: Write + Seek, E: ByteOrder + 'static> FileWriter<W, E> {
 
         let (table_bytes, table_offsets, total_len, table_count) = tables
             .into_iter()
-            .map(|table| {
-                let mut data = vec![];
-                let cursor = Cursor::new(&mut data);
-
-                TableWriter::<E, _>::new(table.borrow(), cursor, self.version, self.opts)
-                    .write()
-                    .map(|_| data)
-            })
+            .map(|table| TableWriter::<E>::new(table.borrow(), self.version, self.opts).write())
             .try_fold(
                 (Vec::new(), Vec::new(), 0, 0),
                 |(mut tot_bytes, mut offsets, len, count), table_bytes| {
@@ -173,12 +172,16 @@ impl<W: Write + Seek, E: ByteOrder + 'static> FileWriter<W, E> {
                 },
             )?;
 
-        self.writer.write_u32::<E>(table_count as u32)?;
-        self.writer.write_u32::<E>(total_len.try_into()?)?;
         let offsets = table_offsets.len();
+        let header_len = 8 + offsets * 4;
+
+        self.writer.write_u32::<E>(table_count as u32)?;
+        self.writer
+            .write_u32::<E>((total_len + header_len).try_into()?)?;
+
         for offset in table_offsets {
             self.writer
-                .write_u32::<E>((offset + 8 + offsets * 4).try_into()?)?;
+                .write_u32::<E>((offset + header_len).try_into()?)?;
         }
         self.writer.write_all(&table_bytes)?;
 
@@ -186,16 +189,11 @@ impl<W: Write + Seek, E: ByteOrder + 'static> FileWriter<W, E> {
     }
 }
 
-impl<'a, 't, E: ByteOrder + 'static, W: Write + Seek> TableWriter<'a, 't, E, W> {
-    fn new(
-        table: &'a Table<'t>,
-        writer: W,
-        version: BdatVersion,
-        opts: LegacyWriteOptions,
-    ) -> Self {
+impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
+    fn new(table: &'a Table<'t>, version: BdatVersion, opts: LegacyWriteOptions) -> Self {
         Self {
             table,
-            buf: writer,
+            buf: Cursor::new(Vec::new()),
             version,
             opts,
             names: StringTable::new(match version {
@@ -204,20 +202,16 @@ impl<'a, 't, E: ByteOrder + 'static, W: Write + Seek> TableWriter<'a, 't, E, W> 
             }),
             strings: StringTable::new(0),
             columns: None,
-            hash_table_offset: 0,
-            row_data_offset: 0,
-            final_padding: 0,
+            header: Default::default(),
             _endianness: PhantomData,
         }
     }
 
-    fn write(mut self) -> Result<()> {
-        let table_start = self.buf.stream_position()?;
-
+    fn write(mut self) -> Result<Vec<u8>> {
         self.make_layout()?;
         // Header space - nice workaround for a non-const (but with an upper bound) header size
         self.buf
-            .write_all(&[0u8; HEADER_SIZE][..self.header_size()])?;
+            .write_all(&[0u8; HEADER_SIZE][..self.version.table_header_size()])?;
 
         let columns = self.columns.as_ref().unwrap();
 
@@ -227,7 +221,7 @@ impl<'a, 't, E: ByteOrder + 'static, W: Write + Seek> TableWriter<'a, 't, E, W> 
             columns.write_nodes::<E>(&mut self.buf)?;
         }
 
-        self.hash_table_offset = self.buf.stream_position()? as usize;
+        self.header.hash_table_offset = self.buf.stream_position()? as usize;
         columns.hash_table.write_first_level::<E>(&mut self.buf)?;
 
         // Can now update other levels of the hash table
@@ -240,9 +234,9 @@ impl<'a, 't, E: ByteOrder + 'static, W: Write + Seek> TableWriter<'a, 't, E, W> 
         }
 
         let row_start = self.buf.stream_position()?;
-        self.row_data_offset = row_start as usize;
+        self.header.row_data_offset = row_start as usize;
         for row in self.table.rows() {
-            RowWriter::<_, E>::new(&mut self, row).write()?;
+            RowWriter::<E>::new(&mut self, row).write()?;
         }
         let row_size = (self.buf.stream_position()? - row_start) as usize;
         for _ in row_size..pad_32(row_size) {
@@ -252,29 +246,34 @@ impl<'a, 't, E: ByteOrder + 'static, W: Write + Seek> TableWriter<'a, 't, E, W> 
         self.strings.base_offset = self.buf.stream_position()? as usize;
         self.strings.write(&mut self.buf)?;
 
-        let table_size = (self.buf.stream_position()? - table_start) as usize;
+        let table_size = self.buf.position() as usize;
         for _ in table_size..pad_64(table_size) {
             self.buf.write_u8(0)?;
-            self.final_padding += 1;
+            self.header.final_padding += 1;
         }
 
         // TODO - temporary solution: rows double pass
         self.buf.seek(SeekFrom::Start(row_start))?;
         for row in self.table.rows() {
-            RowWriter::<_, E>::new(&mut self, row).write()?;
+            RowWriter::<E>::new(&mut self, row).write()?;
         }
 
         // Write header when we have all the necessary information
         self.buf.seek(SeekFrom::Start(0))?;
         self.write_header()?;
 
-        Ok(())
+        // Finally, scramble sections if enabled
+        if self.opts.scramble {
+            self.rescramble();
+        }
+
+        Ok(self.buf.into_inner())
     }
 
     fn make_layout(&mut self) -> Result<()> {
         self.init_names();
 
-        let info_offset = self.header_size();
+        let info_offset = self.version.table_header_size();
 
         let columns = ColumnTableBuilder::from_columns(
             &self.table.columns,
@@ -318,21 +317,24 @@ impl<'a, 't, E: ByteOrder + 'static, W: Write + Seek> TableWriter<'a, 't, E, W> 
         if TypeId::of::<E>() == TypeId::of::<WiiEndian>() {
             flags |= 0b1;
         }
-        // TODO scrambled flag
+        if self.opts.scramble {
+            flags |= 0b10;
+        }
         self.buf.write_all(&[flags, 0])?; // Flags
 
         // Name table offset = header size + column info table size
         self.buf
-            .write_u16::<E>((self.header_size() + columns.info_len) as u16)?;
+            .write_u16::<E>((self.version.table_header_size() + columns.info_len) as u16)?;
         // Size of each row
         self.buf.write_u16::<E>(columns.row_data_len.try_into()?)?;
         // Hash table offset
         self.buf
-            .write_u16::<E>(self.hash_table_offset.try_into()?)?;
+            .write_u16::<E>(self.header.hash_table_offset.try_into()?)?;
         // Hash table modulo factor
         self.buf.write_u16::<E>(self.opts.hash_slots.try_into()?)?;
         // Row table offset
-        self.buf.write_u16::<E>(self.row_data_offset.try_into()?)?;
+        self.buf
+            .write_u16::<E>(self.header.row_data_offset.try_into()?)?;
         // Number of rows
         self.buf.write_u16::<E>(self.table.rows.len().try_into()?)?;
         // ID of the first row
@@ -347,14 +349,18 @@ impl<'a, 't, E: ByteOrder + 'static, W: Write + Seek> TableWriter<'a, 't, E, W> 
         )?;
         // UNKNOWN - asserted 2 when reading
         self.buf.write_u16::<E>(2)?;
-        // Checksum - TODO
+
+        let checksum_offset = self.buf.position();
+        // Checksum - written at the end
         self.buf.write_u16::<E>(0)?;
+
         // String table offset
         self.buf
             .write_u32::<E>(self.strings.base_offset.try_into()?)?;
         // String table size, includes final table padding
-        self.buf
-            .write_u32::<E>((self.strings.size_bytes_current() + self.final_padding).try_into()?)?;
+        self.buf.write_u32::<E>(
+            (self.strings.size_bytes_current() + self.header.final_padding).try_into()?,
+        )?;
 
         if self.version != BdatVersion::LegacyWii {
             // Column node table offset
@@ -367,14 +373,28 @@ impl<'a, 't, E: ByteOrder + 'static, W: Write + Seek> TableWriter<'a, 't, E, W> 
             self.buf.write_all(&[0u8; HEADER_SIZE - 36])?;
         }
 
+        self.buf.set_position(checksum_offset);
+        let checksum = self
+            .opts
+            .scramble_key
+            .unwrap_or_else(|| calc_checksum(self.buf.get_ref()));
+        self.header.checksum = checksum;
+        self.buf.write_u16::<E>(checksum)?;
+
         Ok(())
     }
 
-    const fn header_size(&self) -> usize {
-        match self.version {
-            BdatVersion::LegacyWii => HEADER_SIZE_WII,
-            _ => HEADER_SIZE,
-        }
+    fn rescramble(&mut self) {
+        let key = self.header.checksum;
+        scramble(
+            &mut self.buf.get_mut()[self.names.base_offset..self.header.hash_table_offset],
+            key,
+        );
+        scramble(
+            &mut self.buf.get_mut()[self.strings.base_offset
+                ..self.strings.base_offset + self.strings.size_bytes_current()],
+            key,
+        );
     }
 }
 
@@ -509,8 +529,8 @@ impl ColumnTables {
     }
 }
 
-impl<'a, 'b, 't, W: Write, E: ByteOrder> RowWriter<'a, 'b, 't, W, E> {
-    fn new(table: &'b mut TableWriter<'a, 't, E, W>, row: &'a Row<'t>) -> Self {
+impl<'a, 'b, 't, E: ByteOrder> RowWriter<'a, 'b, 't, E> {
+    fn new(table: &'b mut TableWriter<'a, 't, E>, row: &'a Row<'t>) -> Self {
         Self { table, row }
     }
 

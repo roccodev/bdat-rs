@@ -32,4 +32,13 @@ impl BdatVersion {
     pub fn are_labels_hashed(&self) -> bool {
         *self == BdatVersion::Modern
     }
+
+    /// Returns the size in bytes of the table header.
+    pub const fn table_header_size(&self) -> usize {
+        match self {
+            BdatVersion::Modern => 48,
+            BdatVersion::LegacyWii => legacy::HEADER_SIZE_WII,
+            _ => legacy::HEADER_SIZE,
+        }
+    }
 }
