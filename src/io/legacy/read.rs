@@ -119,7 +119,6 @@ impl<'t, E: ByteOrder> LegacyBytes<'t, E> {
         header.for_each_table_mut(bytes, |table| {
             let header = TableHeader::read::<E>(Cursor::new(&table), version)?;
             header.unscramble_data(table);
-            table[4] = 0;
             headers.push(header);
             Ok::<_, BdatError>(())
         })?;
@@ -444,7 +443,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
             // To get a Utf of lifetime 't, we need to extract the 't slice from Cow::Borrowed,
             // or keep using owned values
             Cow::Owned(owned) => Ok(Self::read_str(owned, offset)?.to_string().into()),
-            Cow::Borrowed(borrowed) => Self::read_str(borrowed, offset).map(|s| Cow::Borrowed(s)),
+            Cow::Borrowed(borrowed) => Self::read_str(borrowed, offset).map(Cow::Borrowed),
         };
         res
     }

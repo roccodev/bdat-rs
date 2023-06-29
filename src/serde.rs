@@ -10,6 +10,7 @@ use serde::{
 use std::borrow::Cow;
 use std::collections::HashMap;
 use std::marker::PhantomData;
+use std::ops::Deref;
 
 use crate::types::{Cell, Label, Value, ValueType};
 
@@ -25,7 +26,7 @@ pub struct ValueWithType<'b> {
 /// Wraps a cell with its column to allow for custom serialization.
 pub struct SerializeCell<'a, 'b, 't> {
     column: &'a ColumnDef,
-    cell: &'b Cell<'t>,
+    cell: Cow<'b, Cell<'t>>,
 }
 
 enum ValueTypeFields {
@@ -44,7 +45,17 @@ impl ColumnDef {
     }
 
     pub fn cell_serializer<'a, 'b, 't>(&'a self, cell: &'b Cell<'t>) -> SerializeCell<'a, 'b, 't> {
-        SerializeCell { column: self, cell }
+        SerializeCell {
+            column: self,
+            cell: Cow::Borrowed(cell),
+        }
+    }
+
+    pub fn owned_cell_serializer<'a, 't>(&'a self, cell: Cell<'t>) -> SerializeCell<'a, '_, 't> {
+        SerializeCell {
+            column: self,
+            cell: Cow::Owned(cell),
+        }
     }
 }
 
@@ -53,7 +64,7 @@ impl<'a, 'b, 't> Serialize for SerializeCell<'a, 'b, 't> {
     where
         S: Serializer,
     {
-        match self.cell {
+        match self.cell.deref() {
             Cell::Single(v) => v.serialize(serializer),
             Cell::List(values) => values.serialize(serializer),
             Cell::Flags(flag_values) => {
