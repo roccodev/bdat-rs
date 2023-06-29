@@ -120,7 +120,6 @@ fn duplicate_columns() {
     let tables = [common::duplicate_table_create()];
 
     let mut bytes = bdat::legacy::to_vec::<FileEndian>(&tables, VERSION).unwrap();
-    std::fs::write("/tmp/test-dup-col.bdat", &bytes).unwrap();
     let back = bdat::from_bytes(&mut bytes).unwrap().get_tables().unwrap();
 
     assert_eq!(tables[0], back[0]);
