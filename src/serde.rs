@@ -498,7 +498,6 @@ mod tests {
             label: Label::Hash(0),
             value_type: ValueType::UnsignedInt,
             count: 1,
-            offset: 0, // TODO better way of initializing the entire thing
             flags: vec![
                 FlagDef {
                     label: "Flag1".to_string(),

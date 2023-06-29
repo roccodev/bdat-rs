@@ -180,7 +180,6 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
         let mut col_data = Vec::with_capacity(columns);
         let mut row_data = Vec::with_capacity(rows);
 
-        let mut data_offset = 0;
         for i in 0..columns {
             let col = &table_data.data[offset_col + i * LEN_COLUMN_DEF_V2..];
             let ty =
@@ -191,11 +190,9 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
             col_data.push(ColumnDef {
                 value_type: ty,
                 label,
-                offset: data_offset,
                 flags: Vec::new(),
                 count: 1,
             });
-            data_offset += ty.data_len();
         }
 
         for i in 0..rows {

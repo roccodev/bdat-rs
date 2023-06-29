@@ -20,8 +20,11 @@ impl HashTable {
         table
     }
 
-    /// If the key was already present in the table, behavior is undefined.
-    pub fn insert_unique(&mut self, key: &str, value: u16) {
+    /// Inserts a (key, value) pair in the hash table.
+    ///
+    /// If the key was already present, then the value must point to a node with the same name.
+    /// Otherwise, behavior is undefined.
+    pub fn insert(&mut self, key: &str, value: u16) {
         let idx = self.hash(key.as_ref()) as usize;
         self.slots[idx].push(value);
     }
@@ -82,14 +85,14 @@ mod tests {
     #[test]
     fn test_table_mod_61() {
         let mut table = HashTable::new(61);
-        table.insert_unique("name", 100);
-        table.insert_unique("style", 200);
+        table.insert("name", 100);
+        table.insert("style", 200);
 
         assert_eq!(37, table.get_slot(100).unwrap());
         assert_eq!(60, table.get_slot(200).unwrap());
 
-        table.insert_unique("KizunaReward1", 300);
-        table.insert_unique("KizunaReward2", 400);
+        table.insert("KizunaReward1", 300);
+        table.insert("KizunaReward2", 400);
 
         assert_eq!(9, table.get_slot(300).unwrap());
         assert_eq!(9, table.get_slot(400).unwrap());

@@ -51,7 +51,6 @@ pub struct TableBuilder<'b>(Table<'b>);
 pub struct ColumnDef {
     pub(crate) value_type: ValueType,
     pub(crate) label: Label,
-    pub(crate) offset: usize,
     pub(crate) count: usize,
     pub(crate) flags: Vec<FlagDef>,
 }
@@ -476,7 +475,6 @@ impl ColumnDef {
         Self {
             value_type: ty,
             label,
-            offset: 0,
             flags,
             count: 1,
         }
@@ -497,11 +495,6 @@ impl ColumnDef {
         &mut self.label
     }
 
-    /// Returns this column's data offset.
-    pub fn offset(&self) -> usize {
-        self.offset
-    }
-
     /// Returns the number of values in this column's cells.
     /// For [`Cell::Single`] and [`Cell::Flags`] cells, this is 1. For [`Cell::List`] cells, it is
     /// the number of elements in the list.
@@ -512,6 +505,11 @@ impl ColumnDef {
     /// Returns this column's defined set of sub-flags.
     pub fn flags(&self) -> &[FlagDef] {
         &self.flags
+    }
+
+    /// Returns the total space occupied by a cell of this column.
+    pub fn data_size(&self) -> usize {
+        todo!()
     }
 }
 

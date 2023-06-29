@@ -5,6 +5,8 @@ type FileEndian = SwitchEndian;
 
 static TEST_FILE_1: &[u8] = include_bytes!("res/test_legacy_1.bdat");
 
+mod common;
+
 #[test]
 fn version_detect() {
     assert_eq!(
@@ -113,4 +115,14 @@ fn write_back() {
             .get_tables()
             .unwrap();
     assert_eq!(tables, new_tables);
+}
+
+#[test]
+fn duplicate_columns() {
+    let tables = [common::duplicate_table_create()];
+
+    let mut bytes = bdat::legacy::to_vec::<FileEndian>(&tables, BdatVersion::LegacySwitch).unwrap();
+    let back = bdat::from_bytes(&mut bytes).unwrap().get_tables().unwrap();
+
+    assert_eq!(tables[0], back[0]);
 }

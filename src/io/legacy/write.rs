@@ -118,10 +118,12 @@ enum StringNode {
 #[derive(Debug)]
 struct StringTable {
     table: Vec<StringNode>,
-    offsets: HashMap<Rc<str>, usize>,
+    offsets_by_name: HashMap<Rc<str>, usize>,
+    offsets: Vec<usize>,
     base_offset: usize,
     len: usize,
     max_len: usize,
+    keep_duplicates: bool,
 }
 
 impl<W: Write + Seek, E: ByteOrder + 'static> FileWriter<W, E> {
@@ -196,11 +198,14 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
             buf: Cursor::new(Vec::new()),
             version,
             opts,
-            names: StringTable::new(match version {
-                BdatVersion::LegacyWii => HEADER_SIZE_WII,
-                _ => HEADER_SIZE,
-            }),
-            strings: StringTable::new(0),
+            names: StringTable::new(
+                match version {
+                    BdatVersion::LegacyWii => HEADER_SIZE_WII,
+                    _ => HEADER_SIZE,
+                },
+                true,
+            ),
+            strings: StringTable::new(0, false),
             columns: None,
             header: Default::default(),
             _endianness: PhantomData,
@@ -452,17 +457,18 @@ impl<'a> ColumnTableBuilder<'a> {
             });
             self.tables
                 .hash_table
-                .insert_unique(&info.name, node_ptr.try_into()?);
+                .insert(&info.name, node_ptr.try_into()?);
         }
 
-        // TODO how does this work with duplicate columns?
         for info in self.tables.infos.iter_mut() {
             if let (Some(parent_id), CellHeader::Flags { parent, .. }) =
                 (info.parent, &mut info.cell)
             {
-                *parent = self.name_table.get_offset(parent_id + 1).unwrap();
+                *parent = self.name_table.get_wii_offset(parent_id).unwrap();
             }
         }
+
+        println!("{:?}", self.tables.infos);
         Ok(self.tables)
     }
 
@@ -495,8 +501,7 @@ impl<'a> ColumnTableBuilder<'a> {
         }
 
         for (i, def) in nodes.iter().enumerate() {
-            // TODO what happens with duplicate columns?
-            self.tables.hash_table.insert_unique(
+            self.tables.hash_table.insert(
                 &def.name,
                 (nodes_offset + i * COLUMN_NODE_SIZE).try_into().unwrap(),
             );
@@ -694,13 +699,15 @@ impl CellHeader {
 }
 
 impl StringTable {
-    fn new(base_offset: usize) -> Self {
+    fn new(base_offset: usize, keep_duplicates: bool) -> Self {
         Self {
             table: vec![],
             base_offset,
-            offsets: Default::default(),
+            offsets_by_name: Default::default(),
+            offsets: vec![],
             len: 0,
             max_len: 0,
+            keep_duplicates,
         }
     }
 
@@ -716,7 +723,7 @@ impl StringTable {
     }
 
     fn insert(&mut self, text: &str) -> usize {
-        if let Some(ptr) = self.offsets.get(text) {
+        if let (false, Some(ptr)) = (self.keep_duplicates, self.offsets_by_name.get(text)) {
             return *ptr + self.base_offset;
         }
         let len = text.len();
@@ -724,7 +731,9 @@ impl StringTable {
         let offset = self.len;
         self.len += pad_2(len + 1);
         self.table.push(StringNode::String(text.clone()));
-        self.offsets.insert(text, offset);
+        if !self.keep_duplicates {
+            self.offsets_by_name.insert(text, offset);
+        }
         offset + self.base_offset
     }
 
@@ -732,18 +741,16 @@ impl StringTable {
         let len = node.name.len();
         let offset = self.len;
         self.len += pad_2(len + 1) + COLUMN_NODE_SIZE_WII;
-        self.offsets.insert(node.name.clone(), offset);
+        self.offsets_by_name.insert(node.name.clone(), offset);
+        self.offsets.push(offset);
         self.table.push(StringNode::WiiColumn(node));
         offset + self.base_offset
     }
 
-    fn get_offset(&self, chronological: usize) -> Option<usize> {
-        self.table
+    /// Wii only
+    fn get_wii_offset(&self, chronological: usize) -> Option<usize> {
+        self.offsets
             .get(chronological)
-            .and_then(|entry| match entry {
-                StringNode::String(s) => self.offsets.get(s),
-                StringNode::WiiColumn(c) => self.offsets.get(&c.name),
-            })
             .copied()
             .map(|o| o + self.base_offset)
     }

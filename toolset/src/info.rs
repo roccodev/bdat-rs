@@ -49,6 +49,7 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
 
             if table.column_count() != 0 {
                 println!("  Columns:");
+                let mut offset = 0;
                 for col in table
                     .into_columns()
                     .filter(|c| column_filter.contains(c.label()))
@@ -60,7 +61,7 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
 
                     println!(
                         "    - [{}] {}: {:?}{}",
-                        col.offset(),
+                        offset,
                         format_unhashed_label(col.label(), &hash_table),
                         col.value_type(),
                         extra
@@ -74,6 +75,8 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
                             flag.label()
                         );
                     }
+
+                    offset += col.data_size();
                 }
             }
         }

@@ -118,7 +118,6 @@ mod tests {
             .add_column(ColumnDef {
                 value_type: ValueType::UnsignedInt,
                 label: Label::Hash(0xca_fe_ca_fe),
-                offset: 4,
                 flags: Vec::new(),
                 count: 1,
             })

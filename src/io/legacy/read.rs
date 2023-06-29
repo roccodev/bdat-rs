@@ -1,5 +1,4 @@
 use std::borrow::Cow;
-use std::cmp::Ordering;
 use std::collections::{HashSet, VecDeque};
 use std::ffi::CStr;
 use std::io::{Cursor, Read, Seek, SeekFrom};
@@ -312,7 +311,6 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
             .map(|c| ColumnDef {
                 label: Label::String(c.name.to_string()),
                 value_type: c.cell.value().value_type,
-                offset: c.cell.value().offset,
                 count: match c.cell {
                     ColumnCell::Array(_, c) => c,
                     _ => 1,
@@ -639,22 +637,6 @@ impl<'t> Flags<'t> {
         match &column.cell {
             ColumnCell::Flag(f) => f.parent_info_offset,
             _ => panic!("not a flag"),
-        }
-    }
-
-    fn cmp(column: &ColumnData, expected: usize, lt: bool) -> Ordering {
-        let val = Self::extract(column);
-        let res = val.cmp(&expected);
-        match (lt, res) {
-            (lt, Ordering::Equal) => {
-                if lt {
-                    Ordering::Greater
-                } else {
-                    Ordering::Less
-                }
-            }
-            (true, res) => res,
-            (false, res) => res.reverse(),
         }
     }
 }

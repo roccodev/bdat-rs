@@ -6,6 +6,8 @@ type FileEndian = WiiEndian;
 const VERSION: BdatVersion = BdatVersion::LegacyWii;
 static TEST_FILE_1: &[u8] = include_bytes!("res/test_legacy_wii_1.bdat");
 
+mod common;
+
 #[test]
 fn version_detect() {
     assert_eq!(
@@ -111,4 +113,15 @@ fn write_back() {
         .get_tables()
         .unwrap();
     assert_eq!(tables, new_tables);
+}
+
+#[test]
+fn duplicate_columns() {
+    let tables = [common::duplicate_table_create()];
+
+    let mut bytes = bdat::legacy::to_vec::<FileEndian>(&tables, VERSION).unwrap();
+    std::fs::write("/tmp/test-dup-col.bdat", &bytes).unwrap();
+    let back = bdat::from_bytes(&mut bytes).unwrap().get_tables().unwrap();
+
+    assert_eq!(tables[0], back[0]);
 }
