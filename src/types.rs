@@ -509,7 +509,7 @@ impl ColumnDef {
 
     /// Returns the total space occupied by a cell of this column.
     pub fn data_size(&self) -> usize {
-        todo!()
+        self.value_type.data_len() * self.count
     }
 }
 
