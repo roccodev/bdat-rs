@@ -4,12 +4,12 @@ use std::ffi::CStr;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::marker::PhantomData;
 
-use byteorder::{ByteOrder, ReadBytesExt};
+use byteorder::{ByteOrder, NativeEndian, ReadBytesExt, WriteBytesExt};
 
 use crate::error::{Result, Scope};
 use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
-use crate::legacy::scramble::{unscramble, ScrambleType};
+use crate::legacy::scramble::{calc_checksum, scramble, unscramble, ScrambleType};
 use crate::legacy::{ColumnNodeInfo, COLUMN_NODE_SIZE};
 use crate::types::Utf;
 use crate::{
@@ -237,6 +237,8 @@ impl TableHeader {
         })
     }
 
+    /// Unscrambles the given byte slice, based on this table's settings.
+    /// Does nothing if the table is not scrambled.
     pub fn unscramble_data(&self, data: &mut [u8]) {
         let scramble_key = match self.scramble_type {
             ScrambleType::Scrambled(key) => key,
@@ -248,6 +250,27 @@ impl TableHeader {
             scramble_key,
         );
         unscramble(&mut data[self.strings.range()], scramble_key);
+        data[4] &= 0xfd; // unset scrambled flag
+    }
+
+    /// Scrambles the given byte slice, calculating the checksum automatically.
+    /// The given slice must contain the full table.
+    pub fn scramble_data<E: ByteOrder>(&self, data: &mut [u8]) {
+        if self.scramble_type != ScrambleType::None {
+            return;
+        }
+        let checksum = calc_checksum(data);
+        // Scramble column names and string table
+        scramble(&mut data[self.offset_names..self.hashes.offset], checksum);
+        scramble(&mut data[self.strings.range()], checksum);
+        (&mut data[0x16..0x18]).write_u16::<E>(checksum).unwrap();
+        data[4] |= 0b10; // set scrambled flag
+    }
+
+    /// Attempts to read the name of the table. The given slice must contain the full table.
+    pub fn read_name<'b>(&self, data: &'b [u8]) -> Result<&'b str> {
+        // endianness doesn't matter
+        TableReader::<NativeEndian>::read_str(data, self.offset_names)
     }
 
     fn get_table_len(&self) -> usize {
@@ -420,16 +443,16 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         let res = match self.data.get_ref() {
             // To get a Utf of lifetime 't, we need to extract the 't slice from Cow::Borrowed,
             // or keep using owned values
-            Cow::Owned(owned) => {
-                let c_str = CStr::from_bytes_until_nul(&owned[offset..]).map_err(eof)?;
-                Ok(Cow::Owned(c_str.to_str()?.to_string()))
-            }
-            Cow::Borrowed(borrowed) => {
-                let c_str = CStr::from_bytes_until_nul(&borrowed[offset..]).map_err(eof)?;
-                Ok(Cow::Borrowed(c_str.to_str()?))
-            }
+            Cow::Owned(owned) => Ok(Self::read_str(owned, offset)?.to_string().into()),
+            Cow::Borrowed(borrowed) => Self::read_str(borrowed, offset).map(|s| Cow::Borrowed(s)),
         };
         res
+    }
+
+    fn read_str(bytes: &[u8], offset: usize) -> Result<&str> {
+        Ok(CStr::from_bytes_until_nul(&bytes[offset..])
+            .map_err(eof)?
+            .to_str()?)
     }
 }
 

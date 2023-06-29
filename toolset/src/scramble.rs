@@ -2,6 +2,7 @@ use crate::error::Error;
 use crate::util::{ProgressBarState, RayonPoolJobs};
 use crate::InputData;
 use anyhow::{Context, Result};
+use bdat::legacy::scramble::ScrambleType;
 use bdat::legacy::{FileHeader, TableHeader};
 use bdat::{BdatVersion, SwitchEndian, WiiEndian};
 use clap::Args;
@@ -21,10 +22,19 @@ pub struct ScrambleArgs {
 }
 
 pub fn scramble(input: InputData, args: ScrambleArgs) -> Result<()> {
-    Ok(())
+    run(input, args, "scrambled.bdat", scramble_file)
 }
 
 pub fn unscramble(input: InputData, args: ScrambleArgs) -> Result<()> {
+    run(input, args, "plain.bdat", unscramble_file)
+}
+
+fn run(
+    input: InputData,
+    args: ScrambleArgs,
+    extension: &str,
+    func: fn(PathBuf, PathBuf, &ProgressBarState) -> Result<()>,
+) -> Result<()> {
     args.jobs.configure()?;
 
     let files = input
@@ -48,7 +58,7 @@ pub fn unscramble(input: InputData, args: ScrambleArgs) -> Result<()> {
 
             Ok::<_, anyhow::Error>(out_dir.join(file.file_name().unwrap()))
         }
-        None => Ok(file.with_extension("plain.bdat")),
+        None => Ok(file.with_extension(extension)),
     };
 
     let progress = ProgressBarState::new("Files", "Tables", files.len());
@@ -59,7 +69,7 @@ pub fn unscramble(input: InputData, args: ScrambleArgs) -> Result<()> {
         .panic_fuse()
         .map(|file| {
             let out = out_file_name(&file)?;
-            unscramble_file(file, out, &progress)?;
+            func(file, out, &progress)?;
             progress.master_bar.inc(1);
             Ok(())
         })
@@ -97,8 +107,62 @@ fn unscramble_file(path_in: PathBuf, path_out: PathBuf, progress: &ProgressBarSt
             }
             _ => unreachable!(),
         }?;
+        if let ScrambleType::None = header.scramble_type {
+            progress.println(format!(
+                "Note: skipping table {} (not scrambled)",
+                header.read_name(table)?
+            ))?;
+            return Ok(());
+        }
         header.unscramble_data(table);
-        table[4] = 0; // Change scramble type to none
+        table_bar.inc(1);
+        Ok::<_, anyhow::Error>(())
+    })?;
+
+    table_bar.finish();
+    progress.remove_child(&table_bar);
+
+    std::fs::write(path_out, bytes)?;
+    Ok(())
+}
+
+fn scramble_file(path_in: PathBuf, path_out: PathBuf, progress: &ProgressBarState) -> Result<()> {
+    let file_name = path_in.file_name().unwrap().to_string_lossy();
+    let mut bytes = std::fs::read(&path_in)?;
+    let version = bdat::detect_bytes_version(&bytes)?;
+    let cursor = Cursor::new(&bytes);
+    let wii_endian = match version {
+        BdatVersion::LegacyWii | BdatVersion::LegacyX => true,
+        BdatVersion::LegacySwitch => false,
+        _ => return Err(Error::NotLegacy.into()),
+    };
+    let header = match wii_endian {
+        true => FileHeader::read::<_, WiiEndian>(cursor),
+        false => FileHeader::read::<_, SwitchEndian>(cursor),
+    }?;
+
+    let table_bar = progress.add_child(header.table_count);
+    table_bar.inc(0);
+
+    let mut table_idx = 0;
+
+    header.for_each_table_mut(&mut bytes, |table| {
+        let header = match wii_endian {
+            true => TableHeader::read::<WiiEndian>(Cursor::new(&table), version),
+            false => TableHeader::read::<SwitchEndian>(Cursor::new(&table), version),
+        }?;
+        table_idx += 1;
+        if let ScrambleType::Scrambled(_) = header.scramble_type {
+            progress.println(format!(
+                "Note: skipping table {} from {} (already scrambled)",
+                table_idx, file_name
+            ))?;
+            return Ok(());
+        }
+        match wii_endian {
+            true => header.scramble_data::<WiiEndian>(table),
+            false => header.scramble_data::<SwitchEndian>(table),
+        }
         table_bar.inc(1);
         Ok::<_, anyhow::Error>(())
     })?;

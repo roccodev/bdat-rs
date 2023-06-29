@@ -125,7 +125,7 @@ impl RayonPoolJobs {
 
 impl ValueEnum for BdatGame {
     fn value_variants<'a>() -> &'a [Self] {
-        &[Self::Wii, Self::Xcx, Self::Modern]
+        &[Self::Wii, Self::LegacySwitch, Self::Xcx, Self::Modern]
     }
 
     fn to_possible_value<'a>(&self) -> Option<clap::builder::PossibleValue> {

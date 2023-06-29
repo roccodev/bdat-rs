@@ -17,7 +17,11 @@ use crate::legacy::float::BdatReal;
 /// The [`Table::row`] function provides an easy interface to access cells.
 /// For example, to access the cell at row 1 and column "Param1", you can use `table.row(1)["Param1".into()]`.
 ///
-/// ## Example
+/// ## Adding/deleting rows
+/// The table's mutable iterator does not allow structural modifications to the table. To add or
+/// delete rows, re-build the table. (`TableBuilder::from(table)`)
+///
+/// ## Examples
 ///
 /// ```
 /// use bdat::{Table, TableBuilder, Cell, ColumnDef, Row, Value, ValueType, Label};
@@ -327,6 +331,16 @@ impl<'b> Table<'b> {
 
     /// Gets an iterator over mutable references to this table's
     /// rows.
+    ///
+    /// The iterator does not allow structural modifications to the table. To add, remove, or
+    /// reorder rows, convert the table to a new builder first. (`TableBuilder::from(table)`)
+    ///
+    /// Additionally, if the iterator is used to replace rows, proper care must be taken to
+    /// ensure the new rows have the same IDs, as to preserve the original table's row order.
+    ///
+    /// When the `hash-table` feature is enabled, the new rows must also retain their original
+    /// hashed ID (for modern BDATs). Failure to do so will lead to improper behavior of
+    /// [`get_row_by_hash`].
     pub fn rows_mut(&mut self) -> impl Iterator<Item = &mut Row<'b>> {
         self.rows.iter_mut()
     }
@@ -600,14 +614,81 @@ impl<'b> Cell<'b> {
     }
 }
 
+impl<'b> Value<'b> {
+    /// Returns the integer representation of this value.
+    /// For signed values, this is the unsigned representation.
+    ///
+    /// # Panics
+    /// If the value is not stored as an integer.
+    /// Do not use this for floats, use [`Value::into_float`] instead.
+    pub fn into_integer(self) -> u32 {
+        match self {
+            Self::SignedByte(b) => b as u32,
+            Self::Percent(b) | Self::UnsignedByte(b) | Self::Unknown2(b) => b as u32,
+            Self::SignedShort(s) => s as u32,
+            Self::UnsignedShort(s) | Self::Unknown3(s) => s as u32,
+            Self::SignedInt(i) => i as u32,
+            Self::UnsignedInt(i) | Self::HashRef(i) => i,
+            _ => panic!("value is not an integer"),
+        }
+    }
+
+    /// Returns the floating point representation of this value.
+    ///
+    /// # Panics
+    /// If the value is not stored as a float.
+    pub fn into_float(self) -> f32 {
+        match self {
+            Self::Float(f) => f.into(),
+            _ => panic!("value is not a float"),
+        }
+    }
+
+    /// Returns the underlying string value.
+    /// This does **not** format other values, use the Display trait for that.
+    ///
+    /// **Note**: this will potentially copy the string, if the table is borrowing its source.
+    /// To avoid copies, use [`Value::as_str`].
+    ///
+    /// # Panics
+    /// If the value is not stored as a string.
+    pub fn into_string(self) -> String {
+        match self {
+            Self::String(s) | Self::DebugString(s) => s.to_string(),
+            _ => panic!("value is not a string"),
+        }
+    }
+
+    /// Returns a reference to the underlying string value.
+    ///
+    /// # Panics
+    /// If the value is not stored as a string.
+    pub fn as_str(&self) -> &str {
+        match self {
+            Self::String(s) | Self::DebugString(s) => s.as_ref(),
+            _ => panic!("value is not a string"),
+        }
+    }
+}
+
 impl ValueType {
-    pub fn data_len(&self) -> usize {
+    /// Returns the size of a single cell with this value type.
+    pub fn data_len(self) -> usize {
         use ValueType::*;
         match self {
             Unknown => 0,
             UnsignedByte | SignedByte | Percent | Unknown2 => 1,
             UnsignedShort | SignedShort | Unknown3 => 2,
             UnsignedInt | SignedInt | String | Float | HashRef | DebugString => 4,
+        }
+    }
+
+    /// Returns whether the given version supports the value type.
+    pub fn is_supported(self, version: BdatVersion) -> bool {
+        use ValueType::*;
+        match self {
+            Percent | Unknown2 | Unknown3 | HashRef | DebugString => version == BdatVersion::Modern,
+            _ => true,
         }
     }
 }
@@ -766,66 +847,15 @@ impl<'b> Display for Cell<'b> {
     }
 }
 
-impl<'b> Value<'b> {
-    /// Returns the integer representation of this value.
-    /// For signed values, this is the unsigned representation.
-    ///
-    /// # Panics
-    /// If the value is not stored as an integer.
-    /// Do not use this for floats, use [`Value::into_float`] instead.
-    pub fn into_integer(self) -> u32 {
-        match self {
-            Self::SignedByte(b) => b as u32,
-            Self::Percent(b) | Self::UnsignedByte(b) | Self::Unknown2(b) => b as u32,
-            Self::SignedShort(s) => s as u32,
-            Self::UnsignedShort(s) | Self::Unknown3(s) => s as u32,
-            Self::SignedInt(i) => i as u32,
-            Self::UnsignedInt(i) | Self::HashRef(i) => i,
-            _ => panic!("value is not an integer"),
-        }
-    }
-
-    /// Returns the floating point representation of this value.
-    ///
-    /// # Panics
-    /// If the value is not stored as a float.
-    pub fn into_float(self) -> f32 {
-        match self {
-            Self::Float(f) => f.into(),
-            _ => panic!("value is not a float"),
-        }
-    }
-
-    /// Returns the underlying string value.
-    /// This does **not** format other values, use the Display trait for that.
-    ///
-    /// **Note**: this will potentially copy the string, if the table is borrowing its source.
-    /// To avoid copies, use [`Value::as_str`].
-    ///
-    /// # Panics
-    /// If the value is not stored as a string.
-    pub fn into_string(self) -> String {
-        match self {
-            Self::String(s) | Self::DebugString(s) => s.to_string(),
-            _ => panic!("value is not a string"),
-        }
-    }
-
-    /// Returns a reference to the underlying string value.
-    ///
-    /// # Panics
-    /// If the value is not stored as a string.
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::String(s) | Self::DebugString(s) => s.as_ref(),
-            _ => panic!("value is not a string"),
-        }
-    }
-}
-
 impl<'t, 'tb> AsRef<Row<'tb>> for RowRef<'t, 'tb> {
     fn as_ref(&self) -> &'t Row<'tb> {
         &self.table.rows[self.index]
+    }
+}
+
+impl<'b> From<Table<'b>> for TableBuilder<'b> {
+    fn from(value: Table<'b>) -> Self {
+        Self(value)
     }
 }
 
