@@ -1,6 +1,6 @@
 use std::num::Wrapping;
 
-#[derive(Ord, PartialOrd, Eq, PartialEq, Debug)]
+#[derive(Ord, PartialOrd, Eq, PartialEq, Debug, Clone, Copy)]
 pub enum ScrambleType {
     None,
     Scrambled(u16),

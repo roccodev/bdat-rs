@@ -24,6 +24,7 @@ pub struct LegacyBytes<'t, E> {
     data: Cow<'t, [u8]>,
     header: FileHeader,
     version: BdatVersion,
+    table_headers: Vec<TableHeader>,
     _endianness: PhantomData<E>,
 }
 
@@ -114,17 +115,19 @@ impl<R: Read + Seek, E: ByteOrder> LegacyReader<R, E> {
 impl<'t, E: ByteOrder> LegacyBytes<'t, E> {
     pub fn new(bytes: &'t mut [u8], version: BdatVersion) -> Result<Self> {
         let header = FileHeader::read::<_, E>(Cursor::new(&bytes))?;
-        // TODO
+        let mut headers = vec![];
         header.for_each_table_mut(bytes, |table| {
             let header = TableHeader::read::<E>(Cursor::new(&table), version)?;
             header.unscramble_data(table);
             table[4] = 0;
+            headers.push(header);
             Ok::<_, BdatError>(())
         })?;
         Ok(Self {
             header,
             version,
             data: Cow::Borrowed(bytes),
+            table_headers: headers,
             _endianness: PhantomData,
         })
     }
@@ -135,6 +138,7 @@ impl<'t, E: ByteOrder> LegacyBytes<'t, E> {
             header,
             version,
             data: Cow::Owned(bytes.to_vec()),
+            table_headers: Vec::new(),
             _endianness: PhantomData,
         })
     }
@@ -281,10 +285,17 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         })
     }
 
-    fn from_slice(bytes: &'t [u8], version: BdatVersion) -> Result<TableReader<'t, E>> {
+    fn from_slice(
+        bytes: &'t [u8],
+        version: BdatVersion,
+        header: Option<TableHeader>,
+    ) -> Result<TableReader<'t, E>> {
         let mut reader = Cursor::new(&bytes);
         let original_pos = reader.stream_position()?;
-        let header = TableHeader::read::<E>(&mut reader, version)?;
+        let header = match header {
+            Some(header) => header,
+            None => TableHeader::read::<E>(&mut reader, version)?,
+        };
         reader.seek(SeekFrom::Start(original_pos))?;
 
         Ok(Self {
@@ -659,15 +670,18 @@ impl<'b, R: Read + Seek, E: ByteOrder> BdatFile<'b> for LegacyReader<R, E> {
 impl<'b, E: ByteOrder> BdatFile<'b> for LegacyBytes<'b, E> {
     fn get_tables(&mut self) -> Result<Vec<Table<'b>>> {
         let mut tables = Vec::with_capacity(self.header.table_count);
-        for offset in &self.header.table_offsets {
+        for (i, offset) in self.header.table_offsets.iter().enumerate() {
             tables.push(match &self.data {
                 Cow::Owned(buf) => {
                     TableReader::<E>::from_reader(Cursor::new(&buf[*offset..]), self.version)?
                         .read()?
                 }
-                Cow::Borrowed(data) => {
-                    TableReader::<E>::from_slice(&data[*offset..], self.version)?.read()?
-                }
+                Cow::Borrowed(data) => TableReader::<E>::from_slice(
+                    &data[*offset..],
+                    self.version,
+                    self.table_headers.get(i).cloned(),
+                )?
+                .read()?,
             });
         }
         Ok(tables)

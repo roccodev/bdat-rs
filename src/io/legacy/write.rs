@@ -240,27 +240,28 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
 
         let row_start = self.buf.stream_position()?;
         self.header.row_data_offset = row_start as usize;
+
+        // Calculate the total cell/row size in advance, to set the string table offset
+        // *before* rows are written
+        let total_row_size = pad_32(
+            self.table.columns().map(|c| c.data_size()).sum::<usize>() * self.table.row_count(),
+        );
+        self.strings.base_offset = row_start as usize + total_row_size;
         for row in self.table.rows() {
             RowWriter::<E>::new(&mut self, row).write()?;
         }
         let row_size = (self.buf.stream_position()? - row_start) as usize;
+        assert_eq!(total_row_size, pad_32(row_size));
         for _ in row_size..pad_32(row_size) {
             self.buf.write_u8(0)?;
         }
 
-        self.strings.base_offset = self.buf.stream_position()? as usize;
         self.strings.write(&mut self.buf)?;
 
         let table_size = self.buf.position() as usize;
         for _ in table_size..pad_64(table_size) {
             self.buf.write_u8(0)?;
             self.header.final_padding += 1;
-        }
-
-        // TODO - temporary solution: rows double pass
-        self.buf.seek(SeekFrom::Start(row_start))?;
-        for row in self.table.rows() {
-            RowWriter::<E>::new(&mut self, row).write()?;
         }
 
         // Write header when we have all the necessary information

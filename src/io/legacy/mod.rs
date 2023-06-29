@@ -38,7 +38,7 @@ pub struct FileHeader {
     table_offsets: Vec<usize>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct TableHeader {
     pub scramble_type: ScrambleType,
     hashes: OffsetAndLen,
@@ -51,13 +51,13 @@ pub struct TableHeader {
     columns: Option<ColumnNodeInfo>,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 struct ColumnNodeInfo {
     offset_columns: usize,
     column_count: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, Copy)]
 struct OffsetAndLen {
     offset: usize,
     len: usize,
