@@ -176,7 +176,7 @@ where
         // Mapping of ID hash -> row index, sorted by hash
         let primary_key_table = {
             primary_keys.sort_unstable();
-            let mut buf = Vec::with_capacity(primary_keys.len() * 2);
+            let mut buf = Vec::with_capacity(primary_keys.len() * 8);
             for (hash, i) in primary_keys {
                 buf.write_u32::<E>(hash)?;
                 buf.write_u32::<E>(i - base_id)?;
