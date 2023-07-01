@@ -1,4 +1,4 @@
-use bdat::types::Label;
+use bdat::Label;
 
 pub struct Filter {
     hashes: Vec<u32>,

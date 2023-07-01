@@ -10,11 +10,9 @@ use byteorder::{ByteOrder, ReadBytesExt};
 use crate::io::read::{BdatReader, BdatSlice};
 use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
-use crate::types::Utf;
 use crate::{
     error::{BdatError, Result, Scope},
-    types::{Cell, ColumnDef, Label, Row, Table, Value, ValueType},
-    TableBuilder,
+    Cell, ColumnDef, Label, Row, Table, TableBuilder, Utf, Value, ValueType,
 };
 
 use super::FileHeader;

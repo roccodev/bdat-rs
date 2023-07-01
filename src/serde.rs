@@ -1,5 +1,5 @@
 use crate::legacy::float::BdatReal;
-use crate::ColumnDef;
+use crate::{Cell, ColumnDef, Label, Value, ValueType};
 use serde::de::value::MapAccessDeserializer;
 use serde::de::MapAccess;
 use serde::ser::SerializeMap;
@@ -11,8 +11,6 @@ use std::borrow::Cow;
 use std::collections::HashMap;
 use std::marker::PhantomData;
 use std::ops::Deref;
-
-use crate::types::{Cell, Label, Value, ValueType};
 
 /// A wrapper struct that associates a [`Value`] with its type,
 /// allowing deserialization.
@@ -369,11 +367,7 @@ impl<'a, 'de> DeserializeSeed<'de> for CellSeed<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{
-        serde::ValueWithType,
-        types::{Cell, Value, ValueType},
-        ColumnDef, FlagDef, Label,
-    };
+    use crate::{serde::ValueWithType, Cell, ColumnDef, FlagDef, Label, Value, ValueType};
     use serde::{de::DeserializeSeed, Deserialize};
 
     macro_rules! col {

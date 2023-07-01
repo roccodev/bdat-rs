@@ -3,7 +3,7 @@ use std::io::{Cursor, Read, Seek, Write};
 
 use self::write::BdatWriter;
 use super::read::{BdatReader, BdatSlice};
-use crate::{error::Result, types::Table};
+use crate::{error::Result, Table};
 use byteorder::ByteOrder;
 
 mod read;
@@ -101,11 +101,7 @@ pub fn to_vec<'t, E: ByteOrder>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        io::SwitchEndian,
-        types::{Cell, ColumnDef, Label, Row, Value, ValueType},
-        TableBuilder,
-    };
+    use crate::{io::SwitchEndian, Cell, ColumnDef, Label, Row, TableBuilder, Value, ValueType};
 
     #[test]
     fn table_write_back() {

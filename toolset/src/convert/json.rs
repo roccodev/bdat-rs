@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::types::{Cell, ColumnDef, Label, Row, Table, TableBuilder, ValueType};
+use bdat::{Cell, ColumnDef, Label, Row, Table, TableBuilder, ValueType};
 use bdat::{ColumnBuilder, FlagDef};
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};

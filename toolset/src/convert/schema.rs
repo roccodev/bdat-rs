@@ -6,11 +6,7 @@ use std::{
 };
 
 use crate::error::Error;
-use bdat::{
-    io::BdatVersion,
-    types::{Label, Table},
-    Utf,
-};
+use bdat::{BdatVersion, Label, Table, Utf};
 use serde::{Deserialize, Serialize};
 
 /// Incremental format version, used to determine schema compatibility.

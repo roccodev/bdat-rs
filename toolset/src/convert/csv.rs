@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use bdat::serde::SerializeCell;
-use bdat::{types::Table, Cell, ColumnDef, Value};
+use bdat::{Cell, ColumnDef, Table, Value};
 use clap::Args;
 use csv::WriterBuilder;
 use std::io::Write;

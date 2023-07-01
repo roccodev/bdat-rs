@@ -11,10 +11,9 @@ use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
 use crate::legacy::scramble::{calc_checksum, scramble, unscramble, ScrambleType};
 use crate::legacy::{ColumnNodeInfo, COLUMN_NODE_SIZE};
-use crate::types::Utf;
 use crate::{
     BdatError, BdatFile, BdatVersion, Cell, ColumnDef, FlagDef, Label, Row, Table, TableBuilder,
-    Value, ValueType,
+    Utf, Value, ValueType,
 };
 
 use super::{FileHeader, TableHeader};

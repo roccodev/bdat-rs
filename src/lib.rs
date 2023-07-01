@@ -53,15 +53,22 @@
 //! [MONOLITHSOFT]: https://www.monolithsoft.co.jp/
 //! [bdat-toolset]: https://github.com/RoccoDev/bdat-rs/tree/master/toolset
 
-pub mod error;
 pub mod hash;
-pub mod io;
 #[cfg(feature = "serde")]
 pub mod serde;
-pub mod types;
+
+pub(crate) mod error;
+pub(crate) mod io;
+pub(crate) mod label;
+pub(crate) mod table;
 
 pub use error::BdatError;
 pub use error::Result as BdatResult;
 pub use io::detect::*;
 pub use io::*;
-pub use types::*;
+pub use label::*;
+
+pub use table::cell::*;
+pub use table::column::*;
+pub use table::row::*;
+pub use table::*;
