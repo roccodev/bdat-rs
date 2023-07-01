@@ -95,12 +95,14 @@ Rows are stored sequentially. Each cell is represented as follows, depending on 
 
 ## String table
 
-The string table is a sequence of hashes and strings. Column and table names expect to read
-a hash, while String/Debug String row values expect nul-terminated strings.
+The string table is a sequence of hashes and strings.
 
-For some reason, the first byte is always 0.
+If the first byte of the string table is zero, then the table and column names are hashed. Otherwise,
+no additional first byte is added, and they are represented as nul-terminated C strings.
 
-The table name is hashed and is always the first entry.  
+Strings from row values are always in plain text.
+
+The table name is always the first entry.  
 The second entry is also reserved. Language BDATs leave it empty (0), but it is populated in game BDATs (it's possibly a debug name).
 
 ## Debug sections (1.3.0)
@@ -119,13 +121,13 @@ Debug sections follow this format:
 
 Then, Section 1 follows with this:
 
-| Field        | Type | Notes                                                                                                         |
-|--------------|------|---------------------------------------------------------------------------------------------------------------|
-| Name pointer | u32  | Pointer to a nul-terminated string at `section + 8 + ptr`, repeated for each column, but not for each row (?) |
-| Strings      | nul-terminated C-string | see above, strings are *unhashed* row IDs, also contains strings not referenced by the above pointer          |
+| Field         | Type                     | Notes                                                                                                         |
+|---------------|--------------------------|---------------------------------------------------------------------------------------------------------------|
+| Name pointers | u32                      | Pointers to nul-terminated strings at `section + 8 + ptr`, repeated for each column, but not for each row (?) |
+| Strings       | nul-terminated C-strings | see above, strings are *unhashed* row IDs, also contains strings not referenced by the above pointer          |
 
 while Section 2 follows with this:
 
-| Field        | Type | Notes                                                    |
-|--------------|------|----------------------------------------------------------|
-| Strings | nul-terminated C-string | see above, strings are *unhashed* table and column names |
+| Field        | Type                     | Notes                                                    |
+|--------------|--------------------------|----------------------------------------------------------|
+| Strings | nul-terminated C-strings | see above, strings are *unhashed* table and column names |
