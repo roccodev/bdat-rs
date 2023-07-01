@@ -56,7 +56,7 @@ impl FileSchema {
 
     /// Registers a table in the file schema
     pub fn feed_table(&mut self, table: &Table) {
-        self.tables.extend(table.name().map(|l| l.to_string()));
+        self.tables.push(table.name().to_string());
     }
 
     /// Attempts to find all deserialized table files, from the paths defined by the

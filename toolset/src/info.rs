@@ -31,15 +31,10 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
             .from_bytes(&mut file)
             .with_context(|| format!("Could not parse BDAT tables ({})", path.to_string_lossy()))?;
         for table in tables {
-            let name = match table.name() {
-                Some(n) => {
-                    if !table_filter.contains(n) {
-                        continue;
-                    }
-                    n
-                }
-                None => continue,
-            };
+            let name = table.name();
+            if !table_filter.contains(name) {
+                continue;
+            }
             println!("Table {}", format_unhashed_label(name, &hash_table));
             println!(
                 "  Columns: {} / Rows: {}",

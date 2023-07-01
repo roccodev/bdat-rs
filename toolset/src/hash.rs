@@ -112,10 +112,9 @@ impl HashNameTable {
         if self.inner.is_empty() {
             return;
         }
-        if let Some(mut label) = table.name().cloned() {
-            self.convert_label(&mut label);
-            table.set_name(Some(label));
-        }
+        let mut name = table.name().clone();
+        self.convert_label(&mut name);
+        table.set_name(name);
         for col in table.columns_mut() {
             self.convert_label(col.label_mut());
         }

@@ -116,12 +116,12 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
         old_tables
             .into_iter()
             .flatten_ok()
-            .map_ok(|t| (ValueOrderedLabel(t.table.name().unwrap().clone()), t))
+            .map_ok(|t| (ValueOrderedLabel(t.table.name().clone()), t))
             .try_collect()?,
         new_tables
             .into_iter()
             .flatten_ok()
-            .map_ok(|t| (ValueOrderedLabel(t.table.name().unwrap().clone()), t))
+            .map_ok(|t| (ValueOrderedLabel(t.table.name().clone()), t))
             .try_collect()?,
     );
     progress.inc(1);
@@ -139,11 +139,11 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
     println!("------------\nAdded Tables\n------------");
     added.for_each(|table| {
         if args.no_file_names {
-            println!("+ Table \"{}\"", table.table.name().unwrap());
+            println!("+ Table \"{}\"", table.table.name());
         } else {
             println!(
                 "+ Table \"{}\" (new: {})",
-                table.table.name().unwrap(),
+                table.table.name(),
                 table
                     .source_file
                     .strip_prefix(&working_directory)
@@ -156,11 +156,11 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
     println!("\n--------------\nRemoved Tables\n--------------");
     removed.for_each(|table| {
         if args.no_file_names {
-            println!("- Table \"{}\"", table.table.name().unwrap());
+            println!("- Table \"{}\"", table.table.name());
         } else {
             println!(
                 "- Table \"{}\" (old: {})",
-                table.table.name().unwrap(),
+                table.table.name(),
                 table
                     .source_file
                     .strip_prefix(&working_directory)

@@ -125,7 +125,7 @@ impl BdatSerialize for JsonConverter {
 impl BdatDeserialize for JsonConverter {
     fn read_table(
         &self,
-        name: Option<Label>,
+        name: Label,
         _schema: &FileSchema,
         reader: &mut dyn Read,
     ) -> Result<Table> {
@@ -193,8 +193,7 @@ impl BdatDeserialize for JsonConverter {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        Ok(TableBuilder::new()
-            .set_name(name)
+        Ok(TableBuilder::with_name(name)
             .set_columns(columns)
             .set_rows(rows)
             .build())
