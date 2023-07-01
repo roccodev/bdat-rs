@@ -27,8 +27,7 @@ fn hash_table_xcx() {
 // when reading
 
 fn create_table<'b>() -> Table<'b> {
-    TableBuilder::new()
-        .set_name(Some("Table1".to_string().into()))
+    TableBuilder::with_name("Table1".to_string().into())
         .add_column(ColumnDef::new(
             ValueType::SignedByte,
             "ColumnXX1".to_string().into(),

@@ -26,7 +26,7 @@ use crate::legacy::float::BdatReal;
 /// ```
 /// use bdat::{Table, TableBuilder, Cell, ColumnDef, Row, Value, ValueType, Label};
 ///
-/// let table: Table = TableBuilder::new()
+/// let table: Table = TableBuilder::with_name(Label::Hash(0xDEADBEEF))
 ///     .add_column(ColumnDef::new(ValueType::UnsignedInt, Label::Hash(0xCAFEBABE)))
 ///     .add_row(Row::new(1, vec![Cell::Single(Value::UnsignedInt(10))]))
 ///     .build();
@@ -37,9 +37,9 @@ use crate::legacy::float::BdatReal;
 ///     Value::UnsignedInt(10)
 /// );
 /// ```
-#[derive(Debug, Clone, PartialEq, Default)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Table<'b> {
-    pub(crate) name: Option<Label>,
+    pub(crate) name: Label,
     pub(crate) base_id: usize,
     pub(crate) columns: Vec<ColumnDef>,
     pub(crate) rows: Vec<Row<'b>>,
@@ -48,7 +48,11 @@ pub struct Table<'b> {
 }
 
 /// A builder interface for [`Table`].
-pub struct TableBuilder<'b>(Table<'b>);
+pub struct TableBuilder<'b> {
+    name: Label,
+    columns: Vec<ColumnDef>,
+    rows: Vec<Row<'b>>,
+}
 
 /// A column definition from a Bdat table
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -270,25 +274,28 @@ impl Label {
 }
 
 impl<'b> Table<'b> {
-    pub fn new(name: Option<Label>, columns: Vec<ColumnDef>, rows: Vec<Row<'b>>) -> Self {
+    fn new(builder: TableBuilder<'b>) -> Self {
         Self {
-            name,
-            columns,
-            base_id: rows.iter().map(|r| r.id).min().unwrap_or_default(),
-            rows,
+            name: builder.name,
+            columns: builder.columns,
+            base_id: builder.rows.iter().map(|r| r.id).min().unwrap_or_default(),
             #[cfg(feature = "hash-table")]
-            row_hash_table: Default::default(),
+            row_hash_table: builder
+                .rows
+                .iter()
+                .filter_map(|r| Some((r.id_hash()?, r.id)))
+                .collect(),
+            rows: builder.rows,
         }
     }
 
-    /// Returns the table's name, or [`None`] if the table has no
-    /// name associated to it.
-    pub fn name(&self) -> Option<&Label> {
-        self.name.as_ref()
+    /// Returns the table's name.
+    pub fn name(&self) -> &Label {
+        &self.name
     }
 
     /// Updates the table's name.
-    pub fn set_name(&mut self, name: Option<Label>) {
+    pub fn set_name(&mut self, name: Label) {
         self.name = name;
     }
 
@@ -395,55 +402,36 @@ impl<'b> Table<'b> {
 }
 
 impl<'b> TableBuilder<'b> {
-    pub fn new() -> Self {
-        Self(Table::default())
-    }
-
-    pub fn set_name(&mut self, name: impl Into<Option<Label>>) -> &mut Self {
-        self.0.set_name(name.into());
-        self
-    }
-
-    pub fn add_column(&mut self, column: ColumnDef) -> &mut Self {
-        self.0.columns.push(column);
-        self
-    }
-
-    pub fn add_row(&mut self, row: Row<'b>) -> &mut Self {
-        if self.0.base_id == 0 || self.0.base_id > row.id {
-            self.0.base_id = row.id;
+    pub fn with_name(name: Label) -> Self {
+        Self {
+            name,
+            columns: vec![],
+            rows: vec![],
         }
-        #[cfg(feature = "hash-table")]
-        {
-            if let Some(id) = row.id_hash() {
-                self.0.row_hash_table.insert(id, row.id);
-            }
-        }
-        self.0.rows.push(row);
+    }
+
+    pub fn add_column(mut self, column: ColumnDef) -> Self {
+        self.columns.push(column);
         self
     }
 
-    pub fn set_rows(&mut self, rows: Vec<Row<'b>>) -> &mut Self {
-        #[cfg(feature = "hash-table")]
-        {
-            for row in &rows {
-                if let Some(id) = row.id_hash() {
-                    self.0.row_hash_table.insert(id, row.id);
-                }
-            }
-        }
-        self.0.base_id = rows.iter().map(|r| r.id).min().unwrap_or_default();
-        self.0.rows = rows;
+    pub fn add_row(mut self, row: Row<'b>) -> Self {
+        self.rows.push(row);
         self
     }
 
-    pub fn set_columns(&mut self, columns: Vec<ColumnDef>) -> &mut Self {
-        self.0.columns = columns;
+    pub fn set_rows(mut self, rows: Vec<Row<'b>>) -> Self {
+        self.rows = rows;
         self
     }
 
-    pub fn build(&mut self) -> Table<'b> {
-        std::mem::take(&mut self.0)
+    pub fn set_columns(mut self, columns: Vec<ColumnDef>) -> Self {
+        self.columns = columns;
+        self
+    }
+
+    pub fn build(self) -> Table<'b> {
+        Table::new(self)
     }
 }
 
@@ -783,12 +771,6 @@ impl Display for Label {
     }
 }
 
-impl<'b> Default for TableBuilder<'b> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
 impl From<ValueType> for u8 {
     fn from(t: ValueType) -> Self {
         t as u8
@@ -854,8 +836,12 @@ impl<'t, 'tb> AsRef<Row<'tb>> for RowRef<'t, 'tb> {
 }
 
 impl<'b> From<Table<'b>> for TableBuilder<'b> {
-    fn from(value: Table<'b>) -> Self {
-        Self(value)
+    fn from(table: Table<'b>) -> Self {
+        Self {
+            name: table.name,
+            columns: table.columns,
+            rows: table.rows,
+        }
     }
 }
 
@@ -866,7 +852,7 @@ mod tests {
     fn test_hash_table() {
         use crate::{Cell, ColumnDef, Label, Row, TableBuilder, Value, ValueType};
 
-        let table = TableBuilder::new()
+        let table = TableBuilder::with_name(Label::Hash(0xDEADBEEF))
             .add_column(ColumnDef::new(ValueType::HashRef, 0.into()))
             .add_column(ColumnDef::new(ValueType::UnsignedInt, 1.into()))
             .add_row(Row::new(

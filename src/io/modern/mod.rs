@@ -109,8 +109,7 @@ mod tests {
 
     #[test]
     fn table_write_back() {
-        let table = TableBuilder::new()
-            .set_name(Some(Label::Hash(0xca_fe_ba_be)))
+        let table = TableBuilder::with_name(Label::Hash(0xca_fe_ba_be))
             .add_column(ColumnDef::new(
                 ValueType::HashRef,
                 Label::Hash(0xde_ad_be_ef),

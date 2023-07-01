@@ -124,13 +124,7 @@ where
         let mut primary_keys = vec![];
         let mut label_table = LabelTable::default();
         // Table name should be the first label in the table
-        label_table.get(
-            table
-                .name
-                .as_ref()
-                .map(Cow::Borrowed)
-                .unwrap_or(Cow::Owned(Label::Hash(0))),
-        );
+        label_table.get(Cow::Borrowed(table.name()));
 
         // List of column definitions
         let column_table: Vec<u8> = {
@@ -288,7 +282,7 @@ impl LabelTable {
         let mut cursor = Cursor::new(&mut data);
         let mut written = 1;
 
-        // (whether labels are hashed)
+        // 0 = table and column names are hashed
         cursor.write_u8(0)?;
 
         for (label, offset) in self.pairs {

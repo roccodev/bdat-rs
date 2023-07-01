@@ -25,7 +25,7 @@ fn basic_read() {
     assert_eq!(1, tables.len());
 
     let table = &tables[0];
-    assert_eq!("Table1", table.name().unwrap().to_string_convert());
+    assert_eq!("Table1", table.name().to_string_convert());
     assert_eq!(4, table.column_count());
 
     let flags_col = table

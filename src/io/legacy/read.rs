@@ -375,8 +375,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
             row_reader.next_row()?;
         }
 
-        Ok(TableBuilder::new()
-            .set_name(Some(Label::String(name)))
+        Ok(TableBuilder::with_name(Label::String(name))
             .set_columns(columns)
             .set_rows(rows)
             .build())

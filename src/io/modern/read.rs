@@ -3,7 +3,6 @@ use std::{
     convert::TryFrom,
     io::{Cursor, Read, Seek, SeekFrom},
     marker::PhantomData,
-    num::NonZeroU32,
 };
 
 use byteorder::{ByteOrder, ReadBytesExt};
@@ -176,7 +175,7 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
         let table_raw = self.reader.read_table_data(*table_len)?;
         let table_data = TableData::new(table_raw, offset_string);
 
-        let name = table_data.get_name::<E>()?.map(|h| Label::Hash(h.into()));
+        let name = table_data.get_name::<E>()?;
         let mut col_data = Vec::with_capacity(columns);
         let mut row_data = Vec::with_capacity(rows);
 
@@ -209,8 +208,7 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
             });
         }
 
-        Ok(TableBuilder::new()
-            .set_name(name)
+        Ok(TableBuilder::with_name(name)
             .set_columns(col_data)
             .set_rows(row_data)
             .build())
@@ -253,12 +251,13 @@ impl<'r> TableData<'r> {
     }
 
     /// Returns the table's hashed name, or [`None`] if it could not be found.
-    fn get_name<E>(&self) -> Result<Option<NonZeroU32>>
+    fn get_name<E>(&self) -> Result<Label>
     where
         E: ByteOrder,
     {
-        let id = (&self.data[self.string_table_offset + 1..]).read_u32::<E>()?;
-        Ok(NonZeroU32::new(id))
+        // First byte = 0 => labels are hashed. Otherwise, the string starts from the first byte
+        let offset = if self.are_labels_hashed() { 1 } else { 0 };
+        self.get_label::<E>(offset)
     }
 
     /// Reads a null-terminated UTF-8 encoded string from the string table at the given offset

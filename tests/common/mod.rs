@@ -1,10 +1,11 @@
-use bdat::{Cell, ColumnBuilder, ColumnDef, FlagDef, Label, Row, Table, TableBuilder, Value, ValueType};
+use bdat::{
+    Cell, ColumnBuilder, ColumnDef, FlagDef, Label, Row, Table, TableBuilder, Value, ValueType,
+};
 
 pub fn duplicate_table_create() -> Table<'static> {
     let flag = FlagDef::new_bit("Flag1", 0);
-    
-    TableBuilder::new()
-        .set_name(Label::String("Test".to_string()))
+
+    TableBuilder::with_name(Label::String("Test".to_string()))
         .add_column(
             ColumnBuilder::new(ValueType::SignedInt, "Label1".to_string().into())
                 .set_flags(vec![flag.clone()])
