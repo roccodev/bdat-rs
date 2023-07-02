@@ -71,14 +71,14 @@ fn basic_read() {
             .as_single()
             .unwrap()
             .clone()
-            .into_integer();
+            .to_integer();
         let b = cells
             .next()
             .unwrap()
             .as_single()
             .unwrap()
             .clone()
-            .into_float();
+            .to_float();
         let c = match cells.next().unwrap() {
             Cell::List(l) => l
                 .iter()

@@ -92,17 +92,8 @@ pub enum Value<'b> {
 pub type Utf<'t> = Cow<'t, str>;
 
 impl<'b> Cell<'b> {
-    /// Gets the cell's value, if it is a [`Cell::Single`].
-    ///
-    /// ## Panics
-    /// If the cell is not a [`Cell::Single`].
-    pub fn unwrap_single(self) -> Value<'b> {
-        self.into_single().expect("Cell::Single")
-    }
-
     /// Gets a reference to the cell's value, if it
-    /// is a [`Cell::Single`], and returns [`None`]
-    /// if it is not.
+    /// is a [`Cell::Single`], and returns [`None`] otherwise.
     pub fn as_single(&self) -> Option<&Value> {
         match self {
             Self::Single(v) => Some(v),
@@ -110,11 +101,47 @@ impl<'b> Cell<'b> {
         }
     }
 
-    /// Gets the cell's value, if it is a [`Cell::Single`], and
-    /// returns [`None`] if it is not.
+    /// Consumes the cell and returns its value, if it is a [`Cell::Single`],
+    /// or [`None`] otherwise.
     pub fn into_single(self) -> Option<Value<'b>> {
         match self {
             Self::Single(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// Gets a reference to the cell's list of values, if it
+    /// is a [`Cell::List`], and returns [`None`] otherwise.
+    pub fn as_list(&self) -> Option<&[Value<'b>]> {
+        match self {
+            Self::List(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// Consumes the cell and returns its list of values, if it is a [`Cell::List`],
+    /// or [`None`] otherwise.
+    pub fn into_list(self) -> Option<Vec<Value<'b>>> {
+        match self {
+            Self::List(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// Gets a reference to the cell's list of flag values, if it
+    /// is a [`Cell::Flags`], and returns [`None`] otherwise.
+    pub fn as_flags(&self) -> Option<&[u32]> {
+        match self {
+            Self::Flags(v) => Some(v),
+            _ => None,
+        }
+    }
+
+    /// Consumes the cell and returns its list of flag values, if it is a [`Cell::Flags`],
+    /// or [`None`] otherwise.
+    pub fn into_flags(self) -> Option<Vec<u32>> {
+        match self {
+            Self::Flags(v) => Some(v),
             _ => None,
         }
     }
@@ -126,15 +153,15 @@ impl<'b> Value<'b> {
     ///
     /// # Panics
     /// If the value is not stored as an integer.
-    /// Do not use this for floats, use [`Value::into_float`] instead.
-    pub fn into_integer(self) -> u32 {
+    /// Do not use this for floats, use [`Value::to_float`] instead.
+    pub fn to_integer(&self) -> u32 {
         match self {
-            Self::SignedByte(b) => b as u32,
-            Self::Percent(b) | Self::UnsignedByte(b) | Self::Unknown2(b) => b as u32,
-            Self::SignedShort(s) => s as u32,
-            Self::UnsignedShort(s) | Self::Unknown3(s) => s as u32,
-            Self::SignedInt(i) => i as u32,
-            Self::UnsignedInt(i) | Self::HashRef(i) => i,
+            Self::SignedByte(b) => *b as u32,
+            Self::Percent(b) | Self::UnsignedByte(b) | Self::Unknown2(b) => *b as u32,
+            Self::SignedShort(s) => *s as u32,
+            Self::UnsignedShort(s) | Self::Unknown3(s) => *s as u32,
+            Self::SignedInt(i) => *i as u32,
+            Self::UnsignedInt(i) | Self::HashRef(i) => *i,
             _ => panic!("value is not an integer"),
         }
     }
@@ -143,9 +170,9 @@ impl<'b> Value<'b> {
     ///
     /// # Panics
     /// If the value is not stored as a float.
-    pub fn into_float(self) -> f32 {
+    pub fn to_float(&self) -> f32 {
         match self {
-            Self::Float(f) => f.into(),
+            Self::Float(f) => (*f).into(),
             _ => panic!("value is not a float"),
         }
     }
@@ -160,7 +187,7 @@ impl<'b> Value<'b> {
     /// If the value is not stored as a string.
     pub fn into_string(self) -> String {
         match self {
-            Self::String(s) | Self::DebugString(s) => s.to_string(),
+            Self::String(s) | Self::DebugString(s) => s.into_owned(),
             _ => panic!("value is not a string"),
         }
     }

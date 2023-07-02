@@ -1,6 +1,5 @@
 use crate::Table;
 use crate::{Cell, Label, Value};
-use std::borrow::Borrow;
 use std::ops::Index;
 
 /// A row from a Bdat table
@@ -10,6 +9,26 @@ pub struct Row<'b> {
     pub cells: Vec<Cell<'b>>,
 }
 
+/// A reference to a row that also keeps information about the parent table.
+///
+/// ## Accessing cells
+/// Accessing cells from a `RowRef` is very easy:
+///
+/// ```
+/// use bdat::RowRef;
+///
+/// fn param_1(row: RowRef) -> u32 {
+///     // Use the index syntax to access cells
+///     row["Param1"].as_single().unwrap().to_integer()
+/// }
+///
+/// fn param_2_if_present(row: RowRef) -> Option<u32> {
+///     // Or use .get() for columns that might be absent
+///     row.get("Param2")
+///         .and_then(|cell| cell.as_single())
+///         .map(|value| value.to_integer())
+/// }
+/// ```
 pub struct RowRef<'t, 'tb> {
     index: usize,
     id: usize,
@@ -47,7 +66,7 @@ impl<'b> Row<'b> {
     }
 }
 
-impl<'t, 'tb> RowRef<'t, 'tb> {
+impl<'a, 't: 'a, 'tb> RowRef<'t, 'tb> {
     pub(crate) fn new(table: &'t Table<'tb>, index: usize, id: usize) -> Self {
         Self { index, id, table }
     }
@@ -58,13 +77,15 @@ impl<'t, 'tb> RowRef<'t, 'tb> {
     }
 
     /// Returns a reference to the cell at the given column.
-    pub fn get(&self, column: impl Borrow<Label>) -> Option<&'t Cell<'tb>> {
-        let label = column.borrow();
+    pub fn get<K>(&self, column: K) -> Option<&'t Cell<'tb>>
+    where
+        K: TryFrom<&'a Label> + PartialEq,
+    {
         let index = self
             .table
             .columns
             .iter()
-            .position(|col| col.label == *label)?;
+            .position(|col| matches!(K::try_from(col.label()), Ok(v) if v == column))?;
         self.table.rows[self.index].cells.get(index)
     }
 
@@ -74,21 +95,23 @@ impl<'t, 'tb> RowRef<'t, 'tb> {
     }
 }
 
-impl<'t, 'tb, S> Index<S> for RowRef<'t, 'tb>
+impl<'t, 'tb> Index<Label> for RowRef<'t, 'tb> {
+    type Output = Cell<'tb>;
+
+    fn index(&self, index: Label) -> &Self::Output {
+        &self[&index]
+    }
+}
+
+// Implementation for e.g. row["string slice"]
+impl<'a, 't: 'a, 'tb, S> Index<S> for RowRef<'t, 'tb>
 where
-    S: Into<Label>,
+    S: TryFrom<&'a Label> + PartialEq,
 {
     type Output = Cell<'tb>;
 
     fn index(&self, index: S) -> &Self::Output {
-        let index = index.into();
-        let index = self
-            .table
-            .columns
-            .iter()
-            .position(|col| col.label == index)
-            .expect("no such column");
-        &self.table.rows[self.index].cells[index]
+        self.get(index).expect("no such column")
     }
 }
 

@@ -592,7 +592,7 @@ impl<'a, 't, E: ByteOrder> RowReader<'a, 't, E> {
 
             if !col.flags.is_empty() {
                 // Flags
-                let value = value.into_integer();
+                let value = value.to_integer();
                 let flags = col
                     .flags
                     .iter()

@@ -3,10 +3,10 @@ use crate::{Label, ValueType};
 /// A column definition from a Bdat table
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ColumnDef {
-    pub value_type: ValueType,
-    pub label: Label,
-    pub count: usize,
-    pub flags: Vec<FlagDef>,
+    pub(crate) value_type: ValueType,
+    pub(crate) label: Label,
+    pub(crate) count: usize,
+    pub(crate) flags: Vec<FlagDef>,
 }
 
 /// A builder interface for [`ColumnDef`].
@@ -18,22 +18,22 @@ pub struct ColumnBuilder(ColumnDef);
 pub struct FlagDef {
     /// The flag's identifier. Because flags are only supported in legacy BDATs, this is
     /// equivalent to a [`Label::String`].
-    pub label: String,
+    pub(crate) label: String,
     /// The bits this flag is setting on the parent
-    pub mask: u32,
+    pub(crate) mask: u32,
     /// The index in the parent cell's flag list
     #[cfg_attr(feature = "serde", serde(rename = "index"))]
-    pub flag_index: usize,
+    pub(crate) flag_index: usize,
 }
 
 impl ColumnDef {
-    /// Creates a new [`ColumnDef`].
+    /// Creates a new [`ColumnDef`]. For more advanced settings, such as item count or flag
+    /// data, use [`ColumnBuilder`].
     pub fn new(ty: ValueType, label: Label) -> Self {
         Self::with_flags(ty, label, Vec::new())
     }
 
-    /// Creates a new [`ColumnDef`] that holds flag values. (Legacy BDAT only)
-    pub fn with_flags(ty: ValueType, label: Label, flags: Vec<FlagDef>) -> Self {
+    fn with_flags(ty: ValueType, label: Label, flags: Vec<FlagDef>) -> Self {
         Self {
             value_type: ty,
             label,
@@ -117,11 +117,13 @@ impl ColumnBuilder {
         Self(ColumnDef::new(value_type, label))
     }
 
+    /// Sets the column's full flag data.
     pub fn set_flags(mut self, flags: Vec<FlagDef>) -> Self {
         self.0.flags = flags;
         self
     }
 
+    /// Sets how many elements the column holds, if cells are of the list type.
     pub fn set_count(mut self, count: usize) -> Self {
         assert!(count > 0);
         self.0.count = count;

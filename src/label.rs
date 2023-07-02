@@ -3,6 +3,11 @@ use crate::Utf;
 use std::borrow::Cow;
 use std::{cmp::Ordering, fmt::Display};
 
+/// The label is hashed and an operation on a plain string (e.g. comparison) was requested.
+#[derive(thiserror::Error, Debug)]
+#[error("label is not a string")]
+pub struct LabelNotStringError;
+
 /// A name for a BDAT element (table, column, ID, etc.)
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -85,10 +90,7 @@ impl Label {
     }
 
     fn as_str(&self) -> &str {
-        match self {
-            Self::String(s) | Self::Unhashed(s) => s.as_str(),
-            _ => panic!("label is not a string"),
-        }
+        self.try_into().expect("label is not a string")
     }
 }
 
@@ -101,6 +103,17 @@ impl From<String> for Label {
 impl From<u32> for Label {
     fn from(hash: u32) -> Self {
         Self::Hash(hash)
+    }
+}
+
+impl<'s> TryFrom<&'s Label> for &'s str {
+    type Error = LabelNotStringError;
+
+    fn try_from(value: &'s Label) -> Result<Self, Self::Error> {
+        match value {
+            Label::String(s) | Label::Unhashed(s) => Ok(s.as_str()),
+            _ => Err(LabelNotStringError),
+        }
     }
 }
 

@@ -10,7 +10,9 @@ pub mod row;
 ///
 /// ## Accessing cells
 /// The [`Table::row`] function provides an easy interface to access cells.
-/// For example, to access the cell at row 1 and column "Param1", you can use `table.row(1)["Param1".into()]`.
+/// For example, to access the cell at row 1 and column "Param1", you can use `table.row(1)["Param1"]`.
+///
+/// See also: [`RowRef`]
 ///
 /// ## Adding/deleting rows
 /// The table's mutable iterator does not allow structural modifications to the table. To add or
@@ -262,7 +264,7 @@ mod tests {
                 .as_single()
                 .unwrap()
                 .clone()
-                .into_integer()
+                .to_integer()
         );
         assert_eq!(
             100,
@@ -270,7 +272,7 @@ mod tests {
                 .as_single()
                 .unwrap()
                 .clone()
-                .into_integer()
+                .to_integer()
         );
     }
 }
