@@ -122,6 +122,8 @@ impl<'b> Table<'b> {
     /// When the `hash-table` feature is enabled, the new rows must also retain their original
     /// hashed ID (for modern BDATs). Failure to do so will lead to improper behavior of
     /// [`get_row_by_hash`].
+    ///
+    /// [`get_row_by_hash`]: Table::get_row_by_hash
     pub fn rows_mut(&mut self) -> impl Iterator<Item = &mut Row<'b>> {
         self.rows.iter_mut()
     }

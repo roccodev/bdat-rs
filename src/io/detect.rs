@@ -47,6 +47,10 @@ pub enum DetectError {
 ///     Ok(())
 /// }
 /// ```
+///
+/// [`bdat::legacy`]: crate::legacy
+/// [`bdat::modern`]: crate::modern
+/// [`BdatFile::get_tables`]: crate::BdatFile::get_tables
 pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
     match detect_version(Cursor::new(&bytes))? {
         BdatVersion::LegacySwitch => Ok(VersionSlice::LegacySwitch(LegacyBytes::new(
@@ -83,6 +87,10 @@ pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
 ///     Ok(())
 /// }
 /// ```
+///
+/// [`bdat::legacy`]: crate::legacy
+/// [`bdat::modern`]: crate::modern
+/// [`BdatFile::get_tables`]: crate::BdatFile::get_tables
 pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<VersionReader<R>> {
     let pos = reader.stream_position()?;
     let version = detect_version(&mut reader)?;
@@ -106,6 +114,8 @@ pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<VersionReader<R>> {
 ///
 /// An error ([`BdatError::VersionDetect`]) might be returned if the version couldn't be detected
 /// because of ambiguous details.
+///
+/// [`BdatError::VersionDetect`]: crate::BdatError::VersionDetect
 pub fn detect_bytes_version(bytes: &[u8]) -> Result<BdatVersion> {
     detect_version(Cursor::new(bytes))
 }
@@ -114,6 +124,8 @@ pub fn detect_bytes_version(bytes: &[u8]) -> Result<BdatVersion> {
 ///
 /// An error ([`BdatError::VersionDetect`]) might be returned if the version couldn't be detected
 /// because of ambiguous details.
+///
+/// [`BdatError::VersionDetect`]: crate::BdatError::VersionDetect
 pub fn detect_file_version<R: Read + Seek>(reader: R) -> Result<BdatVersion> {
     detect_version(reader)
 }

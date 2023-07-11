@@ -101,6 +101,10 @@ impl From<(usize, usize)> for OffsetAndLen {
 ///     Ok(())
 /// }
 /// ```
+///
+/// [`bdat::detect_file_version`]: crate::detect_file_version
+/// [`bdat::from_reader`]: crate::from_reader
+/// [`BdatFile::get_tables`]: crate::BdatFile::get_tables
 pub fn from_reader<R: Read + Seek, E: ByteOrder>(
     reader: R,
     version: BdatVersion,
@@ -130,6 +134,10 @@ pub fn from_reader<R: Read + Seek, E: ByteOrder>(
 ///     Ok(())
 /// }
 /// ```
+///
+/// [`bdat::detect_bytes_version`]: crate::detect_bytes_version
+/// [`bdat::from_bytes`]: crate::from_bytes
+/// [`BdatFile::get_tables`]: crate::BdatFile::get_tables
 pub fn from_bytes<E: ByteOrder>(
     bytes: &mut [u8],
     version: BdatVersion,
@@ -158,6 +166,10 @@ pub fn from_bytes<E: ByteOrder>(
 ///     Ok(())
 /// }
 /// ```
+///
+/// [`bdat::detect_bytes_version`]: crate::detect_bytes_version
+/// [`bdat::from_bytes`]: crate::from_bytes
+/// [`BdatFile::get_tables`]: crate::BdatFile::get_tables
 pub fn from_bytes_copy<E: ByteOrder>(
     bytes: &[u8],
     version: BdatVersion,

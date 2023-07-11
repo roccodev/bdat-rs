@@ -11,6 +11,9 @@
 //! The crate exposes the [`from_bytes`] and [`from_reader`] functions to parse BDAT files from
 //! a slice or a [`std::io::Read`] stream respectively.
 //!
+//! When reading, if the format version is known, it's better to use version-specific functions.
+//! (e.g. [`legacy::from_reader`] and [`modern::from_reader`])
+//!
 //! ```
 //! use bdat::{BdatResult, SwitchEndian, BdatFile};
 //!

@@ -23,7 +23,7 @@ use std::fmt::Display;
 /// Cells don't store metadata about their type or the type of the values they contain.
 /// Instead, they rely on columns to carry that data for them.
 ///
-/// To serialize a `Cell` given its parent column, you can use [`Cell::cell_serializer`].
+/// To serialize a `Cell` given its parent column, you can use [`ColumnDef::cell_serializer`].
 /// ```
 /// use bdat::{Cell, ColumnDef};
 ///
@@ -33,7 +33,7 @@ use std::fmt::Display;
 /// ```
 ///
 /// To deserialize a `Cell` that was serialized into the previous format, you can use
-/// [`Cell::as_cell_seed`], along with `DeserializeSeed` from Serde.
+/// [`ColumnDef::as_cell_seed`], along with `DeserializeSeed` from Serde.
 /// ```
 /// use bdat::{Cell, ColumnDef};
 /// use serde_json::Deserializer;
@@ -43,6 +43,9 @@ use std::fmt::Display;
 ///     column.as_cell_seed().deserialize(&mut Deserializer::from_str(json)).unwrap()
 /// }
 /// ```
+///
+/// [`ColumnDef::cell_serializer`]: crate::ColumnDef::cell_serializer
+/// [`ColumnDef::as_cell_seed`]: crate::ColumnDef::as_cell_seed
 #[derive(Debug, Clone, PartialEq)]
 pub enum Cell<'b> {
     /// The cell only contains a single [`Value`]. This is the only supported type

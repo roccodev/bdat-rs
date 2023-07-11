@@ -60,6 +60,10 @@ impl ColumnDef {
     /// Returns the number of values in this column's cells.
     /// For [`Cell::Single`] and [`Cell::Flags`] cells, this is 1. For [`Cell::List`] cells, it is
     /// the number of elements in the list.
+    ///
+    /// [`Cell::Single`]: crate::Cell::Single
+    /// [`Cell::Flags`]: crate::Cell::Flags
+    /// [`Cell::List`]: crate::Cell::List
     pub fn count(&self) -> usize {
         self.count
     }
