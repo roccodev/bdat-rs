@@ -1,6 +1,6 @@
 use crate::io::BdatVersion;
 use crate::Utf;
-use std::borrow::{Borrow, Cow};
+use std::borrow::Cow;
 use std::{cmp::Ordering, fmt::Display};
 
 /// The label is hashed and an operation on a plain string (e.g. comparison) was requested.

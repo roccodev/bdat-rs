@@ -107,7 +107,7 @@ impl<'b> Table<'b> {
     /// BDAT tables can have arbitrary start IDs.
     pub fn get_row(&self, id: usize) -> Option<RowRef<'_, 'b>> {
         let index = id.checked_sub(self.base_id)?;
-        self.rows.get(index).map(|_| RowRef::new(self, index))
+        self.rows.get(index).map(|row| RowRef::new(self, row))
     }
 
     /// Attempts to get a mutable view of a row by its ID.  
@@ -124,8 +124,8 @@ impl<'b> Table<'b> {
     }
 
     /// Gets an iterator that visits this table's rows
-    pub fn rows(&self) -> impl Iterator<Item = &Row<'b>> {
-        self.rows.iter()
+    pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, 'b>> {
+        self.rows.iter().map(|row| RowRef::new(self, row))
     }
 
     /// Gets an iterator over mutable references to this table's
@@ -142,8 +142,10 @@ impl<'b> Table<'b> {
     /// [`get_row_by_hash`].
     ///
     /// [`get_row_by_hash`]: Table::get_row_by_hash
-    pub fn rows_mut(&mut self) -> impl Iterator<Item = &mut Row<'b>> {
-        self.rows.iter_mut()
+    pub fn rows_mut(&mut self) -> impl Iterator<Item = RowRefMut<'_, 'b>> {
+        self.rows
+            .iter_mut()
+            .map(|row| RowRefMut::new(row, &self.columns))
     }
 
     /// Gets an owning iterator over this table's rows

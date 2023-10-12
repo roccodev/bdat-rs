@@ -1,6 +1,6 @@
 use crate::{Cell, Label, Value};
 use crate::{ColumnMap, Table};
-use std::borrow::{Borrow, Cow};
+
 use std::ops::{Deref, DerefMut, Index};
 
 /// A row from a Bdat table
@@ -74,11 +74,8 @@ impl<'b> Row<'b> {
 }
 
 impl<'a, 't: 'a, 'tb> RowRef<'t, 'tb> {
-    pub(crate) fn new(table: &'t Table<'tb>, index: usize) -> Self {
-        Self {
-            table,
-            row: &table.rows[index],
-        }
+    pub(crate) fn new(table: &'t Table<'tb>, row: &'t Row<'tb>) -> Self {
+        Self { table, row }
     }
 
     /// Returns a reference to the cell at the given column.

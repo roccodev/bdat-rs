@@ -147,7 +147,7 @@ impl<W: Write + Seek, E: ByteOrder + 'static> FileWriter<W, E> {
 
         let (table_bytes, table_offsets, total_len, table_count) = tables
             .into_iter()
-            .map(|table| TableWriter::<E>::new(table.borrow(), self.version, self.opts).write())
+            .map(|table| TableWriter::<E>::new(table, self.version, self.opts).write())
             .try_fold(
                 (Vec::new(), Vec::new(), 0, 0),
                 |(mut tot_bytes, mut offsets, len, count), table_bytes| {
