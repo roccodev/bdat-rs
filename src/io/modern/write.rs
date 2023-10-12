@@ -108,7 +108,9 @@ where
     fn write_table_v2(&mut self, table: &Table) -> Result<()> {
         let table_offset = self.stream.stream_position()?;
 
-        let column_count = table.columns.len().try_into()?;
+        let columns = table.columns.as_slice();
+
+        let column_count = columns.len().try_into()?;
         let row_count = table.rows.len().try_into()?;
         let base_id = table
             .rows
@@ -125,9 +127,9 @@ where
 
         // List of column definitions
         let column_table: Vec<u8> = {
-            let mut data = Vec::with_capacity(table.columns.len() * (1 + 4));
+            let mut data = Vec::with_capacity(columns.len() * (1 + 4));
 
-            for col in &table.columns {
+            for col in table.columns.as_slice() {
                 data.write_u8(col.value_type as u8)?;
                 data.write_u16::<E>(u16::try_from(label_table.get(Cow::Borrowed(&col.label)))?)?;
             }
@@ -149,7 +151,7 @@ where
                             if let (false, Value::HashRef(hash)) = (found_primary, &v) {
                                 found_primary = true;
                                 // TODO: check if ID == row.index
-                                primary_keys.push((*hash, u32::try_from(row.id)?));
+                                primary_keys.push((*hash, u32::try_from(row.id())?));
                             }
                             Self::write_value_v2(&mut data, v, &mut label_table)?
                         }

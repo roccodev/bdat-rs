@@ -12,6 +12,11 @@ pub struct ColumnDef {
 /// A builder interface for [`ColumnDef`].
 pub struct ColumnBuilder(ColumnDef);
 
+#[derive(Debug, Clone, PartialEq, Default)]
+pub(crate) struct ColumnMap {
+    pub columns: Vec<ColumnDef>,
+}
+
 /// A sub-definition for flag data that is associated to a column
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
@@ -136,5 +141,38 @@ impl ColumnBuilder {
 
     pub fn build(self) -> ColumnDef {
         self.0
+    }
+}
+
+impl ColumnMap {
+    pub fn position(&self, label: &Label) -> Option<usize> {
+        self.columns.iter().position(|c| &c.label == label)
+    }
+
+    pub fn push(&mut self, column: ColumnDef) {
+        self.columns.push(column);
+    }
+
+    pub fn as_slice(&self) -> &[ColumnDef] {
+        &self.columns
+    }
+
+    pub fn as_mut_slice(&mut self) -> &mut [ColumnDef] {
+        &mut self.columns
+    }
+
+    pub fn into_raw(self) -> Vec<ColumnDef> {
+        self.columns
+    }
+}
+
+impl<T> From<T> for ColumnMap
+where
+    T: IntoIterator<Item = ColumnDef>,
+{
+    fn from(value: T) -> Self {
+        Self {
+            columns: value.into_iter().collect(),
+        }
     }
 }

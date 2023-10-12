@@ -1,5 +1,5 @@
 use crate::hash::PreHashedMap;
-use crate::{ColumnDef, Label, Row, RowRef};
+use crate::{ColumnDef, ColumnMap, Label, Row, RowRef, RowRefMut};
 
 pub mod cell;
 pub mod column;
@@ -38,7 +38,7 @@ pub mod row;
 pub struct Table<'b> {
     pub(crate) name: Label,
     pub(crate) base_id: usize,
-    pub(crate) columns: Vec<ColumnDef>,
+    pub(crate) columns: ColumnMap,
     pub(crate) rows: Vec<Row<'b>>,
     #[cfg(feature = "hash-table")]
     row_hash_table: PreHashedMap<u32, usize>,
@@ -47,7 +47,7 @@ pub struct Table<'b> {
 /// A builder interface for [`Table`].
 pub struct TableBuilder<'b> {
     name: Label,
-    columns: Vec<ColumnDef>,
+    columns: ColumnMap,
     rows: Vec<Row<'b>>,
 }
 
@@ -56,12 +56,17 @@ impl<'b> Table<'b> {
         Self {
             name: builder.name,
             columns: builder.columns,
-            base_id: builder.rows.iter().map(|r| r.id).min().unwrap_or_default(),
+            base_id: builder
+                .rows
+                .iter()
+                .map(|r| r.id())
+                .min()
+                .unwrap_or_default(),
             #[cfg(feature = "hash-table")]
             row_hash_table: builder
                 .rows
                 .iter()
-                .filter_map(|r| Some((r.id_hash()?, r.id)))
+                .filter_map(|r| Some((r.id_hash()?, r.id())))
                 .collect(),
             rows: builder.rows,
         }
@@ -102,7 +107,20 @@ impl<'b> Table<'b> {
     /// BDAT tables can have arbitrary start IDs.
     pub fn get_row(&self, id: usize) -> Option<RowRef<'_, 'b>> {
         let index = id.checked_sub(self.base_id)?;
-        self.rows.get(index).map(|_| RowRef::new(self, index, id))
+        self.rows.get(index).map(|_| RowRef::new(self, index))
+    }
+
+    /// Attempts to get a mutable view of a row by its ID.  
+    /// If there is no row for the given ID, this returns [`None`].
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    pub fn get_row_mut(&mut self, id: usize) -> Option<RowRefMut<'_, 'b>> {
+        let index = id.checked_sub(self.base_id)?;
+        self.rows
+            .get_mut(index)
+            .map(|row| RowRefMut::new(row, &self.columns))
     }
 
     /// Gets an iterator that visits this table's rows
@@ -135,18 +153,18 @@ impl<'b> Table<'b> {
 
     /// Gets an iterator that visits this table's column definitions
     pub fn columns(&self) -> impl Iterator<Item = &ColumnDef> {
-        self.columns.iter()
+        self.columns.as_slice().iter()
     }
 
     /// Gets an iterator over mutable references to this table's
     /// column definitions.
     pub fn columns_mut(&mut self) -> impl Iterator<Item = &mut ColumnDef> {
-        self.columns.iter_mut()
+        self.columns.as_mut_slice().iter_mut()
     }
 
     /// Gets an owning iterator over this table's column definitions
     pub fn into_columns(self) -> impl Iterator<Item = ColumnDef> {
-        self.columns.into_iter()
+        self.columns.into_raw().into_iter()
     }
 
     /// Gets the number of rows in the table
@@ -156,7 +174,7 @@ impl<'b> Table<'b> {
 
     /// Gets the number of columns in the table
     pub fn column_count(&self) -> usize {
-        self.columns.len()
+        self.columns.as_slice().len()
     }
 
     /// Attempts to get a row by its hashed 32-bit ID.
@@ -181,7 +199,7 @@ impl<'b> TableBuilder<'b> {
     pub fn with_name(name: Label) -> Self {
         Self {
             name,
-            columns: vec![],
+            columns: ColumnMap::default(),
             rows: vec![],
         }
     }
@@ -202,7 +220,7 @@ impl<'b> TableBuilder<'b> {
     }
 
     pub fn set_columns(mut self, columns: Vec<ColumnDef>) -> Self {
-        self.columns = columns;
+        self.columns = ColumnMap::from(columns);
         self
     }
 

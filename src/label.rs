@@ -1,6 +1,6 @@
 use crate::io::BdatVersion;
 use crate::Utf;
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
 use std::{cmp::Ordering, fmt::Display};
 
 /// The label is hashed and an operation on a plain string (e.g. comparison) was requested.
@@ -97,6 +97,12 @@ impl Label {
 impl From<String> for Label {
     fn from(s: String) -> Self {
         Self::String(s)
+    }
+}
+
+impl From<&str> for Label {
+    fn from(s: &str) -> Self {
+        s.to_string().into()
     }
 }
 

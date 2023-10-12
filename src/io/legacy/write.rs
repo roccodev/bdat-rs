@@ -242,7 +242,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
             self.table.columns().map(|c| c.data_size()).sum::<usize>() * self.table.row_count(),
         );
         self.strings.base_offset = row_start as usize + total_row_size;
-        for row in self.table.rows() {
+        for row in &self.table.rows {
             RowWriter::<E>::new(&mut self, row).write()?;
         }
         let row_size = (self.buf.stream_position()? - row_start) as usize;
@@ -277,7 +277,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
         let info_offset = self.version.table_header_size();
 
         let columns = ColumnTableBuilder::from_columns(
-            &self.table.columns,
+            self.table.columns.as_slice(),
             &mut self.names,
             self.opts.hash_slots.try_into()?,
             info_offset,
@@ -531,7 +531,12 @@ impl<'a, 'b, 't, E: ByteOrder> RowWriter<'a, 'b, 't, E> {
     }
 
     fn write(&mut self) -> Result<()> {
-        for (cell, col) in self.row.cells.iter().zip(self.table.table.columns.iter()) {
+        for (cell, col) in self
+            .row
+            .cells
+            .iter()
+            .zip(self.table.table.columns.as_slice().iter())
+        {
             match cell {
                 Cell::Single(v) => self.write_value(v),
                 Cell::List(values) => values.iter().try_for_each(|v| self.write_value(v)),
