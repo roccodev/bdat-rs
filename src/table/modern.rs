@@ -1,7 +1,6 @@
 use crate::hash::PreHashedMap;
 use crate::{
-    ColumnDef, ColumnMap, Label, LegacyCell, ModernCell, Row, RowIter, RowRef, RowRefMut,
-    TableAccessor, TableBuilder,
+    ColumnDef, ColumnMap, Label, ModernCell, Row, RowRef, RowRefMut, TableAccessor, TableBuilder,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -45,12 +44,6 @@ impl<'b> ModernTable<'b> {
         self.row_hash_table
             .get(&hash_id)
             .and_then(|&id| self.get_row(id))
-    }
-
-    /// Returns an ergonomic iterator view over the table's rows and columns.
-    pub fn iter(&self) -> RowIter<Self> {
-        // TODO(0.4.0): is this still necessary?
-        self.into_iter()
     }
 
     /// Gets an iterator that visits this table's rows

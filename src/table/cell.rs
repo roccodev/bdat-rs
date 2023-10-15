@@ -2,7 +2,7 @@ use crate::legacy::float::BdatReal;
 use crate::{BdatVersion, Label, RowRef};
 use enum_kinds::EnumKind;
 use num_enum::TryFromPrimitive;
-use std::borrow::{Borrow, Cow};
+use std::borrow::Cow;
 use std::fmt::Display;
 
 /// A cell from a BDAT row.
@@ -95,7 +95,9 @@ pub enum Value<'b> {
 pub type Utf<'t> = Cow<'t, str>;
 
 pub struct ModernCell<'t, 'tb>(&'t Cell<'tb>);
-pub struct LegacyCell<'t, 'tb>(&'t Cell<'tb>);
+
+// Legacy is currently an alias for the version-agnostic [`Cell`].
+pub type LegacyCell<'t, 'tb> = &'t Cell<'tb>;
 
 pub trait FromValue
 where
@@ -268,12 +270,6 @@ impl From<ValueType> for u8 {
 }
 
 impl<'t, 'tb> From<&'t Cell<'tb>> for ModernCell<'t, 'tb> {
-    fn from(cell: &'t Cell<'tb>) -> Self {
-        Self(cell)
-    }
-}
-
-impl<'t, 'tb> From<&'t Cell<'tb>> for LegacyCell<'t, 'tb> {
     fn from(cell: &'t Cell<'tb>) -> Self {
         Self(cell)
     }

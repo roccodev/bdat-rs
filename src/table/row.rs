@@ -1,5 +1,5 @@
+use crate::ColumnMap;
 use crate::{Cell, Label, Value};
-use crate::{ColumnMap, Table};
 use std::borrow::Borrow;
 use std::marker::PhantomData;
 

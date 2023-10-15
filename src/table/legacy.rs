@@ -1,6 +1,5 @@
 use crate::{
-    ColumnDef, ColumnMap, Label, LegacyCell, ModernCell, Row, RowIter, RowRef, RowRefMut,
-    TableAccessor, TableBuilder,
+    ColumnDef, ColumnMap, Label, LegacyCell, Row, RowRef, RowRefMut, TableAccessor, TableBuilder,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -145,12 +144,6 @@ impl<'b> LegacyTable<'b> {
     /// Gets an owning iterator over this table's column definitions
     pub fn into_columns(self) -> impl Iterator<Item = ColumnDef> {
         self.columns.into_raw().into_iter()
-    }
-
-    /// Returns an ergonomic iterator view over the table's rows and columns.
-    pub fn iter(&self) -> RowIter<Self> {
-        // TODO(0.4.0): is this still necessary?
-        self.into_iter()
     }
 }
 

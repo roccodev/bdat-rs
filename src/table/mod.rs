@@ -1,6 +1,5 @@
-use crate::{
-    BdatVersion, Cell, ColumnDef, ColumnMap, Label, LegacyCell, ModernCell, Row, RowRef, RowRefMut,
-};
+use crate::{BdatVersion, Cell, ColumnDef, ColumnMap, Label, Row, RowRef, RowRefMut};
+use util::VersionedIter;
 
 pub mod cell;
 pub mod column;
@@ -10,7 +9,6 @@ mod legacy;
 mod modern;
 mod util;
 
-use crate::table::util::VersionedIter;
 pub use legacy::LegacyTable;
 pub use modern::ModernTable;
 
@@ -54,11 +52,6 @@ pub struct TableBuilder<'b> {
     name: Label,
     columns: ColumnMap,
     rows: Vec<Row<'b>>,
-}
-
-pub struct RowIter<'t, T> {
-    table: &'t T,
-    row_id: usize,
 }
 
 pub trait TableAccessor<'t, 'b: 't> {
@@ -305,30 +298,6 @@ impl<'b> TableBuilder<'b> {
     }
 }
 
-impl<'t, 'tb> IntoIterator for &'t ModernTable<'tb> {
-    type Item = RowRef<'t, 'tb, ModernCell<'t, 'tb>>;
-    type IntoIter = RowIter<'t, ModernTable<'tb>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        RowIter {
-            table: self,
-            row_id: self.base_id(),
-        }
-    }
-}
-
-impl<'t, 'tb> IntoIterator for &'t LegacyTable<'tb> {
-    type Item = RowRef<'t, 'tb, LegacyCell<'t, 'tb>>;
-    type IntoIter = RowIter<'t, LegacyTable<'tb>>;
-
-    fn into_iter(self) -> Self::IntoIter {
-        RowIter {
-            table: self,
-            row_id: self.base_id(),
-        }
-    }
-}
-
 impl<'b> From<ModernTable<'b>> for TableBuilder<'b> {
     fn from(table: ModernTable<'b>) -> Self {
         Self {
@@ -348,27 +317,6 @@ impl<'b> From<ModernTable<'b>> for Table<'b> {
 impl<'b> From<LegacyTable<'b>> for Table<'b> {
     fn from(value: LegacyTable<'b>) -> Self {
         Self::Legacy(value)
-    }
-}
-
-impl<'t, 'tb> Iterator for RowIter<'t, ModernTable<'tb>> {
-    type Item = RowRef<'t, 'tb, ModernCell<'t, 'tb>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let item = self.table.get_row(self.row_id)?;
-        self.row_id += 1;
-        Some(item)
-    }
-}
-
-// TODO: trait for get_row
-impl<'t, 'tb> Iterator for RowIter<'t, LegacyTable<'tb>> {
-    type Item = RowRef<'t, 'tb, LegacyCell<'t, 'tb>>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let item = self.table.get_row(self.row_id)?;
-        self.row_id += 1;
-        Some(item)
     }
 }
 
