@@ -1,8 +1,8 @@
 use crate::legacy::float::BdatReal;
-use crate::{BdatVersion, Label};
+use crate::{BdatVersion, Label, RowRef};
 use enum_kinds::EnumKind;
 use num_enum::TryFromPrimitive;
-use std::borrow::Cow;
+use std::borrow::{Borrow, Cow};
 use std::fmt::Display;
 
 /// A cell from a BDAT row.
@@ -93,6 +93,15 @@ pub enum Value<'b> {
 
 /// An optionally-borrowed clone-on-write UTF-8 string.
 pub type Utf<'t> = Cow<'t, str>;
+
+pub struct ModernCell<'t, 'tb>(&'t Cell<'tb>);
+
+pub trait FromValue
+where
+    Self: Sized,
+{
+    fn extract(value: &Value<'_>) -> Option<Self>;
+}
 
 impl<'b> Cell<'b> {
     /// Gets a reference to the cell's value, if it
@@ -207,6 +216,28 @@ impl<'b> Value<'b> {
     }
 }
 
+impl<'t, 'tb> ModernCell<'t, 'tb> {
+    /// Casts the cell's only value to `V`.
+    ///
+    /// ## Panics
+    /// Panics if the value's internal type is not `V`. The type must match
+    /// exactly, e.g. `i32` is not the same as `u32`.
+    pub fn get_as<V: FromValue>(&self) -> V {
+        self.try_get_as().unwrap()
+    }
+
+    /// Attempts to cast the cell's only value to `V`.
+    ///
+    /// Fails if the value's internal type is not `V`. The type must match
+    /// exactly, e.g. `i32` is not the same as `u32`.
+    pub fn try_get_as<V: FromValue>(&self) -> Result<V, ()> {
+        match self.0 {
+            Cell::Single(v) => V::extract(v).ok_or(()), // TODO
+            _ => panic!("cell is not single: using modern with legacy version?"),
+        }
+    }
+}
+
 impl ValueType {
     /// Returns the size of a single cell with this value type.
     pub fn data_len(self) -> usize {
@@ -232,6 +263,18 @@ impl ValueType {
 impl From<ValueType> for u8 {
     fn from(t: ValueType) -> Self {
         t as u8
+    }
+}
+
+impl<'t, 'tb> From<&'t Cell<'tb>> for ModernCell<'t, 'tb> {
+    fn from(cell: &'t Cell<'tb>) -> Self {
+        Self(cell)
+    }
+}
+
+impl<'t, 'tb> RowRef<'t, 'tb> {
+    pub fn into_modern(self) -> RowRef<'t, 'tb, ModernCell<'t, 'tb>> {
+        self.into_with_cell_type()
     }
 }
 
@@ -283,6 +326,15 @@ impl<'b> Display for Cell<'b> {
                 }
                 write!(f, "}}")
             }
+        }
+    }
+}
+
+impl FromValue for u32 {
+    fn extract(value: &Value<'_>) -> Option<Self> {
+        match value {
+            Value::UnsignedInt(v) | Value::HashRef(v) => Some(*v),
+            _ => None,
         }
     }
 }

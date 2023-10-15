@@ -1,5 +1,5 @@
 use crate::hash::PreHashedMap;
-use crate::{ColumnDef, ColumnMap, Label, Row, RowRef, RowRefMut};
+use crate::{BdatVersion, Cell, ColumnDef, ColumnMap, Label, ModernCell, Row, RowRef, RowRefMut};
 
 pub mod cell;
 pub mod column;
@@ -93,10 +93,49 @@ impl<'b> Table<'b> {
     /// from the index of the row in the table's row list. That is because
     /// BDAT tables can have arbitrary start IDs.
     ///
-    /// # Panics
+    /// ## Panics
     /// If there is no row for the given ID
     pub fn row(&self, id: usize) -> RowRef<'_, 'b> {
         self.get_row(id).expect("no such row")
+    }
+
+    /// Gets a mutable view of a row by its ID
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    ///
+    /// ## Panics
+    /// If there is no row for the given ID
+    pub fn row_mut(&mut self, id: usize) -> RowRefMut<'_, 'b> {
+        self.get_row_mut(id).expect("no such row")
+    }
+
+    /// Equivalent to [`row`], but more ergonomic if it is known that the table
+    /// follows the modern (XC3) format.
+    ///
+    /// ## Panics
+    /// If there is no row for the given ID.
+    ///
+    /// **Note**: this function does not panic if data types are incompatible, but operations might
+    /// fail with legacy tables (e.g., you have flag or array cells). When using this function,
+    /// make sure all your underlying data is comprised of modern types.
+    ///
+    /// ## Example
+    /// ```
+    /// use bdat::{Label, Table};
+    ///
+    /// fn foo(table: &Table) -> u32 {
+    ///     // This is a `ModernCell`, which is essentially a single value.
+    ///     // As such, it can be used to avoid having to match on single-value cells
+    ///     // that are included for legacy compatibility.
+    ///     let cell = table.row_modern(1).get(Label::Hash(0xDEADBEEF));
+    ///     // Casting values is also supported:
+    ///     cell.get_as::<u32>()
+    /// }
+    /// ```
+    pub fn row_modern(&self, id: usize) -> RowRef<'_, 'b, ModernCell<'_, 'b>> {
+        self.get_row_modern(id).expect("no such row")
     }
 
     /// Attempts to get a row by its ID.  
@@ -106,8 +145,17 @@ impl<'b> Table<'b> {
     /// from the index of the row in the table's row list. That is because
     /// BDAT tables can have arbitrary start IDs.
     pub fn get_row(&self, id: usize) -> Option<RowRef<'_, 'b>> {
-        let index = id.checked_sub(self.base_id)?;
-        self.rows.get(index).map(|row| RowRef::new(self, row))
+        self.get_row_cast(id)
+    }
+
+    /// Equivalent to [`get_row`], but more ergonomic if it is known that the table
+    /// follows the modern (XC3) format.
+    ///
+    /// This function does not fail, but operations might fail if data types are incompatible
+    /// with the modern version (e.g., you have flag or array cells). When using this function,
+    /// make sure all your underlying data is comprised of modern types.
+    pub fn get_row_modern(&self, id: usize) -> Option<RowRef<'_, 'b, ModernCell<'_, 'b>>> {
+        self.get_row_cast(id)
     }
 
     /// Attempts to get a mutable view of a row by its ID.  
@@ -125,6 +173,14 @@ impl<'b> Table<'b> {
 
     /// Gets an iterator that visits this table's rows
     pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, 'b>> {
+        self.rows.iter().map(|row| RowRef::new(self, row))
+    }
+
+    /// Gets an iterator that visits this table's rows.
+    ///
+    /// This should be preferred over [`rows`] if you know you are working with a
+    /// modern (XC3) table.
+    pub fn rows_modern(&self) -> impl Iterator<Item = RowRef<'_, 'b, ModernCell>> {
         self.rows.iter().map(|row| RowRef::new(self, row))
     }
 
@@ -194,6 +250,15 @@ impl<'b> Table<'b> {
     /// Returns an ergonomic iterator view over the table's rows and columns.
     pub fn iter(&self) -> RowIter {
         self.into_iter()
+    }
+
+    #[inline]
+    fn get_row_cast<'t, C>(&'t self, id: usize) -> Option<RowRef<'t, 'b, C>>
+    where
+        C: From<&'t Cell<'b>>,
+    {
+        let index = id.checked_sub(self.base_id)?;
+        self.rows.get(index).map(|row| RowRef::new(self, row))
     }
 }
 

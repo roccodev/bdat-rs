@@ -1,5 +1,7 @@
 use crate::{Cell, Label, Value};
 use crate::{ColumnMap, Table};
+use std::borrow::Borrow;
+use std::marker::PhantomData;
 
 use std::ops::{Deref, DerefMut, Index};
 
@@ -19,21 +21,25 @@ pub struct Row<'b> {
 /// use bdat::RowRef;
 ///
 /// fn param_1(row: RowRef) -> u32 {
-///     // Use the index syntax to access cells
+///     // Use the index syntax (or .get()) to access cells
 ///     row["Param1"].as_single().unwrap().to_integer()
 /// }
 ///
 /// fn param_2_if_present(row: RowRef) -> Option<u32> {
-///     // Or use .get() for columns that might be absent
-///     row.get(&"Param2".into())
+///     // Or use .get_if_present() for columns that might be absent
+///     row.get_if_present(&"Param2".into())
 ///         .and_then(|cell| cell.as_single())
 ///         .map(|value| value.to_integer())
 /// }
 /// ```
 #[derive(Clone, Copy, Debug)]
-pub struct RowRef<'t, 'tb> {
+pub struct RowRef<'t, 'tb, C = &'t Cell<'tb>>
+where
+    C: From<&'t Cell<'tb>>,
+{
     row: &'t Row<'tb>,
     table: &'t Table<'tb>,
+    _cell: PhantomData<C>,
 }
 
 #[derive(Debug)]
@@ -73,20 +79,50 @@ impl<'b> Row<'b> {
     }
 }
 
-impl<'a, 't: 'a, 'tb> RowRef<'t, 'tb> {
+impl<'t, 'tb, C> RowRef<'t, 'tb, C>
+where
+    C: From<&'t Cell<'tb>>,
+{
     pub(crate) fn new(table: &'t Table<'tb>, row: &'t Row<'tb>) -> Self {
-        Self { table, row }
+        Self {
+            table,
+            row,
+            _cell: PhantomData,
+        }
     }
 
     /// Returns a reference to the cell at the given column.
-    pub fn get(&self, column: &Label) -> Option<&'t Cell<'tb>> {
-        let index = self.table.columns.position(column)?;
-        self.row.cells.get(index)
+    ///
+    /// If there is no column with the given label, this returns [`None`].
+    pub fn get_if_present(&self, column: impl Borrow<Label>) -> Option<C> {
+        let index = self.table.columns.position(column.borrow())?;
+        self.row.cells.get(index).map(Into::into)
+    }
+
+    /// Returns a reference to the cell at the given column.
+    ///
+    /// ## Panics
+    /// Panics if there is no column with the given label.
+    pub fn get(&self, column: impl Borrow<Label>) -> C {
+        self.get_if_present(column).expect("no such column")
     }
 
     /// Returns the table this row belongs to.
     pub fn table(&self) -> &'t Table<'tb> {
         self.table
+    }
+}
+
+impl<'t, 'tb> RowRef<'t, 'tb> {
+    pub(crate) fn into_with_cell_type<C>(self) -> RowRef<'t, 'tb, C>
+    where
+        C: From<&'t Cell<'tb>>,
+    {
+        RowRef {
+            row: self.row,
+            table: self.table,
+            _cell: PhantomData,
+        }
     }
 }
 
@@ -110,7 +146,7 @@ where
     type Output = Cell<'tb>;
 
     fn index(&self, index: S) -> &Self::Output {
-        self.get(&index.into()).expect("no such column")
+        self.get(&index.into())
     }
 }
 
