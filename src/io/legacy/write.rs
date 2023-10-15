@@ -16,7 +16,8 @@ use crate::legacy::{
     LegacyWriteOptions, COLUMN_NODE_SIZE, COLUMN_NODE_SIZE_WII, HEADER_SIZE, HEADER_SIZE_WII,
 };
 use crate::{
-    BdatError, BdatVersion, Cell, ColumnDef, FlagDef, Row, Table, Value, ValueType, WiiEndian,
+    BdatError, BdatVersion, Cell, ColumnDef, FlagDef, LegacyTable, Row, Table, Value, ValueType,
+    WiiEndian,
 };
 
 /// Writes a full BDAT file to a writer.
@@ -29,7 +30,7 @@ pub struct FileWriter<W, E> {
 
 /// Writes a single table.
 struct TableWriter<'a, 't, E> {
-    table: &'a Table<'t>,
+    table: &'a LegacyTable<'t>,
     buf: Cursor<Vec<u8>>,
     version: BdatVersion,
     opts: LegacyWriteOptions,
@@ -138,7 +139,7 @@ impl<W: Write + Seek, E: ByteOrder + 'static> FileWriter<W, E> {
 
     pub fn write_file<'t>(
         &mut self,
-        tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
+        tables: impl IntoIterator<Item = impl Borrow<LegacyTable<'t>>>,
     ) -> Result<()> {
         let tables = tables.into_iter().by_ref().collect::<Vec<_>>();
         let mut tables = tables.iter().map(|t| t.borrow()).collect::<Vec<_>>();
@@ -187,7 +188,7 @@ impl<W: Write + Seek, E: ByteOrder + 'static> FileWriter<W, E> {
 }
 
 impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
-    fn new(table: &'a Table<'t>, version: BdatVersion, opts: LegacyWriteOptions) -> Self {
+    fn new(table: &'a LegacyTable<'t>, version: BdatVersion, opts: LegacyWriteOptions) -> Self {
         Self {
             table,
             buf: Cursor::new(Vec::new()),

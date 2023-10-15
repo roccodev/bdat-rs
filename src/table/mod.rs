@@ -1,9 +1,18 @@
-use crate::hash::PreHashedMap;
-use crate::{BdatVersion, Cell, ColumnDef, ColumnMap, Label, ModernCell, Row, RowRef, RowRefMut};
+use crate::{
+    BdatVersion, ColumnDef, ColumnMap, Label, LegacyCell, ModernCell, Row, RowRef, RowRefMut,
+};
 
 pub mod cell;
 pub mod column;
 pub mod row;
+
+mod legacy;
+mod modern;
+mod util;
+
+use crate::table::util::VersionedIter;
+pub use legacy::LegacyTable;
+pub use modern::ModernTable;
 
 /// A Bdat table. Depending on how they were read, BDAT tables can either own their data source
 /// or borrow from it.
@@ -35,13 +44,9 @@ pub mod row;
 /// );
 /// ```
 #[derive(Debug, Clone, PartialEq)]
-pub struct Table<'b> {
-    pub(crate) name: Label,
-    pub(crate) base_id: usize,
-    pub(crate) columns: ColumnMap,
-    pub(crate) rows: Vec<Row<'b>>,
-    #[cfg(feature = "hash-table")]
-    row_hash_table: PreHashedMap<u32, usize>,
+pub enum Table<'b> {
+    Modern(ModernTable<'b>),
+    Legacy(LegacyTable<'b>),
 }
 
 /// A builder interface for [`Table`].
@@ -51,52 +56,74 @@ pub struct TableBuilder<'b> {
     rows: Vec<Row<'b>>,
 }
 
-impl<'b> Table<'b> {
-    fn new(builder: TableBuilder<'b>) -> Self {
-        Self {
-            name: builder.name,
-            columns: builder.columns,
-            base_id: builder
-                .rows
-                .iter()
-                .map(|r| r.id())
-                .min()
-                .unwrap_or_default(),
-            #[cfg(feature = "hash-table")]
-            row_hash_table: builder
-                .rows
-                .iter()
-                .filter_map(|r| Some((r.id_hash()?, r.id())))
-                .collect(),
-            rows: builder.rows,
-        }
-    }
+pub struct RowIter<'t, T> {
+    table: &'t T,
+    row_id: usize,
+}
 
+macro_rules! versioned {
+    ($var:expr, $name:ident) => {
+        match $var {
+            Self::Modern(m) => &m.$name,
+            Self::Legacy(l) => &l.$name,
+        }
+    };
+    ($var:expr, $name:ident($($par:expr ) *)) => {
+        match $var {
+            Self::Modern(m) => m . $name ( $($par, )* ),
+            Self::Legacy(l) => l . $name ( $($par, )* ),
+        }
+    };
+}
+
+macro_rules! versioned_iter {
+    ($var:expr, $name:ident($($par:expr ) *)) => {
+        match $var {
+            Self::Modern(m) => util::VersionedIter::Modern(m . $name ( $($par, )* )),
+            Self::Legacy(l) => util::VersionedIter::Legacy(l . $name ( $($par, )* )),
+        }
+    };
+}
+
+impl<'b> Table<'b> {
     /// Returns the table's name.
     pub fn name(&self) -> &Label {
-        &self.name
+        versioned!(self, name)
     }
 
     /// Updates the table's name.
     pub fn set_name(&mut self, name: Label) {
-        self.name = name;
+        versioned!(self, set_name(name))
     }
 
     /// Gets the minimum row ID in the table.
     pub fn base_id(&self) -> usize {
-        self.base_id
+        *versioned!(self, base_id)
     }
 
-    /// Gets a row by its ID
-    ///
-    /// Note: the ID is the row's numerical ID, which could be different
-    /// from the index of the row in the table's row list. That is because
-    /// BDAT tables can have arbitrary start IDs.
+    /// Gets a row by its ID.
     ///
     /// ## Panics
-    /// If there is no row for the given ID
+    /// If there is no row for the given ID.
+    ///
+    /// ## Example
+    /// ```
+    /// use bdat::{Label, ModernTable};
+    ///
+    /// fn foo(table: &ModernTable) -> u32 {
+    ///     // This is a `ModernCell`, which is essentially a single value.
+    ///     // As such, it can be used to avoid having to match on single-value cells
+    ///     // that are included for legacy compatibility.
+    ///     let cell = table.row(1).get(Label::Hash(0xDEADBEEF));
+    ///     // Casting values is also supported:
+    ///     cell.get_as::<u32>()
+    /// }
+    /// ```
     pub fn row(&self, id: usize) -> RowRef<'_, 'b> {
-        self.get_row(id).expect("no such row")
+        match self {
+            Table::Modern(m) => m.row(id).up_cast(),
+            Table::Legacy(l) => l.row(id).up_cast(),
+        }
     }
 
     /// Gets a mutable view of a row by its ID
@@ -108,34 +135,7 @@ impl<'b> Table<'b> {
     /// ## Panics
     /// If there is no row for the given ID
     pub fn row_mut(&mut self, id: usize) -> RowRefMut<'_, 'b> {
-        self.get_row_mut(id).expect("no such row")
-    }
-
-    /// Equivalent to [`row`], but more ergonomic if it is known that the table
-    /// follows the modern (XC3) format.
-    ///
-    /// ## Panics
-    /// If there is no row for the given ID.
-    ///
-    /// **Note**: this function does not panic if data types are incompatible, but operations might
-    /// fail with legacy tables (e.g., you have flag or array cells). When using this function,
-    /// make sure all your underlying data is comprised of modern types.
-    ///
-    /// ## Example
-    /// ```
-    /// use bdat::{Label, Table};
-    ///
-    /// fn foo(table: &Table) -> u32 {
-    ///     // This is a `ModernCell`, which is essentially a single value.
-    ///     // As such, it can be used to avoid having to match on single-value cells
-    ///     // that are included for legacy compatibility.
-    ///     let cell = table.row_modern(1).get(Label::Hash(0xDEADBEEF));
-    ///     // Casting values is also supported:
-    ///     cell.get_as::<u32>()
-    /// }
-    /// ```
-    pub fn row_modern(&self, id: usize) -> RowRef<'_, 'b, ModernCell<'_, 'b>> {
-        self.get_row_modern(id).expect("no such row")
+        versioned!(self, row_mut(id))
     }
 
     /// Attempts to get a row by its ID.  
@@ -145,17 +145,10 @@ impl<'b> Table<'b> {
     /// from the index of the row in the table's row list. That is because
     /// BDAT tables can have arbitrary start IDs.
     pub fn get_row(&self, id: usize) -> Option<RowRef<'_, 'b>> {
-        self.get_row_cast(id)
-    }
-
-    /// Equivalent to [`get_row`], but more ergonomic if it is known that the table
-    /// follows the modern (XC3) format.
-    ///
-    /// This function does not fail, but operations might fail if data types are incompatible
-    /// with the modern version (e.g., you have flag or array cells). When using this function,
-    /// make sure all your underlying data is comprised of modern types.
-    pub fn get_row_modern(&self, id: usize) -> Option<RowRef<'_, 'b, ModernCell<'_, 'b>>> {
-        self.get_row_cast(id)
+        match self {
+            Table::Modern(m) => m.get_row(id).map(RowRef::up_cast),
+            Table::Legacy(l) => l.get_row(id).map(RowRef::up_cast),
+        }
     }
 
     /// Attempts to get a mutable view of a row by its ID.  
@@ -165,23 +158,15 @@ impl<'b> Table<'b> {
     /// from the index of the row in the table's row list. That is because
     /// BDAT tables can have arbitrary start IDs.
     pub fn get_row_mut(&mut self, id: usize) -> Option<RowRefMut<'_, 'b>> {
-        let index = id.checked_sub(self.base_id)?;
-        self.rows
-            .get_mut(index)
-            .map(|row| RowRefMut::new(row, &self.columns))
+        versioned!(self, get_row_mut(id))
     }
 
     /// Gets an iterator that visits this table's rows
     pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, 'b>> {
-        self.rows.iter().map(|row| RowRef::new(self, row))
-    }
-
-    /// Gets an iterator that visits this table's rows.
-    ///
-    /// This should be preferred over [`rows`] if you know you are working with a
-    /// modern (XC3) table.
-    pub fn rows_modern(&self) -> impl Iterator<Item = RowRef<'_, 'b, ModernCell>> {
-        self.rows.iter().map(|row| RowRef::new(self, row))
+        match self {
+            Table::Modern(m) => VersionedIter::Modern(m.rows().map(RowRef::up_cast)),
+            Table::Legacy(l) => VersionedIter::Legacy(l.rows().map(RowRef::up_cast)),
+        }
     }
 
     /// Gets an iterator over mutable references to this table's
@@ -199,66 +184,38 @@ impl<'b> Table<'b> {
     ///
     /// [`get_row_by_hash`]: Table::get_row_by_hash
     pub fn rows_mut(&mut self) -> impl Iterator<Item = RowRefMut<'_, 'b>> {
-        self.rows
-            .iter_mut()
-            .map(|row| RowRefMut::new(row, &self.columns))
+        versioned_iter!(self, rows_mut())
     }
 
     /// Gets an owning iterator over this table's rows
     pub fn into_rows(self) -> impl Iterator<Item = Row<'b>> {
-        self.rows.into_iter()
+        versioned_iter!(self, into_rows())
     }
 
     /// Gets an iterator that visits this table's column definitions
     pub fn columns(&self) -> impl Iterator<Item = &ColumnDef> {
-        self.columns.as_slice().iter()
+        versioned_iter!(self, columns())
     }
 
     /// Gets an iterator over mutable references to this table's
     /// column definitions.
     pub fn columns_mut(&mut self) -> impl Iterator<Item = &mut ColumnDef> {
-        self.columns.as_mut_slice().iter_mut()
+        versioned_iter!(self, columns_mut())
     }
 
     /// Gets an owning iterator over this table's column definitions
     pub fn into_columns(self) -> impl Iterator<Item = ColumnDef> {
-        self.columns.into_raw().into_iter()
+        versioned_iter!(self, into_columns())
     }
 
     /// Gets the number of rows in the table
     pub fn row_count(&self) -> usize {
-        self.rows.len()
+        versioned!(self, row_count())
     }
 
     /// Gets the number of columns in the table
     pub fn column_count(&self) -> usize {
-        self.columns.as_slice().len()
-    }
-
-    /// Attempts to get a row by its hashed 32-bit ID.
-    /// If there is no row for the given ID, this returns [`None`].
-    ///
-    /// This requires the `hash-table` feature flag, which is enabled
-    /// by default.
-    #[cfg(feature = "hash-table")]
-    pub fn get_row_by_hash(&self, hash_id: u32) -> Option<RowRef<'_, 'b>> {
-        self.row_hash_table
-            .get(&hash_id)
-            .and_then(|&id| self.get_row(id))
-    }
-
-    /// Returns an ergonomic iterator view over the table's rows and columns.
-    pub fn iter(&self) -> RowIter {
-        self.into_iter()
-    }
-
-    #[inline]
-    fn get_row_cast<'t, C>(&'t self, id: usize) -> Option<RowRef<'t, 'b, C>>
-    where
-        C: From<&'t Cell<'b>>,
-    {
-        let index = id.checked_sub(self.base_id)?;
-        self.rows.get(index).map(|row| RowRef::new(self, row))
+        versioned!(self, column_count())
     }
 }
 
@@ -291,14 +248,22 @@ impl<'b> TableBuilder<'b> {
         self
     }
 
-    pub fn build(self) -> Table<'b> {
-        Table::new(self)
+    pub fn build_modern(self) -> ModernTable<'b> {
+        ModernTable::new(self)
+    }
+
+    pub fn build_legacy(self) -> LegacyTable<'b> {
+        LegacyTable::new(self)
+    }
+
+    pub fn build(version: BdatVersion) -> Table<'b> {
+        todo!()
     }
 }
 
-impl<'t, 'tb> IntoIterator for &'t Table<'tb> {
-    type Item = RowRef<'t, 'tb>;
-    type IntoIter = RowIter<'t, 'tb>;
+impl<'t, 'tb> IntoIterator for &'t ModernTable<'tb> {
+    type Item = RowRef<'t, 'tb, ModernCell<'t, 'tb>>;
+    type IntoIter = RowIter<'t, ModernTable<'tb>>;
 
     fn into_iter(self) -> Self::IntoIter {
         RowIter {
@@ -308,13 +273,58 @@ impl<'t, 'tb> IntoIterator for &'t Table<'tb> {
     }
 }
 
-impl<'b> From<Table<'b>> for TableBuilder<'b> {
-    fn from(table: Table<'b>) -> Self {
+impl<'t, 'tb> IntoIterator for &'t LegacyTable<'tb> {
+    type Item = RowRef<'t, 'tb, LegacyCell<'t, 'tb>>;
+    type IntoIter = RowIter<'t, LegacyTable<'tb>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        RowIter {
+            table: self,
+            row_id: self.base_id(),
+        }
+    }
+}
+
+impl<'b> From<ModernTable<'b>> for TableBuilder<'b> {
+    fn from(table: ModernTable<'b>) -> Self {
         Self {
             name: table.name,
             columns: table.columns,
             rows: table.rows,
         }
+    }
+}
+
+impl<'b> From<ModernTable<'b>> for Table<'b> {
+    fn from(value: ModernTable<'b>) -> Self {
+        Self::Modern(value)
+    }
+}
+
+impl<'b> From<LegacyTable<'b>> for Table<'b> {
+    fn from(value: LegacyTable<'b>) -> Self {
+        Self::Legacy(value)
+    }
+}
+
+impl<'t, 'tb> Iterator for RowIter<'t, ModernTable<'tb>> {
+    type Item = RowRef<'t, 'tb, ModernCell<'t, 'tb>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let item = self.table.get_row(self.row_id)?;
+        self.row_id += 1;
+        Some(item)
+    }
+}
+
+// TODO: trait for get_row
+impl<'t, 'tb> Iterator for RowIter<'t, LegacyTable<'tb>> {
+    type Item = RowRef<'t, 'tb, LegacyCell<'t, 'tb>>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let item = self.table.get_row(self.row_id)?;
+        self.row_id += 1;
+        Some(item)
     }
 }
 
@@ -342,39 +352,24 @@ mod tests {
                     Cell::Single(Value::UnsignedInt(100)),
                 ],
             ))
-            .build();
+            .build_modern();
         assert_eq!(1, table.get_row_by_hash(0xabcdef01).unwrap().id());
         assert_eq!(2, table.get_row_by_hash(0xdeadbeef).unwrap().id());
         assert_eq!(
             256,
-            table.get_row_by_hash(0xabcdef01).unwrap()[Label::Hash(1)]
-                .as_single()
+            table
+                .get_row_by_hash(0xabcdef01)
                 .unwrap()
-                .clone()
-                .to_integer()
+                .get(Label::Hash(1))
+                .get_as::<u32>()
         );
         assert_eq!(
             100,
-            table.get_row_by_hash(0xdeadbeef).unwrap()[Label::Hash(1)]
-                .as_single()
+            table
+                .get_row_by_hash(0xdeadbeef)
                 .unwrap()
-                .clone()
-                .to_integer()
+                .get(Label::Hash(1))
+                .get_as::<u32>()
         );
-    }
-}
-
-pub struct RowIter<'t, 'tb> {
-    table: &'t Table<'tb>,
-    row_id: usize,
-}
-
-impl<'t, 'tb> Iterator for RowIter<'t, 'tb> {
-    type Item = RowRef<'t, 'tb>;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        let item = self.table.get_row(self.row_id)?;
-        self.row_id += 1;
-        Some(item)
     }
 }

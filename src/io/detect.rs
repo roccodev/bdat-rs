@@ -221,7 +221,9 @@ impl<'b, R: Read + Seek> BdatFile<'b> for VersionReader<R> {
         match self {
             Self::LegacySwitch(r) => r.get_tables(),
             Self::LegacyWii(r) => r.get_tables(),
-            Self::Modern(r) => r.get_tables(),
+            Self::Modern(r) => r
+                .get_tables()
+                .map(|v| v.into_iter().map(Into::into).collect()),
         }
     }
 
@@ -239,7 +241,9 @@ impl<'b> BdatFile<'b> for VersionSlice<'b> {
         match self {
             Self::LegacySwitch(r) => r.get_tables(),
             Self::LegacyWii(r) => r.get_tables(),
-            Self::Modern(r) => r.get_tables(),
+            Self::Modern(r) => r
+                .get_tables()
+                .map(|v| v.into_iter().map(Into::into).collect()),
         }
     }
 

@@ -10,7 +10,7 @@ use std::{
 use byteorder::{ByteOrder, WriteBytesExt};
 
 use crate::io::BDAT_MAGIC;
-use crate::{error::Result, Cell, Label, Row, Table, Value};
+use crate::{error::Result, Cell, Label, ModernTable, Row, Table, Value};
 
 use super::FileHeader;
 
@@ -39,7 +39,7 @@ where
 
     pub fn write_file<'t>(
         &mut self,
-        tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
+        tables: impl IntoIterator<Item = impl Borrow<ModernTable<'t>>>,
     ) -> Result<()> {
         let (table_bytes, table_offsets, total_len, table_count) = tables
             .into_iter()
@@ -101,11 +101,11 @@ where
         Ok(())
     }
 
-    pub fn write_table(&mut self, table: &Table) -> Result<()> {
+    pub fn write_table(&mut self, table: &ModernTable) -> Result<()> {
         self.write_table_v2(table)
     }
 
-    fn write_table_v2(&mut self, table: &Table) -> Result<()> {
+    fn write_table_v2(&mut self, table: &ModernTable) -> Result<()> {
         let table_offset = self.stream.stream_position()?;
 
         let columns = table.columns.as_slice();

@@ -3,7 +3,7 @@ use std::io::{Cursor, Read, Seek, Write};
 
 use self::write::BdatWriter;
 use super::read::{BdatReader, BdatSlice};
-use crate::{error::Result, Table};
+use crate::{error::Result, ModernTable, Table};
 use byteorder::ByteOrder;
 
 mod read;
@@ -73,7 +73,7 @@ pub fn from_bytes<E: ByteOrder>(bytes: &[u8]) -> Result<FileReader<BdatSlice<'_,
 /// ```
 pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
     writer: W,
-    tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
+    tables: impl IntoIterator<Item = impl Borrow<ModernTable<'t>>>,
 ) -> Result<()> {
     let mut writer = BdatWriter::<W, E>::new(writer);
     writer.write_file(tables)
@@ -91,7 +91,7 @@ pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
 /// }
 /// ```
 pub fn to_vec<'t, E: ByteOrder>(
-    tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
+    tables: impl IntoIterator<Item = impl Borrow<ModernTable<'t>>>,
 ) -> Result<Vec<u8>> {
     let mut vec = Vec::new();
     to_writer::<_, E>(Cursor::new(&mut vec), tables)?;
@@ -130,7 +130,7 @@ mod tests {
                     Cell::Single(Value::UnsignedInt(100)),
                 ],
             ))
-            .build();
+            .build_modern();
 
         let written = to_vec::<SwitchEndian>([&table]).unwrap();
         let read_back = &from_bytes::<SwitchEndian>(&written)

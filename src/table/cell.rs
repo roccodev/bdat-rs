@@ -95,6 +95,7 @@ pub enum Value<'b> {
 pub type Utf<'t> = Cow<'t, str>;
 
 pub struct ModernCell<'t, 'tb>(&'t Cell<'tb>);
+pub struct LegacyCell<'t, 'tb>(&'t Cell<'tb>);
 
 pub trait FromValue
 where
@@ -272,9 +273,15 @@ impl<'t, 'tb> From<&'t Cell<'tb>> for ModernCell<'t, 'tb> {
     }
 }
 
+impl<'t, 'tb> From<&'t Cell<'tb>> for LegacyCell<'t, 'tb> {
+    fn from(cell: &'t Cell<'tb>) -> Self {
+        Self(cell)
+    }
+}
+
 impl<'t, 'tb> RowRef<'t, 'tb> {
     pub fn into_modern(self) -> RowRef<'t, 'tb, ModernCell<'t, 'tb>> {
-        self.into_with_cell_type()
+        self.down_cast()
     }
 }
 

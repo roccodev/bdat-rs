@@ -33,12 +33,9 @@ pub struct Row<'b> {
 /// }
 /// ```
 #[derive(Clone, Copy, Debug)]
-pub struct RowRef<'t, 'tb, C = &'t Cell<'tb>>
-where
-    C: From<&'t Cell<'tb>>,
-{
+pub struct RowRef<'t, 'tb, C = &'t Cell<'tb>> {
     row: &'t Row<'tb>,
-    table: &'t Table<'tb>,
+    columns: &'t ColumnMap,
     _cell: PhantomData<C>,
 }
 
@@ -83,10 +80,10 @@ impl<'t, 'tb, C> RowRef<'t, 'tb, C>
 where
     C: From<&'t Cell<'tb>>,
 {
-    pub(crate) fn new(table: &'t Table<'tb>, row: &'t Row<'tb>) -> Self {
+    pub(crate) fn new(row: &'t Row<'tb>, columns: &'t ColumnMap) -> Self {
         Self {
-            table,
             row,
+            columns,
             _cell: PhantomData,
         }
     }
@@ -95,7 +92,7 @@ where
     ///
     /// If there is no column with the given label, this returns [`None`].
     pub fn get_if_present(&self, column: impl Borrow<Label>) -> Option<C> {
-        let index = self.table.columns.position(column.borrow())?;
+        let index = self.columns.position(column.borrow())?;
         self.row.cells.get(index).map(Into::into)
     }
 
@@ -107,20 +104,23 @@ where
         self.get_if_present(column).expect("no such column")
     }
 
-    /// Returns the table this row belongs to.
-    pub fn table(&self) -> &'t Table<'tb> {
-        self.table
+    pub(crate) fn up_cast(self) -> RowRef<'t, 'tb> {
+        RowRef {
+            row: self.row,
+            columns: self.columns,
+            _cell: PhantomData,
+        }
     }
 }
 
 impl<'t, 'tb> RowRef<'t, 'tb> {
-    pub(crate) fn into_with_cell_type<C>(self) -> RowRef<'t, 'tb, C>
+    pub(crate) fn down_cast<C>(self) -> RowRef<'t, 'tb, C>
     where
         C: From<&'t Cell<'tb>>,
     {
         RowRef {
             row: self.row,
-            table: self.table,
+            columns: self.columns,
             _cell: PhantomData,
         }
     }
@@ -150,7 +150,7 @@ where
     }
 }
 
-impl<'t, 'tb> Deref for RowRef<'t, 'tb> {
+impl<'t, 'tb, C> Deref for RowRef<'t, 'tb, C> {
     type Target = Row<'tb>;
 
     fn deref(&self) -> &Self::Target {

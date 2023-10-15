@@ -12,7 +12,7 @@ use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
 use crate::{
     error::{BdatError, Result, Scope},
-    Cell, ColumnDef, Label, Row, Table, TableBuilder, Utf, Value, ValueType,
+    Cell, ColumnDef, Label, ModernTable, Row, Table, TableBuilder, Utf, Value, ValueType,
 };
 
 use super::FileHeader;
@@ -69,7 +69,7 @@ where
     }
 
     /// Reads all tables from the BDAT source.
-    pub fn get_tables(&mut self) -> Result<Vec<Table<'b>>> {
+    pub fn get_tables(&mut self) -> Result<Vec<ModernTable<'b>>> {
         let mut tables = Vec::with_capacity(self.header.table_count);
 
         for i in 0..self.header.table_count {
@@ -88,7 +88,7 @@ where
         self.header.table_count
     }
 
-    fn read_table(&mut self) -> Result<Table<'b>> {
+    fn read_table(&mut self) -> Result<ModernTable<'b>> {
         self.tables.read_table_v2()
     }
 
@@ -136,7 +136,7 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
         }
     }
 
-    fn read_table_v2(&mut self) -> Result<Table<'b>> {
+    fn read_table_v2(&mut self) -> Result<ModernTable<'b>> {
         if self.reader.read_u32()? != u32::from_le_bytes(BDAT_MAGIC)
             || self.reader.read_u32()? != 0x3004
         {
@@ -209,7 +209,7 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
         Ok(TableBuilder::with_name(name)
             .set_columns(col_data)
             .set_rows(row_data)
-            .build())
+            .build_modern())
     }
 
     fn read_value_v2(
