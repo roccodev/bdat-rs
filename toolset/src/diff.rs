@@ -14,7 +14,7 @@ use indicatif::ProgressBar;
 use itertools::Itertools;
 use rayon::{iter::Either, prelude::*};
 
-use bdat::{BdatFile, Cell, Label, RowRef, Table};
+use bdat::{BdatFile, Cell, Label, Table};
 
 use crate::{hash::MurmurHashSet, InputData};
 
@@ -43,6 +43,12 @@ struct TableWithSource<'f, 't> {
 struct PathDiff<'p> {
     old: &'p Path,
     new: &'p Path,
+}
+
+struct RowDiff<'t, 'tb> {
+    row_id: usize,
+    old: &'t Table<'tb>,
+    new: &'t Table<'tb>,
 }
 
 struct RowChanges<'t, 'tb> {
@@ -182,14 +188,7 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
             .rows()
             .flat_map(|new_row| {
                 let id = new_row.id();
-                let old_row = table.table.get_row(id);
-                RowChanges::diff(
-                    id,
-                    old_row.as_ref().and_then(|t| t.id_hash()).map(Label::Hash),
-                    new_row.id_hash().map(Label::Hash),
-                    old_row,
-                    Some(new_table.table.get_row(id).unwrap()),
-                )
+                RowDiff::new(&table.table, &new_table.table, id).diff()
             })
             .collect_vec();
         if !row_changes.is_empty() {
@@ -213,45 +212,45 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
     Ok(())
 }
 
-impl<'t, 'tb> RowChanges<'t, 'tb> {
-    fn diff(
-        row_id: usize,
-        old_hash: Option<Label>,
-        new_hash: Option<Label>,
-        old: Option<RowRef<'t, 'tb>>,
-        new: Option<RowRef<'t, 'tb>>,
-    ) -> Option<Self> {
+impl<'t, 'tb> RowDiff<'t, 'tb> {
+    fn new(old: &'t Table<'tb>, new: &'t Table<'tb>, row_id: usize) -> Self {
+        Self { row_id, old, new }
+    }
+
+    fn diff(self) -> Option<RowChanges<'t, 'tb>> {
+        let (old, new) = (self.old.get_row(self.row_id), self.new.get_row(self.row_id));
+
         let changed_cols: Vec<ColumnChange> = match (old, new) {
-            (None, Some(new_row)) => new_row
-                .table()
+            (None, Some(new_row)) => self
+                .new
                 .columns()
-                .map(|col| (col.label(), true, new_row.get(col.label()).unwrap()).into())
+                .map(|col| (col.label(), true, new_row.get(col.label())).into())
                 .collect(),
-            (Some(old_row), None) => old_row
-                .table()
+            (Some(old_row), None) => self
+                .old
                 .columns()
-                .map(|col| (col.label(), false, old_row.get(col.label()).unwrap()).into())
+                .map(|col| (col.label(), false, old_row.get(col.label())).into())
                 .collect(),
             (Some(old_row), Some(new_row)) => {
-                let (old_table, new_table) = (old_row.table(), new_row.table());
+                let (old_table, new_table) = (self.old, self.new);
                 let old_cols: MurmurHashSet<_> =
                     old_table.columns().map(|col| col.label()).collect();
                 let new_cols: MurmurHashSet<_> =
                     new_table.columns().map(|col| col.label()).collect();
 
                 let changed_cols = old_cols.intersection(&new_cols).filter_map(|col| {
-                    let old_value = old_row.get(*col)?;
-                    let new_value = new_row.get(*col)?;
+                    let old_value = old_row.get_if_present(*col)?;
+                    let new_value = new_row.get_if_present(*col)?;
                     (old_value != new_value).then_some((col, old_value, new_value))
                 });
 
                 new_cols
                     .difference(&old_cols)
-                    .map(|&label| (label, true, new_row.get(label).unwrap()).into())
+                    .map(|&label| (label, true, new_row.get(label)).into())
                     .chain(
                         old_cols
                             .difference(&new_cols)
-                            .map(|&label| (label, false, old_row.get(label).unwrap()).into()),
+                            .map(|&label| (label, false, old_row.get(label)).into()),
                     )
                     .chain(changed_cols.flat_map(|(&label, old_val, new_val)| {
                         [
@@ -265,50 +264,38 @@ impl<'t, 'tb> RowChanges<'t, 'tb> {
             _ => unreachable!(),
         };
 
-        (!changed_cols.is_empty()).then_some(Self {
-            row_id,
-            old_hash,
-            new_hash,
+        (!changed_cols.is_empty()).then_some(RowChanges {
+            row_id: self.row_id,
+            old_hash: old.as_ref().and_then(|t| t.id_hash()).map(Label::Hash),
+            new_hash: new.as_ref().and_then(|t| t.id_hash()).map(Label::Hash),
             changes: changed_cols,
         })
     }
+}
 
+impl<'t, 'tb> RowChanges<'t, 'tb> {
     fn print(self) {
         let removed = self
             .changes
             .iter()
-            .filter_map(
-                |ColumnChange {
-                     label,
-                     added,
-                     value,
-                 }| {
-                    (!added).then(|| {
-                        format!(
-                            "{label}: {}",
-                            serde_json::to_string(value.as_single().unwrap()).unwrap()
-                        )
-                    })
-                },
-            )
+            .filter(|&ColumnChange { added, .. }| (!added))
+            .map(|ColumnChange { label, value, .. }| {
+                format!(
+                    "{label}: {}",
+                    serde_json::to_string(value.as_single().unwrap()).unwrap()
+                )
+            })
             .join(" / ");
         let added = self
             .changes
             .iter()
-            .filter_map(
-                |ColumnChange {
-                     label,
-                     added,
-                     value,
-                 }| {
-                    added.then(|| {
-                        format!(
-                            "{label}: {}",
-                            serde_json::to_string(value.as_single().unwrap()).unwrap()
-                        )
-                    })
-                },
-            )
+            .filter(|ColumnChange { added, .. }| *added)
+            .map(|ColumnChange { label, value, .. }| {
+                format!(
+                    "{label}: {}",
+                    serde_json::to_string(value.as_single().unwrap()).unwrap()
+                )
+            })
             .join(" / ");
 
         if !removed.is_empty() {
@@ -385,13 +372,13 @@ impl<'t, 'tb> From<(&'t Label, bool, &'t Cell<'tb>)> for ColumnChange<'t, 'tb> {
 
 impl PartialOrd for ValueOrderedLabel {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(self.0.cmp_value(&other.0))
+        Some(Ord::cmp(self, other))
     }
 }
 
 impl Ord for ValueOrderedLabel {
     fn cmp(&self, other: &Self) -> Ordering {
-        self.partial_cmp(other).unwrap()
+        self.0.cmp_value(&other.0)
     }
 }
 

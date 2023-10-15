@@ -2,6 +2,7 @@ use anyhow::{Context, Result};
 use bdat::{BdatFile, BdatResult, BdatVersion, SwitchEndian, Table, WiiEndian};
 use clap::{Args, ValueEnum};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use itertools::Itertools;
 use std::io::{Seek, Write};
 use std::path::{Path, PathBuf};
 
@@ -41,22 +42,42 @@ impl BdatGame {
     }
 
     pub fn from_bytes(self, bytes: &mut [u8]) -> BdatResult<Vec<Table>> {
-        match self {
-            Self::Wii => {
-                bdat::legacy::from_bytes::<WiiEndian>(bytes, BdatVersion::LegacyWii)?.get_tables()
-            }
-            Self::Xcx => {
-                bdat::legacy::from_bytes::<WiiEndian>(bytes, BdatVersion::LegacyX)?.get_tables()
-            }
+        Ok(match self {
+            Self::Wii => bdat::legacy::from_bytes::<WiiEndian>(bytes, BdatVersion::LegacyWii)?
+                .get_tables()?
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+            Self::Xcx => bdat::legacy::from_bytes::<WiiEndian>(bytes, BdatVersion::LegacyX)?
+                .get_tables()?
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             Self::LegacySwitch => {
                 bdat::legacy::from_bytes::<SwitchEndian>(bytes, BdatVersion::LegacySwitch)?
-                    .get_tables()
+                    .get_tables()?
+                    .into_iter()
+                    .map(Into::into)
+                    .collect()
             }
-            Self::Modern => bdat::modern::from_bytes::<SwitchEndian>(bytes)?.get_tables(),
-        }
+            Self::Modern => bdat::modern::from_bytes::<SwitchEndian>(bytes)?
+                .get_tables()?
+                .into_iter()
+                .map(Into::into)
+                .collect(),
+        })
     }
 
-    pub fn to_writer<W: Write + Seek>(self, writer: W, tables: &[Table]) -> BdatResult<()> {
+    pub fn to_writer<'b, W: Write + Seek>(
+        self,
+        writer: W,
+        tables: impl IntoIterator<Item = Table<'b>>,
+    ) -> BdatResult<()> {
+        if self == Self::Modern {
+            let tables = tables.into_iter().map(Table::into_modern).collect_vec();
+            return bdat::modern::to_writer::<_, SwitchEndian>(writer, tables);
+        }
+        let tables = tables.into_iter().map(Table::into_legacy).collect_vec();
         match self {
             Self::Wii => {
                 bdat::legacy::to_writer::<_, WiiEndian>(writer, tables, BdatVersion::LegacyWii)
@@ -69,18 +90,26 @@ impl BdatGame {
             Self::Xcx => {
                 bdat::legacy::to_writer::<_, WiiEndian>(writer, tables, BdatVersion::LegacyX)
             }
-            Self::Modern => bdat::modern::to_writer::<_, SwitchEndian>(writer, tables),
+            _ => unreachable!(),
         }
     }
 
-    pub fn to_vec<W: Write + Seek>(self, tables: &[Table]) -> BdatResult<Vec<u8>> {
+    pub fn to_vec<'b, W: Write + Seek>(
+        self,
+        tables: impl IntoIterator<Item = Table<'b>>,
+    ) -> BdatResult<Vec<u8>> {
+        if self == Self::Modern {
+            let tables = tables.into_iter().map(Table::into_modern).collect_vec();
+            return bdat::modern::to_vec::<SwitchEndian>(tables);
+        }
+        let tables = tables.into_iter().map(Table::into_legacy).collect_vec();
         match self {
             Self::Wii => bdat::legacy::to_vec::<WiiEndian>(tables, BdatVersion::LegacyWii),
             Self::LegacySwitch => {
                 bdat::legacy::to_vec::<SwitchEndian>(tables, BdatVersion::LegacySwitch)
             }
             Self::Xcx => bdat::legacy::to_vec::<WiiEndian>(tables, BdatVersion::LegacyX),
-            Self::Modern => bdat::modern::to_vec::<SwitchEndian>(tables),
+            _ => unreachable!(),
         }
     }
 }
