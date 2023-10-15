@@ -1,5 +1,5 @@
 use crate::{
-    BdatVersion, ColumnDef, ColumnMap, Label, LegacyCell, ModernCell, Row, RowRef, RowRefMut,
+    BdatVersion, Cell, ColumnDef, ColumnMap, Label, LegacyCell, ModernCell, Row, RowRef, RowRefMut,
 };
 
 pub mod cell;
@@ -30,7 +30,7 @@ pub use modern::ModernTable;
 /// ## Examples
 ///
 /// ```
-/// use bdat::{Table, TableBuilder, Cell, ColumnDef, Row, Value, ValueType, Label, BdatVersion};
+/// use bdat::{Table, TableBuilder, Cell, ColumnDef, Row, Value, ValueType, Label, BdatVersion, TableAccessor};
 ///
 /// let table: Table = TableBuilder::with_name(Label::Hash(0xDEADBEEF))
 ///     .add_column(ColumnDef::new(ValueType::UnsignedInt, Label::Hash(0xCAFEBABE)))
@@ -59,6 +59,57 @@ pub struct TableBuilder<'b> {
 pub struct RowIter<'t, T> {
     table: &'t T,
     row_id: usize,
+}
+
+pub trait TableAccessor<'t, 'b: 't> {
+    type Cell;
+
+    /// Returns the table's name.
+    fn name(&self) -> &Label;
+
+    /// Updates the table's name.
+    fn set_name(&mut self, name: Label);
+
+    /// Gets the minimum row ID in the table.
+    fn base_id(&self) -> usize;
+
+    /// Gets a row by its ID.
+    ///
+    /// ## Panics
+    /// If there is no row for the given ID.
+    fn row(&'t self, id: usize) -> RowRef<'t, 'b, Self::Cell>;
+
+    /// Gets a mutable view of a row by its ID
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    ///
+    /// ## Panics
+    /// If there is no row for the given ID
+    fn row_mut(&'t mut self, id: usize) -> RowRefMut<'t, 'b>;
+
+    /// Attempts to get a row by its ID.  
+    /// If there is no row for the given ID, this returns [`None`].
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    fn get_row(&'t self, id: usize) -> Option<RowRef<'t, 'b, Self::Cell>>;
+
+    /// Attempts to get a mutable view of a row by its ID.  
+    /// If there is no row for the given ID, this returns [`None`].
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    fn get_row_mut(&'t mut self, id: usize) -> Option<RowRefMut<'t, 'b>>;
+
+    /// Gets the number of rows in the table
+    fn row_count(&self) -> usize;
+
+    /// Gets the number of columns in the table
+    fn column_count(&self) -> usize;
 }
 
 macro_rules! versioned {
@@ -114,81 +165,6 @@ impl<'b> Table<'b> {
         }
     }
 
-    /// Returns the table's name.
-    pub fn name(&self) -> &Label {
-        versioned!(self, name)
-    }
-
-    /// Updates the table's name.
-    pub fn set_name(&mut self, name: Label) {
-        versioned!(self, set_name(name))
-    }
-
-    /// Gets the minimum row ID in the table.
-    pub fn base_id(&self) -> usize {
-        *versioned!(self, base_id)
-    }
-
-    /// Gets a row by its ID.
-    ///
-    /// ## Panics
-    /// If there is no row for the given ID.
-    ///
-    /// ## Example
-    /// ```
-    /// use bdat::{Label, ModernTable};
-    ///
-    /// fn foo(table: &ModernTable) -> u32 {
-    ///     // This is a `ModernCell`, which is essentially a single value.
-    ///     // As such, it can be used to avoid having to match on single-value cells
-    ///     // that are included for legacy compatibility.
-    ///     let cell = table.row(1).get(Label::Hash(0xDEADBEEF));
-    ///     // Casting values is also supported:
-    ///     cell.get_as::<u32>()
-    /// }
-    /// ```
-    pub fn row(&self, id: usize) -> RowRef<'_, 'b> {
-        match self {
-            Table::Modern(m) => m.row(id).up_cast(),
-            Table::Legacy(l) => l.row(id).up_cast(),
-        }
-    }
-
-    /// Gets a mutable view of a row by its ID
-    ///
-    /// Note: the ID is the row's numerical ID, which could be different
-    /// from the index of the row in the table's row list. That is because
-    /// BDAT tables can have arbitrary start IDs.
-    ///
-    /// ## Panics
-    /// If there is no row for the given ID
-    pub fn row_mut(&mut self, id: usize) -> RowRefMut<'_, 'b> {
-        versioned!(self, row_mut(id))
-    }
-
-    /// Attempts to get a row by its ID.  
-    /// If there is no row for the given ID, this returns [`None`].
-    ///
-    /// Note: the ID is the row's numerical ID, which could be different
-    /// from the index of the row in the table's row list. That is because
-    /// BDAT tables can have arbitrary start IDs.
-    pub fn get_row(&self, id: usize) -> Option<RowRef<'_, 'b>> {
-        match self {
-            Table::Modern(m) => m.get_row(id).map(RowRef::up_cast),
-            Table::Legacy(l) => l.get_row(id).map(RowRef::up_cast),
-        }
-    }
-
-    /// Attempts to get a mutable view of a row by its ID.  
-    /// If there is no row for the given ID, this returns [`None`].
-    ///
-    /// Note: the ID is the row's numerical ID, which could be different
-    /// from the index of the row in the table's row list. That is because
-    /// BDAT tables can have arbitrary start IDs.
-    pub fn get_row_mut(&mut self, id: usize) -> Option<RowRefMut<'_, 'b>> {
-        versioned!(self, get_row_mut(id))
-    }
-
     /// Gets an iterator that visits this table's rows
     pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, 'b>> {
         match self {
@@ -235,14 +211,50 @@ impl<'b> Table<'b> {
     pub fn into_columns(self) -> impl Iterator<Item = ColumnDef> {
         versioned_iter!(self, into_columns())
     }
+}
 
-    /// Gets the number of rows in the table
-    pub fn row_count(&self) -> usize {
+impl<'t, 'b: 't> TableAccessor<'t, 'b> for Table<'b> {
+    type Cell = &'t Cell<'b>;
+
+    fn name(&self) -> &Label {
+        versioned!(self, name)
+    }
+
+    fn set_name(&mut self, name: Label) {
+        versioned!(self, set_name(name))
+    }
+
+    fn base_id(&self) -> usize {
+        *versioned!(self, base_id)
+    }
+
+    fn row(&self, id: usize) -> RowRef<'_, 'b> {
+        match self {
+            Table::Modern(m) => m.row(id).up_cast(),
+            Table::Legacy(l) => l.row(id).up_cast(),
+        }
+    }
+
+    fn row_mut(&mut self, id: usize) -> RowRefMut<'_, 'b> {
+        versioned!(self, row_mut(id))
+    }
+
+    fn get_row(&self, id: usize) -> Option<RowRef<'_, 'b>> {
+        match self {
+            Table::Modern(m) => m.get_row(id).map(RowRef::up_cast),
+            Table::Legacy(l) => l.get_row(id).map(RowRef::up_cast),
+        }
+    }
+
+    fn get_row_mut(&mut self, id: usize) -> Option<RowRefMut<'_, 'b>> {
+        versioned!(self, get_row_mut(id))
+    }
+
+    fn row_count(&self) -> usize {
         versioned!(self, row_count())
     }
 
-    /// Gets the number of columns in the table
-    pub fn column_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         versioned!(self, column_count())
     }
 }

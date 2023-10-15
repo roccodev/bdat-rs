@@ -16,8 +16,8 @@ use crate::legacy::{
     LegacyWriteOptions, COLUMN_NODE_SIZE, COLUMN_NODE_SIZE_WII, HEADER_SIZE, HEADER_SIZE_WII,
 };
 use crate::{
-    BdatError, BdatVersion, Cell, ColumnDef, FlagDef, LegacyTable, Row, Table, Value, ValueType,
-    WiiEndian,
+    BdatError, BdatVersion, Cell, ColumnDef, FlagDef, LegacyTable, Row, Table, TableAccessor,
+    Value, ValueType, WiiEndian,
 };
 
 /// Writes a full BDAT file to a writer.

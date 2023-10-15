@@ -1,6 +1,6 @@
 use crate::{
     ColumnDef, ColumnMap, Label, LegacyCell, ModernCell, Row, RowIter, RowRef, RowRefMut,
-    TableBuilder,
+    TableAccessor, TableBuilder,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -48,7 +48,7 @@ impl<'b> LegacyTable<'b> {
     ///
     /// ## Example
     /// ```
-    /// use bdat::{Label, ModernTable};
+    /// use bdat::{Label, ModernTable, TableAccessor};
     ///
     /// fn foo(table: &ModernTable) -> u32 {
     ///     // This is a `ModernCell`, which is essentially a single value.
@@ -147,18 +147,55 @@ impl<'b> LegacyTable<'b> {
         self.columns.into_raw().into_iter()
     }
 
-    /// Gets the number of rows in the table
-    pub fn row_count(&self) -> usize {
+    /// Returns an ergonomic iterator view over the table's rows and columns.
+    pub fn iter(&self) -> RowIter<Self> {
+        // TODO(0.4.0): is this still necessary?
+        self.into_iter()
+    }
+}
+
+impl<'t, 'b: 't> TableAccessor<'t, 'b> for LegacyTable<'b> {
+    type Cell = LegacyCell<'t, 'b>;
+
+    fn name(&self) -> &Label {
+        &self.name
+    }
+
+    fn set_name(&mut self, name: Label) {
+        self.name = name;
+    }
+
+    fn base_id(&self) -> usize {
+        self.base_id
+    }
+
+    fn row(&self, id: usize) -> RowRef<'_, 'b, LegacyCell<'_, 'b>> {
+        self.get_row(id).expect("no such row")
+    }
+
+    fn row_mut(&mut self, id: usize) -> RowRefMut<'_, 'b> {
+        self.get_row_mut(id).expect("no such row")
+    }
+
+    fn get_row(&self, id: usize) -> Option<RowRef<'_, 'b, LegacyCell<'_, 'b>>> {
+        let index = id.checked_sub(self.base_id)?;
+        self.rows
+            .get(index)
+            .map(|row| RowRef::new(row, &self.columns))
+    }
+
+    fn get_row_mut(&mut self, id: usize) -> Option<RowRefMut<'_, 'b>> {
+        let index = id.checked_sub(self.base_id)?;
+        self.rows
+            .get_mut(index)
+            .map(|row| RowRefMut::new(row, &self.columns))
+    }
+
+    fn row_count(&self) -> usize {
         self.rows.len()
     }
 
-    /// Gets the number of columns in the table
-    pub fn column_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         self.columns.as_slice().len()
-    }
-
-    /// Returns an ergonomic iterator view over the table's rows and columns.
-    pub fn iter(&self) -> RowIter<Self> {
-        self.into_iter()
     }
 }

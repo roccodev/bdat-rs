@@ -8,7 +8,7 @@ use std::{
 
 use bdat::{
     hash::{murmur3_with_seed, IdentityHasher, PreHashedMap},
-    Label, Table,
+    Label, Table, TableAccessor,
 };
 
 #[derive(Clone, Copy, Default)]

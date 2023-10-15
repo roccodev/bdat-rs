@@ -4,7 +4,7 @@ use crate::{
     InputData,
 };
 use anyhow::{Context, Result};
-use bdat::Label;
+use bdat::{Label, TableAccessor};
 use clap::Args;
 use std::borrow::Cow;
 

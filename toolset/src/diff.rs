@@ -14,7 +14,7 @@ use indicatif::ProgressBar;
 use itertools::Itertools;
 use rayon::{iter::Either, prelude::*};
 
-use bdat::{BdatFile, Cell, Label, Table};
+use bdat::{BdatFile, Cell, Label, Table, TableAccessor};
 
 use crate::{hash::MurmurHashSet, InputData};
 

@@ -1,7 +1,7 @@
 use crate::hash::PreHashedMap;
 use crate::{
     ColumnDef, ColumnMap, Label, LegacyCell, ModernCell, Row, RowIter, RowRef, RowRefMut,
-    TableBuilder,
+    TableAccessor, TableBuilder,
 };
 
 #[derive(Debug, Clone, PartialEq)]
@@ -35,79 +35,22 @@ impl<'b> ModernTable<'b> {
         }
     }
 
-    /// Returns the table's name.
-    pub fn name(&self) -> &Label {
-        &self.name
-    }
-
-    /// Updates the table's name.
-    pub fn set_name(&mut self, name: Label) {
-        self.name = name;
-    }
-
-    /// Gets the minimum row ID in the table.
-    pub fn base_id(&self) -> usize {
-        self.base_id
-    }
-
-    /// Gets a row by its ID.
-    ///
-    /// ## Panics
-    /// If there is no row for the given ID.
-    ///
-    /// ## Example
-    /// ```
-    /// use bdat::{Label, ModernTable};
-    ///
-    /// fn foo(table: &ModernTable) -> u32 {
-    ///     // This is a `ModernCell`, which is essentially a single value.
-    ///     // As such, it can be used to avoid having to match on single-value cells
-    ///     // that are included for legacy compatibility.
-    ///     let cell = table.row(1).get(Label::Hash(0xDEADBEEF));
-    ///     // Casting values is also supported:
-    ///     cell.get_as::<u32>()
-    /// }
-    /// ```
-    pub fn row(&self, id: usize) -> RowRef<'_, 'b, ModernCell<'_, 'b>> {
-        self.get_row(id).expect("no such row")
-    }
-
-    /// Gets a mutable view of a row by its ID
-    ///
-    /// Note: the ID is the row's numerical ID, which could be different
-    /// from the index of the row in the table's row list. That is because
-    /// BDAT tables can have arbitrary start IDs.
-    ///
-    /// ## Panics
-    /// If there is no row for the given ID
-    pub fn row_mut(&mut self, id: usize) -> RowRefMut<'_, 'b> {
-        self.get_row_mut(id).expect("no such row")
-    }
-
-    /// Attempts to get a row by its ID.  
+    /// Attempts to get a row by its hashed 32-bit ID.
     /// If there is no row for the given ID, this returns [`None`].
     ///
-    /// Note: the ID is the row's numerical ID, which could be different
-    /// from the index of the row in the table's row list. That is because
-    /// BDAT tables can have arbitrary start IDs.
-    pub fn get_row(&self, id: usize) -> Option<RowRef<'_, 'b, ModernCell<'_, 'b>>> {
-        let index = id.checked_sub(self.base_id)?;
-        self.rows
-            .get(index)
-            .map(|row| RowRef::new(row, &self.columns))
+    /// This requires the `hash-table` feature flag, which is enabled
+    /// by default.
+    #[cfg(feature = "hash-table")]
+    pub fn get_row_by_hash(&self, hash_id: u32) -> Option<RowRef<'_, 'b, ModernCell<'_, 'b>>> {
+        self.row_hash_table
+            .get(&hash_id)
+            .and_then(|&id| self.get_row(id))
     }
 
-    /// Attempts to get a mutable view of a row by its ID.  
-    /// If there is no row for the given ID, this returns [`None`].
-    ///
-    /// Note: the ID is the row's numerical ID, which could be different
-    /// from the index of the row in the table's row list. That is because
-    /// BDAT tables can have arbitrary start IDs.
-    pub fn get_row_mut(&mut self, id: usize) -> Option<RowRefMut<'_, 'b>> {
-        let index = id.checked_sub(self.base_id)?;
-        self.rows
-            .get_mut(index)
-            .map(|row| RowRefMut::new(row, &self.columns))
+    /// Returns an ergonomic iterator view over the table's rows and columns.
+    pub fn iter(&self) -> RowIter<Self> {
+        // TODO(0.4.0): is this still necessary?
+        self.into_iter()
     }
 
     /// Gets an iterator that visits this table's rows
@@ -155,31 +98,68 @@ impl<'b> ModernTable<'b> {
     pub fn into_columns(self) -> impl Iterator<Item = ColumnDef> {
         self.columns.into_raw().into_iter()
     }
+}
 
-    /// Gets the number of rows in the table
-    pub fn row_count(&self) -> usize {
+impl<'t, 'b: 't> TableAccessor<'t, 'b> for ModernTable<'b> {
+    type Cell = ModernCell<'t, 'b>;
+
+    fn name(&self) -> &Label {
+        &self.name
+    }
+
+    fn set_name(&mut self, name: Label) {
+        self.name = name;
+    }
+
+    fn base_id(&self) -> usize {
+        self.base_id
+    }
+
+    /// Gets a row by its ID.
+    ///
+    /// ## Panics
+    /// If there is no row for the given ID.
+    ///
+    /// ## Example
+    /// ```
+    /// use bdat::{Label, ModernTable, TableAccessor};
+    ///
+    /// fn foo(table: &ModernTable) -> u32 {
+    ///     // This is a `ModernCell`, which is essentially a single value.
+    ///     // As such, it can be used to avoid having to match on single-value cells
+    ///     // that are included for legacy compatibility.
+    ///     let cell = table.row(1).get(Label::Hash(0xDEADBEEF));
+    ///     // Casting values is also supported:
+    ///     cell.get_as::<u32>()
+    /// }
+    /// ```
+    fn row(&self, id: usize) -> RowRef<'_, 'b, ModernCell<'_, 'b>> {
+        self.get_row(id).expect("no such row")
+    }
+
+    fn row_mut(&mut self, id: usize) -> RowRefMut<'_, 'b> {
+        self.get_row_mut(id).expect("no such row")
+    }
+
+    fn get_row(&self, id: usize) -> Option<RowRef<'_, 'b, ModernCell<'_, 'b>>> {
+        let index = id.checked_sub(self.base_id)?;
+        self.rows
+            .get(index)
+            .map(|row| RowRef::new(row, &self.columns))
+    }
+
+    fn get_row_mut(&mut self, id: usize) -> Option<RowRefMut<'_, 'b>> {
+        let index = id.checked_sub(self.base_id)?;
+        self.rows
+            .get_mut(index)
+            .map(|row| RowRefMut::new(row, &self.columns))
+    }
+
+    fn row_count(&self) -> usize {
         self.rows.len()
     }
 
-    /// Gets the number of columns in the table
-    pub fn column_count(&self) -> usize {
+    fn column_count(&self) -> usize {
         self.columns.as_slice().len()
-    }
-
-    /// Attempts to get a row by its hashed 32-bit ID.
-    /// If there is no row for the given ID, this returns [`None`].
-    ///
-    /// This requires the `hash-table` feature flag, which is enabled
-    /// by default.
-    #[cfg(feature = "hash-table")]
-    pub fn get_row_by_hash(&self, hash_id: u32) -> Option<RowRef<'_, 'b, ModernCell<'_, 'b>>> {
-        self.row_hash_table
-            .get(&hash_id)
-            .and_then(|&id| self.get_row(id))
-    }
-
-    /// Returns an ergonomic iterator view over the table's rows and columns.
-    pub fn iter(&self) -> RowIter<Self> {
-        self.into_iter()
     }
 }
