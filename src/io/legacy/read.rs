@@ -675,15 +675,13 @@ impl<'t> Flags<'t> {
 }
 
 impl<'b, R: Read + Seek, E: ByteOrder> BdatFile<'b> for LegacyReader<R, E> {
-    fn get_tables(&mut self) -> Result<Vec<Table<'b>>> {
+    type TableOut = LegacyTable<'b>;
+
+    fn get_tables(&mut self) -> Result<Vec<LegacyTable<'b>>> {
         let mut tables = Vec::with_capacity(self.header.table_count);
         for offset in &self.header.table_offsets {
             self.reader.seek(SeekFrom::Start(*offset as u64))?;
-            tables.push(
-                TableReader::<E>::from_reader(&mut self.reader, self.version)?
-                    .read()?
-                    .into(),
-            );
+            tables.push(TableReader::<E>::from_reader(&mut self.reader, self.version)?.read()?);
         }
         Ok(tables)
     }
@@ -694,24 +692,23 @@ impl<'b, R: Read + Seek, E: ByteOrder> BdatFile<'b> for LegacyReader<R, E> {
 }
 
 impl<'b, E: ByteOrder> BdatFile<'b> for LegacyBytes<'b, E> {
-    fn get_tables(&mut self) -> Result<Vec<Table<'b>>> {
+    type TableOut = LegacyTable<'b>;
+
+    fn get_tables(&mut self) -> Result<Vec<LegacyTable<'b>>> {
         let mut tables = Vec::with_capacity(self.header.table_count);
         for (i, offset) in self.header.table_offsets.iter().enumerate() {
-            tables.push(
-                match &self.data {
-                    Cow::Owned(buf) => {
-                        TableReader::<E>::from_reader(Cursor::new(&buf[*offset..]), self.version)?
-                            .read()?
-                    }
-                    Cow::Borrowed(data) => TableReader::<E>::from_slice(
-                        &data[*offset..],
-                        self.version,
-                        self.table_headers.get(i).cloned(),
-                    )?
-                    .read()?,
+            tables.push(match &self.data {
+                Cow::Owned(buf) => {
+                    TableReader::<E>::from_reader(Cursor::new(&buf[*offset..]), self.version)?
+                        .read()?
                 }
-                .into(),
-            );
+                Cow::Borrowed(data) => TableReader::<E>::from_slice(
+                    &data[*offset..],
+                    self.version,
+                    self.table_headers.get(i).cloned(),
+                )?
+                .read()?,
+            });
         }
         Ok(tables)
     }

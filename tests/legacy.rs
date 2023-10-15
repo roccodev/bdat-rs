@@ -122,7 +122,10 @@ fn duplicate_columns() {
     let tables = [common::duplicate_table_create()];
 
     let mut bytes = bdat::legacy::to_vec::<FileEndian>(&tables, BdatVersion::LegacySwitch).unwrap();
-    let back = bdat::from_bytes(&mut bytes).unwrap().get_tables().unwrap();
+    let back = bdat::legacy::from_bytes::<FileEndian>(&mut bytes, BdatVersion::LegacySwitch)
+        .unwrap()
+        .get_tables()
+        .unwrap();
 
     assert_eq!(tables[0], back[0]);
 }

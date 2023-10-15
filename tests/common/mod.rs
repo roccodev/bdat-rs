@@ -1,8 +1,9 @@
 use bdat::{
-    Cell, ColumnBuilder, ColumnDef, FlagDef, Label, Row, Table, TableBuilder, Value, ValueType,
+    Cell, ColumnBuilder, ColumnDef, FlagDef, Label, LegacyTable, Row, TableBuilder, Value,
+    ValueType,
 };
 
-pub fn duplicate_table_create() -> Table<'static> {
+pub fn duplicate_table_create() -> LegacyTable<'static> {
     let flag = FlagDef::new_bit("Flag1", 0);
 
     TableBuilder::with_name(Label::String("Test".to_string()))
@@ -36,5 +37,5 @@ pub fn duplicate_table_create() -> Table<'static> {
                 Cell::Single(Value::SignedByte(-4)),
             ],
         ))
-        .build()
+        .build_legacy()
 }

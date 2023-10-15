@@ -182,9 +182,9 @@ pub fn from_bytes_copy<E: ByteOrder>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, Table, SwitchEndian, BdatVersion};
+/// use bdat::{BdatResult, SwitchEndian, BdatVersion, LegacyTable};
 ///
-/// fn write_file(name: &str, tables: &[Table]) -> BdatResult<()> {
+/// fn write_file(name: &str, tables: &[LegacyTable]) -> BdatResult<()> {
 ///     let file = File::create(name)?;
 ///     // The legacy writer supports BdatVersion::Legacy and BdatVersion::LegacyX
 ///     bdat::legacy::to_writer::<_, SwitchEndian>(file, tables, BdatVersion::LegacySwitch)?;

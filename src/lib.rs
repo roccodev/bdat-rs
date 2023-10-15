@@ -36,9 +36,9 @@
 //! Unlike reading (where it is detected automatically), writing also requires the user to specify
 //! the BDAT version to use, by choosing the appropriate module implementation.
 //! ```
-//! use bdat::{BdatResult, BdatVersion, Table, SwitchEndian};
+//! use bdat::{BdatResult, BdatVersion, SwitchEndian, ModernTable};
 //!
-//! fn write_table(table: &Table) -> BdatResult<()> {
+//! fn write_table(table: &ModernTable) -> BdatResult<()> {
 //!     // also bdat::to_writer for io::Write implementations
 //!     let _written: Vec<u8> = bdat::modern::to_vec::<SwitchEndian>([table])?;
 //!     Ok(())

@@ -63,9 +63,9 @@ pub fn from_bytes<E: ByteOrder>(bytes: &[u8]) -> Result<FileReader<BdatSlice<'_,
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, Table, SwitchEndian};
+/// use bdat::{BdatResult, SwitchEndian, ModernTable};
 ///
-/// fn write_file(name: &str, tables: &[Table]) -> BdatResult<()> {
+/// fn write_file(name: &str, tables: &[ModernTable]) -> BdatResult<()> {
 ///     let file = File::create(name)?;
 ///     bdat::modern::to_writer::<_, SwitchEndian>(file, tables)?;
 ///     Ok(())
@@ -83,9 +83,9 @@ pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, Table, SwitchEndian};
+/// use bdat::{BdatResult, SwitchEndian, ModernTable};
 ///
-/// fn write_vec(tables: &[Table]) -> BdatResult<()> {
+/// fn write_vec(tables: &[ModernTable]) -> BdatResult<()> {
 ///     let vec = bdat::modern::to_vec::<SwitchEndian>(tables)?;
 ///     Ok(())
 /// }

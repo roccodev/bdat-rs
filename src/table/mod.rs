@@ -30,12 +30,12 @@ pub use modern::ModernTable;
 /// ## Examples
 ///
 /// ```
-/// use bdat::{Table, TableBuilder, Cell, ColumnDef, Row, Value, ValueType, Label};
+/// use bdat::{Table, TableBuilder, Cell, ColumnDef, Row, Value, ValueType, Label, BdatVersion};
 ///
 /// let table: Table = TableBuilder::with_name(Label::Hash(0xDEADBEEF))
 ///     .add_column(ColumnDef::new(ValueType::UnsignedInt, Label::Hash(0xCAFEBABE)))
 ///     .add_row(Row::new(1, vec![Cell::Single(Value::UnsignedInt(10))]))
-///     .build();
+///     .build(BdatVersion::Modern);
 ///
 /// assert_eq!(table.row_count(), 1);
 /// assert_eq!(
@@ -86,6 +86,34 @@ macro_rules! versioned_iter {
 }
 
 impl<'b> Table<'b> {
+    pub fn as_modern(&self) -> &ModernTable {
+        match self {
+            Table::Modern(m) => m,
+            _ => panic!("not modern"),
+        }
+    }
+
+    pub fn as_legacy(&self) -> &LegacyTable {
+        match self {
+            Table::Legacy(l) => l,
+            _ => panic!("not legacy"),
+        }
+    }
+
+    pub fn into_modern(self) -> ModernTable<'b> {
+        match self {
+            Table::Modern(m) => m,
+            _ => panic!("not modern"),
+        }
+    }
+
+    pub fn into_legacy(self) -> LegacyTable<'b> {
+        match self {
+            Table::Legacy(l) => l,
+            _ => panic!("not legacy"),
+        }
+    }
+
     /// Returns the table's name.
     pub fn name(&self) -> &Label {
         versioned!(self, name)
@@ -256,8 +284,12 @@ impl<'b> TableBuilder<'b> {
         LegacyTable::new(self)
     }
 
-    pub fn build(version: BdatVersion) -> Table<'b> {
-        todo!()
+    pub fn build(self, version: BdatVersion) -> Table<'b> {
+        if version.is_legacy() {
+            self.build_legacy().into()
+        } else {
+            self.build_modern().into()
+        }
     }
 }
 

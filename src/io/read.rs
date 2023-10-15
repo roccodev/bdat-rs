@@ -17,8 +17,10 @@ pub struct BdatSlice<'b, E> {
 }
 
 pub trait BdatFile<'b> {
+    type TableOut;
+
     /// Reads all tables from the BDAT source.
-    fn get_tables(&mut self) -> Result<Vec<Table<'b>>>;
+    fn get_tables(&mut self) -> Result<Vec<Self::TableOut>>;
 
     /// Returns the number of tables in the BDAT file.
     fn table_count(&self) -> usize;

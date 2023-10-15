@@ -217,10 +217,16 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
 }
 
 impl<'b, R: Read + Seek> BdatFile<'b> for VersionReader<R> {
+    type TableOut = Table<'b>;
+
     fn get_tables(&mut self) -> crate::error::Result<Vec<Table<'b>>> {
         match self {
-            Self::LegacySwitch(r) => r.get_tables(),
-            Self::LegacyWii(r) => r.get_tables(),
+            Self::LegacySwitch(r) => r
+                .get_tables()
+                .map(|v| v.into_iter().map(Into::into).collect()),
+            Self::LegacyWii(r) => r
+                .get_tables()
+                .map(|v| v.into_iter().map(Into::into).collect()),
             Self::Modern(r) => r
                 .get_tables()
                 .map(|v| v.into_iter().map(Into::into).collect()),
@@ -237,10 +243,16 @@ impl<'b, R: Read + Seek> BdatFile<'b> for VersionReader<R> {
 }
 
 impl<'b> BdatFile<'b> for VersionSlice<'b> {
+    type TableOut = Table<'b>;
+
     fn get_tables(&mut self) -> crate::error::Result<Vec<Table<'b>>> {
         match self {
-            Self::LegacySwitch(r) => r.get_tables(),
-            Self::LegacyWii(r) => r.get_tables(),
+            Self::LegacySwitch(r) => r
+                .get_tables()
+                .map(|v| v.into_iter().map(Into::into).collect()),
+            Self::LegacyWii(r) => r
+                .get_tables()
+                .map(|v| v.into_iter().map(Into::into).collect()),
             Self::Modern(r) => r
                 .get_tables()
                 .map(|v| v.into_iter().map(Into::into).collect()),
