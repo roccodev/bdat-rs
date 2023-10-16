@@ -54,7 +54,12 @@ pub use modern::ModernTable;
 /// [`as_legacy`]: Table::as_legacy
 /// [`as_modern`]: Table::as_modern
 #[derive(Debug, Clone, PartialEq)]
-pub enum Table<'b> {
+pub struct Table<'b> {
+    inner: TableInner<'b>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+enum TableInner<'b> {
     Modern(ModernTable<'b>),
     Legacy(LegacyTable<'b>),
 }
@@ -120,14 +125,14 @@ pub trait TableAccessor<'t, 'b: 't> {
 macro_rules! versioned {
     ($var:expr, $name:ident) => {
         match $var {
-            Self::Modern(m) => &m.$name,
-            Self::Legacy(l) => &l.$name,
+            TableInner::Modern(m) => &m.$name,
+            TableInner::Legacy(l) => &l.$name,
         }
     };
     ($var:expr, $name:ident($($par:expr ) *)) => {
         match $var {
-            Self::Modern(m) => m . $name ( $($par, )* ),
-            Self::Legacy(l) => l . $name ( $($par, )* ),
+            TableInner::Modern(m) => m . $name ( $($par, )* ),
+            TableInner::Legacy(l) => l . $name ( $($par, )* ),
         }
     };
 }
@@ -135,46 +140,46 @@ macro_rules! versioned {
 macro_rules! versioned_iter {
     ($var:expr, $name:ident($($par:expr ) *)) => {
         match $var {
-            Self::Modern(m) => util::VersionedIter::Modern(m . $name ( $($par, )* )),
-            Self::Legacy(l) => util::VersionedIter::Legacy(l . $name ( $($par, )* )),
+            TableInner::Modern(m) => util::VersionedIter::Modern(m . $name ( $($par, )* )),
+            TableInner::Legacy(l) => util::VersionedIter::Legacy(l . $name ( $($par, )* )),
         }
     };
 }
 
 impl<'b> Table<'b> {
     pub fn as_modern(&self) -> &ModernTable {
-        match self {
-            Table::Modern(m) => m,
+        match &self.inner {
+            TableInner::Modern(m) => m,
             _ => panic!("not modern"),
         }
     }
 
     pub fn as_legacy(&self) -> &LegacyTable {
-        match self {
-            Table::Legacy(l) => l,
+        match &self.inner {
+            TableInner::Legacy(l) => l,
             _ => panic!("not legacy"),
         }
     }
 
     pub fn into_modern(self) -> ModernTable<'b> {
-        match self {
-            Table::Modern(m) => m,
+        match self.inner {
+            TableInner::Modern(m) => m,
             _ => panic!("not modern"),
         }
     }
 
     pub fn into_legacy(self) -> LegacyTable<'b> {
-        match self {
-            Table::Legacy(l) => l,
+        match self.inner {
+            TableInner::Legacy(l) => l,
             _ => panic!("not legacy"),
         }
     }
 
     /// Gets an iterator that visits this table's rows
     pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, 'b>> {
-        match self {
-            Table::Modern(m) => VersionedIter::Modern(m.rows().map(RowRef::up_cast)),
-            Table::Legacy(l) => VersionedIter::Legacy(l.rows().map(RowRef::up_cast)),
+        match &self.inner {
+            TableInner::Modern(m) => VersionedIter::Modern(m.rows().map(RowRef::up_cast)),
+            TableInner::Legacy(l) => VersionedIter::Legacy(l.rows().map(RowRef::up_cast)),
         }
     }
 
@@ -193,28 +198,28 @@ impl<'b> Table<'b> {
     ///
     /// [`get_row_by_hash`]: ModernTable::get_row_by_hash
     pub fn rows_mut(&mut self) -> impl Iterator<Item = RowRefMut<'_, 'b>> {
-        versioned_iter!(self, rows_mut())
+        versioned_iter!(&mut self.inner, rows_mut())
     }
 
     /// Gets an owning iterator over this table's rows
     pub fn into_rows(self) -> impl Iterator<Item = Row<'b>> {
-        versioned_iter!(self, into_rows())
+        versioned_iter!(self.inner, into_rows())
     }
 
     /// Gets an iterator that visits this table's column definitions
     pub fn columns(&self) -> impl Iterator<Item = &ColumnDef> {
-        versioned_iter!(self, columns())
+        versioned_iter!(&self.inner, columns())
     }
 
     /// Gets an iterator over mutable references to this table's
     /// column definitions.
     pub fn columns_mut(&mut self) -> impl Iterator<Item = &mut ColumnDef> {
-        versioned_iter!(self, columns_mut())
+        versioned_iter!(&mut self.inner, columns_mut())
     }
 
     /// Gets an owning iterator over this table's column definitions
     pub fn into_columns(self) -> impl Iterator<Item = ColumnDef> {
-        versioned_iter!(self, into_columns())
+        versioned_iter!(self.inner, into_columns())
     }
 }
 
@@ -222,45 +227,45 @@ impl<'t, 'b: 't> TableAccessor<'t, 'b> for Table<'b> {
     type Cell = &'t Cell<'b>;
 
     fn name(&self) -> &Label {
-        versioned!(self, name)
+        versioned!(&self.inner, name)
     }
 
     fn set_name(&mut self, name: Label) {
-        versioned!(self, set_name(name))
+        versioned!(&mut self.inner, set_name(name))
     }
 
     fn base_id(&self) -> usize {
-        *versioned!(self, base_id)
+        *versioned!(&self.inner, base_id)
     }
 
     fn row(&self, id: usize) -> RowRef<'_, 'b> {
-        match self {
-            Table::Modern(m) => m.row(id).up_cast(),
-            Table::Legacy(l) => l.row(id).up_cast(),
+        match &self.inner {
+            TableInner::Modern(m) => m.row(id).up_cast(),
+            TableInner::Legacy(l) => l.row(id).up_cast(),
         }
     }
 
     fn row_mut(&mut self, id: usize) -> RowRefMut<'_, 'b> {
-        versioned!(self, row_mut(id))
+        versioned!(&mut self.inner, row_mut(id))
     }
 
     fn get_row(&self, id: usize) -> Option<RowRef<'_, 'b>> {
-        match self {
-            Table::Modern(m) => m.get_row(id).map(RowRef::up_cast),
-            Table::Legacy(l) => l.get_row(id).map(RowRef::up_cast),
+        match &self.inner {
+            TableInner::Modern(m) => m.get_row(id).map(RowRef::up_cast),
+            TableInner::Legacy(l) => l.get_row(id).map(RowRef::up_cast),
         }
     }
 
     fn get_row_mut(&mut self, id: usize) -> Option<RowRefMut<'_, 'b>> {
-        versioned!(self, get_row_mut(id))
+        versioned!(&mut self.inner, get_row_mut(id))
     }
 
     fn row_count(&self) -> usize {
-        versioned!(self, row_count())
+        versioned!(&self.inner, row_count())
     }
 
     fn column_count(&self) -> usize {
-        versioned!(self, column_count())
+        versioned!(&self.inner, column_count())
     }
 }
 
@@ -322,13 +327,17 @@ impl<'b> From<ModernTable<'b>> for TableBuilder<'b> {
 
 impl<'b> From<ModernTable<'b>> for Table<'b> {
     fn from(value: ModernTable<'b>) -> Self {
-        Self::Modern(value)
+        Self {
+            inner: TableInner::Modern(value),
+        }
     }
 }
 
 impl<'b> From<LegacyTable<'b>> for Table<'b> {
     fn from(value: LegacyTable<'b>) -> Self {
-        Self::Legacy(value)
+        Self {
+            inner: TableInner::Legacy(value),
+        }
     }
 }
 

@@ -3,7 +3,7 @@ use std::io::{Cursor, Read, Seek, Write};
 
 use self::write::BdatWriter;
 use super::read::{BdatReader, BdatSlice};
-use crate::{error::Result, ModernTable, Table};
+use crate::{error::Result, ModernTable};
 use byteorder::ByteOrder;
 
 mod read;
