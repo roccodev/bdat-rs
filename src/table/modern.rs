@@ -3,6 +3,52 @@ use crate::{
     ColumnDef, ColumnMap, Label, ModernCell, Row, RowRef, RowRefMut, TableAccessor, TableBuilder,
 };
 
+/// The BDAT table representation in modern formats, currently used in Xenoblade 3.
+///
+/// # Characteristics
+///
+/// ## Hashed labels
+///
+/// Modern tables use hashed labels for table and column names.
+///
+/// Additionally, rows might have an ID field that can be used to quickly find them.
+/// This ID is exposed via [`get_row_by_hash`] and [`row_by_hash`].
+///
+/// ## Simpler cells
+///
+/// Unlike legacy tables, modern tables only support single-value cells (i.e. [`Cell::Single`]).
+/// Rows queried from this struct return [`ModernCell`], an ergonomic cell interface that lets
+/// you directly operate on values.
+///
+/// # Examples
+///
+/// ## Getting a row by its hashed ID
+///
+/// Note: this requires the `hash-table` feature flag, which is enabled by default.
+///
+/// ```
+/// use bdat::{ModernTable};
+///
+/// fn foo(table: &ModernTable) {
+///     let row = table.row_by_hash(0xDEADBEEF);
+///     assert_eq!(0xDEADBEEF, row.id_hash().unwrap());
+/// }
+/// ```
+///
+/// ## Operating on single-value cells
+///
+/// ```
+/// use bdat::{Label, ModernTable, TableAccessor, label_hash};
+///
+/// fn get_character_id(table: &ModernTable, row_id: usize) -> u32 {
+///     table.row(row_id).get(label_hash!("CharacterID")).get_as()
+/// }
+/// ```
+///
+/// [`get_row_by_hash`]: ModernTable::get_row_by_hash
+/// [`row_by_hash`]: ModernTable::row_by_hash
+/// [`ModernCell`]: crate::ModernCell
+/// [`Cell::Single`]: crate::Cell::Single
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModernTable<'b> {
     pub(crate) name: Label,

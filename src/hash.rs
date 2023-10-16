@@ -36,6 +36,27 @@ mod table {
     }
 }
 
+/// Creates a murmur3-hashed [`Label`] from an expression.
+///
+/// ## Behavior
+/// * If a string literal is passed in, the result will be `const`-evaluated.
+/// * If an expression is passed in, the value is hashed and stored in the label. The expression's
+/// value must implement `Borrow<str>`.
+///
+/// [`Label`]: crate::Label
+#[macro_export]
+macro_rules! label_hash {
+    ($text:literal) => {{
+        // const evaluation for string literals
+        const HASH: $crate::Label = $crate::Label::Hash($crate::hash::murmur3_str($text));
+        HASH
+    }};
+    ($text:expr) => {{
+        let text: &dyn ::std::borrow::Borrow<str> = &$text;
+        $crate::Label::Hash($crate::hash::murmur3_str(text.borrow()))
+    }};
+}
+
 // MIT-licensed const version of murmur3, adapted from
 // https://github.com/Reboare/const-murmur3
 pub const fn murmur3(data: &[u8]) -> u32 {
