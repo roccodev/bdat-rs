@@ -6,6 +6,10 @@ use super::read::{BdatReader, BdatSlice};
 use crate::{error::Result, ModernTable};
 use byteorder::ByteOrder;
 
+// doc
+#[allow(unused_imports)]
+use crate::BdatFile;
+
 mod read;
 mod write;
 
@@ -20,10 +24,13 @@ pub(crate) struct FileHeader {
 /// Reads a BDAT file from a [`std::io::Read`] implementation. That type must also implement
 /// [`std::io::Seek`].
 ///
-/// This function will only read the file header. To parse tables, call [`FileReader::get_tables`].
+/// This function will only read the file header. To parse tables, call [`BdatFile::get_tables`].
 ///
 /// The BDAT file format is not recommended for streams, so it is best to read from a file or a
 /// byte buffer.
+///
+/// Tables read using this function can be easily queried for single-value cells. See
+/// [`ModernTable`] for details.
 ///
 /// ```
 /// use std::fs::File;
@@ -44,7 +51,10 @@ pub fn from_reader<R: Read + Seek, E: ByteOrder>(
 /// Reads a BDAT file from a slice. The slice needs to have the **full** file data, though any
 /// unrelated bytes at the end will be ignored.
 ///
-/// This function will only read the file header. To parse tables, call [`FileReader::get_tables`].
+/// This function will only read the file header. To parse tables, call [`BdatFile::get_tables`].
+///
+/// Tables read using this function can be easily queried for single-value cells. See
+/// [`ModernTable`] for details.
 ///
 /// ```
 /// use std::fs::File;

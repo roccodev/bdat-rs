@@ -175,6 +175,14 @@ impl<'b> Table<'b> {
         }
     }
 
+    pub fn is_modern(&self) -> bool {
+        matches!(self.inner, TableInner::Modern(_))
+    }
+
+    pub fn is_legacy(&self) -> bool {
+        matches!(self.inner, TableInner::Legacy(_))
+    }
+
     /// Gets an iterator that visits this table's rows
     pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, 'b>> {
         match &self.inner {

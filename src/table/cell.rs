@@ -99,11 +99,11 @@ pub struct ModernCell<'t, 'tb>(&'t Cell<'tb>);
 // Legacy is currently an alias for the version-agnostic [`Cell`].
 pub type LegacyCell<'t, 'tb> = &'t Cell<'tb>;
 
-pub trait FromValue
+pub trait FromValue<'t, 'tb>
 where
     Self: Sized,
 {
-    fn extract(value: &Value<'_>) -> Option<Self>;
+    fn extract(value: &'t Value<'tb>) -> Option<Self>;
 }
 
 impl<'b> Cell<'b> {
@@ -225,7 +225,7 @@ impl<'t, 'tb> ModernCell<'t, 'tb> {
     /// ## Panics
     /// Panics if the value's internal type is not `V`. The type must match
     /// exactly, e.g. `i32` is not the same as `u32`.
-    pub fn get_as<V: FromValue>(&self) -> V {
+    pub fn get_as<V: FromValue<'t, 'tb>>(&self) -> V {
         self.try_get_as().unwrap()
     }
 
@@ -233,7 +233,7 @@ impl<'t, 'tb> ModernCell<'t, 'tb> {
     ///
     /// Fails if the value's internal type is not `V`. The type must match
     /// exactly, e.g. `i32` is not the same as `u32`.
-    pub fn try_get_as<V: FromValue>(&self) -> Result<V, ()> {
+    pub fn try_get_as<V: FromValue<'t, 'tb>>(&self) -> Result<V, ()> {
         match self.0 {
             Cell::Single(v) => V::extract(v).ok_or(()), // TODO
             _ => panic!("cell is not single: using modern with legacy version?"),
@@ -333,10 +333,46 @@ impl<'b> Display for Cell<'b> {
     }
 }
 
-impl FromValue for u32 {
+macro_rules! from_value {
+    ($val:ty, $($variants:path ) *) => {
+        impl<'t, 'tb> FromValue<'t, 'tb> for $val {
+            fn extract(value: &Value<'_>) -> Option<Self> {
+                match value {
+                    $( | $variants(v) )* => Some(*v),
+                    _ => None,
+                }
+            }
+        }
+    };
+}
+
+from_value!(u32, Value::UnsignedInt Value::HashRef);
+from_value!(u16, Value::UnsignedShort Value::Unknown3);
+from_value!(u8, Value::UnsignedByte Value::Unknown2 Value::Percent);
+from_value!(i32, Value::SignedInt);
+from_value!(i16, Value::SignedShort);
+from_value!(i8, Value::SignedByte);
+from_value!(BdatReal, Value::Float);
+
+impl<'t, 'tb> FromValue<'t, 'tb> for f32 {
     fn extract(value: &Value<'_>) -> Option<Self> {
+        BdatReal::extract(value).map(Into::into)
+    }
+}
+
+impl<'t, 'tb> FromValue<'t, 'tb> for Utf<'tb> {
+    fn extract(value: &Value<'tb>) -> Option<Self> {
         match value {
-            Value::UnsignedInt(v) | Value::HashRef(v) => Some(*v),
+            Value::String(s) | Value::DebugString(s) => Some(s.clone()),
+            _ => None,
+        }
+    }
+}
+
+impl<'t, 'tb> FromValue<'t, 'tb> for &'t str {
+    fn extract(value: &'t Value<'tb>) -> Option<Self> {
+        match value {
+            Value::String(s) | Value::DebugString(s) => Some(s.as_ref()),
             _ => None,
         }
     }

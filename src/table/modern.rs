@@ -46,6 +46,19 @@ impl<'b> ModernTable<'b> {
             .and_then(|&id| self.get_row(id))
     }
 
+    /// Gets a row by its hashed 32-bit ID.
+    ///
+    /// This requires the `hash-table` feature flag, which is enabled
+    /// by default.
+    ///
+    /// ## Panics
+    /// Panics if there is no row for the given ID.
+    #[cfg(feature = "hash-table")]
+    pub fn row_by_hash(&self, hash_id: u32) -> RowRef<'_, 'b, ModernCell<'_, 'b>> {
+        self.get_row_by_hash(hash_id)
+            .expect("no row with given hash")
+    }
+
     /// Gets an iterator that visits this table's rows
     pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, 'b, ModernCell<'_, 'b>>> {
         self.rows.iter().map(|row| RowRef::new(row, &self.columns))
