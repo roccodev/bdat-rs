@@ -101,7 +101,9 @@ pub fn to_vec<'t, E: ByteOrder>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{io::SwitchEndian, Cell, ColumnDef, Label, Row, TableBuilder, Value, ValueType};
+    use crate::{
+        io::SwitchEndian, BdatFile, Cell, ColumnDef, Label, Row, TableBuilder, Value, ValueType,
+    };
 
     #[test]
     fn table_write_back() {

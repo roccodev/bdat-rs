@@ -61,10 +61,10 @@ impl<'b> ModernTable<'b> {
     /// ensure the new rows have the same IDs, as to preserve the original table's row order.
     ///
     /// When the `hash-table` feature is enabled, the new rows must also retain their original
-    /// hashed ID (for modern BDATs). Failure to do so will lead to improper behavior of
+    /// hashed ID. Failure to do so will lead to improper behavior of
     /// [`get_row_by_hash`].
     ///
-    /// [`get_row_by_hash`]: Table::get_row_by_hash
+    /// [`get_row_by_hash`]: ModernTable::get_row_by_hash
     pub fn rows_mut(&mut self) -> impl Iterator<Item = RowRefMut<'_, 'b>> {
         self.rows
             .iter_mut()

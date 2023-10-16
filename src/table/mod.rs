@@ -12,7 +12,7 @@ mod util;
 pub use legacy::LegacyTable;
 pub use modern::ModernTable;
 
-/// A Bdat table. Depending on how they were read, BDAT tables can either own their data source
+/// A BDAT table. Depending on how they were read, BDAT tables can either own their data source
 /// or borrow from it.
 ///
 /// ## Accessing cells
@@ -20,6 +20,15 @@ pub use modern::ModernTable;
 /// For example, to access the cell at row 1 and column "Param1", you can use `table.row(1)["Param1"]`.
 ///
 /// See also: [`RowRef`]
+///
+/// ## Specialized views
+/// If you know what type of BDAT tables you're dealing with (legacy or modern), you can use
+/// [`as_modern`] and [`as_legacy`] to get specialized table views.
+///
+/// These views return more ergonomic row accessors that let you quickly extract values, instead
+/// of having to handle cases that are not supported by the known version.
+///
+/// See also: [`ModernTable`], [`LegacyTable`]
 ///
 /// ## Adding/deleting rows
 /// The table's mutable iterator does not allow structural modifications to the table. To add or
@@ -41,6 +50,9 @@ pub use modern::ModernTable;
 ///     Value::UnsignedInt(10)
 /// );
 /// ```
+///
+/// [`as_legacy`]: Table::as_legacy
+/// [`as_modern`]: Table::as_modern
 #[derive(Debug, Clone, PartialEq)]
 pub enum Table<'b> {
     Modern(ModernTable<'b>),
@@ -179,7 +191,7 @@ impl<'b> Table<'b> {
     /// hashed ID (for modern BDATs). Failure to do so will lead to improper behavior of
     /// [`get_row_by_hash`].
     ///
-    /// [`get_row_by_hash`]: Table::get_row_by_hash
+    /// [`get_row_by_hash`]: ModernTable::get_row_by_hash
     pub fn rows_mut(&mut self) -> impl Iterator<Item = RowRefMut<'_, 'b>> {
         versioned_iter!(self, rows_mut())
     }

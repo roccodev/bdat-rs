@@ -12,7 +12,7 @@ use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
 use crate::{
     error::{BdatError, Result, Scope},
-    Cell, ColumnDef, Label, ModernTable, Row, Table, TableBuilder, Utf, Value, ValueType,
+    BdatFile, Cell, ColumnDef, Label, ModernTable, Row, Table, TableBuilder, Utf, Value, ValueType,
 };
 
 use super::FileHeader;
@@ -66,26 +66,6 @@ where
         } else {
             Err(BdatError::MalformedBdat(Scope::File))
         }
-    }
-
-    /// Reads all tables from the BDAT source.
-    pub fn get_tables(&mut self) -> Result<Vec<ModernTable<'b>>> {
-        let mut tables = Vec::with_capacity(self.header.table_count);
-
-        for i in 0..self.header.table_count {
-            self.tables
-                .reader
-                .seek_table(self.header.table_offsets[i])?;
-            let table = self.read_table()?;
-            tables.push(table);
-        }
-
-        Ok(tables)
-    }
-
-    /// Returns the number of tables in the BDAT file.
-    pub fn table_count(&self) -> usize {
-        self.header.table_count
     }
 
     fn read_table(&mut self) -> Result<ModernTable<'b>> {
@@ -343,5 +323,33 @@ where
         self.stream.seek(SeekFrom::Start(offset as u64))?;
         self.table_offset = offset;
         Ok(())
+    }
+}
+
+impl<'b, R, E> BdatFile<'b> for FileReader<R, E>
+where
+    R: ModernRead<'b>,
+    E: ByteOrder,
+{
+    type TableOut = ModernTable<'b>;
+
+    /// Reads all tables from the BDAT source.
+    fn get_tables(&mut self) -> Result<Vec<ModernTable<'b>>> {
+        let mut tables = Vec::with_capacity(self.header.table_count);
+
+        for i in 0..self.header.table_count {
+            self.tables
+                .reader
+                .seek_table(self.header.table_offsets[i])?;
+            let table = self.read_table()?;
+            tables.push(table);
+        }
+
+        Ok(tables)
+    }
+
+    /// Returns the number of tables in the BDAT file.
+    fn table_count(&self) -> usize {
+        self.header.table_count
     }
 }
