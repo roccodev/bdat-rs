@@ -30,13 +30,22 @@ pub enum DetectError {
 /// Reads a BDAT file from a slice. The slice needs to have the **full** file data, though any
 /// unrelated bytes at the end will be ignored.
 ///
+/// This function will only read the file header. To parse tables, call [`BdatFile::get_tables`].
+///
+/// ## Version properties
+///
 /// Version and endianness will be automatically detected. To force a different endianness and/or
 /// version, use the specialized functions from [`bdat::legacy`] and [`bdat::modern`].  
 /// Notably, only the legacy implementation needs a mutable reference to the data (as it may
-/// need to unscramble text), while this function is forced to carry that restriction, even when
+/// need to unscramble text), yet this function is forced to carry that restriction, even when
 /// effectively dealing with modern tables.
 ///
-/// This function will only read the file header. To parse tables, call [`BdatFile::get_tables`].
+/// Tables read using this function are compatible with most operations (see [`Table`]). If
+/// you know in advance that you are dealing with modern (XC3) or legacy (other games) tables,
+/// you should use the specialized functions instead. That way, you can benefit from ergonomic
+/// functions on the [`ModernTable`] and [`LegacyTable`] types.
+///
+/// ## Examples
 ///
 /// ```
 /// use std::fs::File;
@@ -51,6 +60,8 @@ pub enum DetectError {
 /// [`bdat::legacy`]: crate::legacy
 /// [`bdat::modern`]: crate::modern
 /// [`BdatFile::get_tables`]: crate::BdatFile::get_tables
+/// [`ModernTable`]: crate::ModernTable
+/// [`LegacyTable`]: crate::LegacyTable
 pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
     match detect_version(Cursor::new(&bytes))? {
         BdatVersion::LegacySwitch => Ok(VersionSlice::LegacySwitch(LegacyBytes::new(

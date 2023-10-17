@@ -27,7 +27,7 @@ use crate::{
 /// Note: this requires the `hash-table` feature flag, which is enabled by default.
 ///
 /// ```
-/// use bdat::{ModernTable};
+/// use bdat::ModernTable;
 ///
 /// fn foo(table: &ModernTable) {
 ///     let row = table.row_by_hash(0xDEADBEEF);

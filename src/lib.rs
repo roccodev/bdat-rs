@@ -8,39 +8,133 @@
 //! This crate allows reading and writing BDAT tables and files.
 //!
 //! ## Reading BDAT tables
-//! The crate exposes the [`from_bytes`] and [`from_reader`] functions to parse BDAT files from
-//! a slice or a [`std::io::Read`] stream respectively.
 //!
-//! When reading, if the format version is known, it's better to use version-specific functions.
-//! (e.g. [`legacy::from_reader`] and [`modern::from_reader`])
+//! ### Reading Xenoblade 3 ("modern") tables
+//!
+//! The crate exposes the [`from_bytes`] and [`from_reader`] functions in the [`modern`] module
+//! to parse Xenoblade 3 BDAT files from a slice or a [`std::io::Read`] stream respectively.
+//!
+//! The [`label_hash!`] macro can be used to quickly generate hashed labels from plain-text strings.
+//!
+//! See also: [`ModernTable`]
 //!
 //! ```
-//! use bdat::{BdatResult, SwitchEndian, BdatFile};
+//! use bdat::{BdatResult, SwitchEndian, BdatFile, ModernTable, label_hash, TableAccessor};
+//! use bdat::hash::murmur3_str;
 //!
-//! fn read_tables() -> BdatResult<()> {
+//! fn read_xc3() -> BdatResult<()> {
+//!     let data = [0u8; 0];
+//!     // also bdat::from_reader for io::Read implementations.
+//!     let mut bdat_file = bdat::modern::from_bytes::<SwitchEndian>(&data)?;
+//!
+//!     let table: &ModernTable = &bdat_file.get_tables()?[0];
+//!     if table.name() == &label_hash!("CHR_PC") {
+//!         // Found the character table, get Noah's HP at level 99
+//!         let noah = table.row(1);
+//!         // Alternatively, if the `hash-table` feature is enabled (default)
+//!         let noah = table.row_by_hash(murmur3_str("PC_NOAH"));
+//!
+//!         let noah_hp = noah
+//!             .get(label_hash!("HpMaxLv99"))
+//!             .get_as::<u32>();
+//!     }
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ### Reading tables from other games ("legacy")
+//!
+//! Similarly, the [`legacy`] module contains functions to read and write legacy tables.
+//!
+//! There are differences between games that use the legacy format, so specifying a
+//! [`BdatVersion`] is required.  
+//! If you don't know the legacy sub-version, you can use [`detect_file_version`] or
+//! [`detect_bytes_version`].
+//!
+//! See also: [`LegacyTable`]
+//!
+//! ```
+//! use bdat::{BdatResult, SwitchEndian, BdatFile, LegacyTable, BdatVersion, Label, TableAccessor};
+//!
+//! fn read_legacy() -> BdatResult<()> {
+//!     // Mutable access is required as text might need to be unscrambled.
 //!     let mut data = [0u8; 0];
-//!     // also bdat::from_reader for io::Read implementations. Additionally,
-//!     // by using `bdat::from_bytes` (which automatically detects the version),
-//!     // we need mutable access to the data, as we might potentially have to
-//!     // unscramble text in legacy formats.
+//!     // Use `WiiEndian` for Xenoblade (Wii) and Xenoblade X.
+//!     let mut bdat_file = bdat::legacy::from_bytes::<SwitchEndian>(
+//!         &mut data,
+//!         BdatVersion::LegacySwitch
+//!     )?;
+//!
+//!     let table: &LegacyTable = &bdat_file.get_tables()?[0];
+//!     if table.name().to_string_convert() == "CHR_Dr" {
+//!         // Found the character table, get Rex's HP at level 99
+//!         let rex = table.row(1);
+//!         // We need to distinguish between legacy cell types
+//!         let rex_hp = rex.get(Label::from("HpMaxLv99"))
+//!             .as_single()
+//!             .unwrap()
+//!             .to_integer();
+//!     }
+//!
+//!     Ok(())
+//! }
+//! ```
+//!
+//! ### Version auto-detect
+//!
+//! If the table format isn't known, [`from_bytes`] and [`from_reader`] from the
+//! crate root can be used instead.
+//!
+//! ```
+//! use bdat::{BdatResult, SwitchEndian, BdatFile, Table, Label, TableAccessor, label_hash};
+//!
+//! fn read_detect() -> BdatResult<()> {
+//!     // Mutable access is required, as this might be a legacy table.
+//!     let mut data = [0u8; 0];
+//!     // Endianness is also detected automatically.
 //!     let mut bdat_file = bdat::from_bytes(&mut data)?;
-//!     let table = &bdat_file.get_tables()?[0];
+//!
+//!     // Can no longer assume the format.
+//!     let table: &Table = &bdat_file.get_tables()?[0];
+//!     if table.name() == &label_hash!("CHR_PC") {
+//!         // Found the character table, get Noah's HP at level 99.
+//!         // No hash lookup for rows!
+//!         let noah = table.row(1);
+//!         // We can't use the ergonomic functions from `ModernTable` here,
+//!         // so we need to handle the legacy cases, even if they don't
+//!         // concern modern tables.
+//!         let noah_hp = noah.get(label_hash!("HpMaxLv99"))
+//!             .as_single()
+//!             .unwrap()
+//!             .to_integer();
+//!     }
+//!
 //!     Ok(())
 //! }
 //! ```
 //!
 //! ## Writing BDAT tables
-//! The `to_vec` and `to_writer` functions can be used to write BDAT files to a vector or a
-//! [`std::io::Write`] implementation.
+//! The `to_vec` and `to_writer` functions (in [`legacy`] and [`modern`]) can be used to write BDAT
+//! files to a vector or a [`std::io::Write`] implementation.
 //!
-//! Unlike reading (where it is detected automatically), writing also requires the user to specify
-//! the BDAT version to use, by choosing the appropriate module implementation.
+//! Writing fully requires the user to specify the BDAT version to use, by choosing the
+//! appropriate module implementation.
+//!
+//! [`Table`]s obtained with the auto-detecting functions must be converted first.
+//!
 //! ```
-//! use bdat::{BdatResult, BdatVersion, SwitchEndian, ModernTable};
+//! use bdat::{BdatResult, BdatVersion, SwitchEndian, WiiEndian, ModernTable, LegacyTable};
 //!
-//! fn write_table(table: &ModernTable) -> BdatResult<()> {
+//! fn write_modern(table: &ModernTable) -> BdatResult<()> {
 //!     // also bdat::to_writer for io::Write implementations
 //!     let _written: Vec<u8> = bdat::modern::to_vec::<SwitchEndian>([table])?;
+//!     Ok(())
+//! }
+//!
+//! fn write_legacy(table: &LegacyTable) -> BdatResult<()> {
+//!     // Endianness and version may vary, here it's writing Xenoblade X tables.
+//!     let _written: Vec<u8> = bdat::legacy::to_vec::<WiiEndian>([table], BdatVersion::LegacyX)?;
 //!     Ok(())
 //! }
 //! ```
