@@ -74,7 +74,7 @@
 //!         let rex_hp = rex.get(Label::from("HpMaxLv99"))
 //!             .as_single()
 //!             .unwrap()
-//!             .to_integer();
+//!             .get_as::<u32>();
 //!     }
 //!
 //!     Ok(())
@@ -107,7 +107,7 @@
 //!         let noah_hp = noah.get(label_hash!("HpMaxLv99"))
 //!             .as_single()
 //!             .unwrap()
-//!             .to_integer();
+//!             .get_as::<u32>();
 //!     }
 //!
 //!     Ok(())

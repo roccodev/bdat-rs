@@ -5,6 +5,31 @@ use crate::{
 
 use super::{FormatConvertError, TableInner};
 
+/// The BDAT table representation in legacy formats, used for all games before Xenoblade 3.
+///
+/// # Characteristics
+///
+/// ## Cell types
+///
+/// Unlike modern tables, legacy tables can have multiple-value cells, or mask a value's bits
+/// to create flags.
+///
+/// See also: [`LegacyCell`]
+///
+/// # Examples
+///
+/// ## Operating on cells
+///
+/// ```
+/// use bdat::{Label, LegacyTable, TableAccessor, label_hash};
+///
+/// fn get_character_id(table: &LegacyTable, row_id: usize) -> u32 {
+///     let cell = table.row(row_id).get(Label::from("CharacterID"));
+///     // Unlike modern tables, we can't simply operate on the value.
+///     // We can `match` on cell types, or simply cast them and handle errors:
+///     cell.as_single().unwrap().get_as::<u32>()
+/// }
+/// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct LegacyTable<'b> {
     pub(crate) name: Label,

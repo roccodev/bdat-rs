@@ -20,8 +20,7 @@ use super::{FormatConvertError, TableInner};
 /// ## Simpler cells
 ///
 /// Unlike legacy tables, modern tables only support single-value cells (i.e. [`Cell::Single`]).
-/// Rows queried from this struct return [`ModernCell`], an ergonomic cell interface that lets
-/// you directly operate on values.
+/// Rows queried from this struct return [`ModernCell`], letting you directly operate on values.
 ///
 /// # Examples
 ///
