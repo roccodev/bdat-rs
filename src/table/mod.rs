@@ -1,3 +1,5 @@
+//! BDAT table, row, cell implementations
+
 use crate::{BdatResult, BdatVersion, Cell, ColumnDef, ColumnMap, Label, Row, RowRef, RowRefMut};
 use thiserror::Error;
 use util::VersionedIter;
@@ -18,7 +20,6 @@ pub use modern::ModernTable;
 ///
 /// ## Accessing cells
 /// The [`Table::row`] function provides an easy interface to access cells.
-/// For example, to access the cell at row 1 and column "Param1", you can use `table.row(1)["Param1"]`.
 ///
 /// See also: [`RowRef`]
 ///
@@ -47,7 +48,7 @@ pub use modern::ModernTable;
 ///
 /// assert_eq!(table.row_count(), 1);
 /// assert_eq!(
-///     *table.row(1)[Label::Hash(0xCAFEBABE)].as_single().unwrap(),
+///     *table.row(1).get(Label::Hash(0xCAFEBABE)).as_single().unwrap(),
 ///     Value::UnsignedInt(10)
 /// );
 /// ```

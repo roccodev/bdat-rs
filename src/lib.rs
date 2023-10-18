@@ -156,14 +156,14 @@ pub mod serde;
 
 pub(crate) mod error;
 pub(crate) mod io;
-pub(crate) mod label;
+pub mod label;
 pub mod table;
 
 pub use error::BdatError;
 pub use error::Result as BdatResult;
 pub use io::detect::*;
 pub use io::*;
-pub use label::*;
+pub use label::Label;
 
 pub use table::cell::*;
 pub use table::column::*;

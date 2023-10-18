@@ -1,3 +1,5 @@
+//! I/O operations for legacy BDATs
+
 pub mod float;
 pub mod scramble;
 

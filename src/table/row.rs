@@ -21,8 +21,8 @@ pub struct Row<'b> {
 /// use bdat::RowRef;
 ///
 /// fn param_1(row: RowRef) -> u32 {
-///     // Use the index syntax (or .get()) to access cells
-///     row["Param1"].as_single().unwrap().to_integer()
+///     // Use .get() to access cells
+///     row.get(&"Param1".into()).as_single().unwrap().to_integer()
 /// }
 ///
 /// fn param_2_if_present(row: RowRef) -> Option<u32> {
@@ -138,7 +138,15 @@ impl<'a, 't: 'a, 'tb> RowRefMut<'t, 'tb> {
     }
 }
 
-// Implementation for e.g. row["string slice"]
+#[allow(useless_deprecated)]
+#[deprecated(
+    since = "0.4.0",
+    note = "for removal in 0.5.0. The Index trait can't return owned types (required for specialized cells)"
+)]
+/// **Deprecated for removal**
+///
+/// Since: 0.4.0  
+/// To be removed in 0.5.0
 impl<'a, 't: 'a, 'tb, S> Index<S> for RowRef<'t, 'tb>
 where
     S: Into<Label> + PartialEq,

@@ -1,3 +1,5 @@
+//! Hash utilities (+ a murmur3 implementation) for XC3 BDATs
+
 const MURMUR3_SEED: u32 = 0;
 
 #[cfg(feature = "hash-table")]

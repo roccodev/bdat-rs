@@ -1,3 +1,5 @@
+//! I/O operations for XC3 ("modern") BDATs
+
 use std::borrow::Borrow;
 use std::io::{Cursor, Read, Seek, Write};
 

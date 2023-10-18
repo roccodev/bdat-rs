@@ -1,3 +1,5 @@
+//! Optionally hashed labels used as table and column names
+
 use crate::io::BdatVersion;
 use crate::Utf;
 use std::borrow::Cow;
