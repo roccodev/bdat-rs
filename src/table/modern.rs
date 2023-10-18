@@ -1,7 +1,7 @@
 use crate::hash::PreHashedMap;
 use crate::{
-    ColumnDef, ColumnMap, Label, LegacyTable, ModernCell, Row, RowRef, RowRefMut, Table,
-    TableAccessor, TableBuilder,
+    BdatVersion, Cell, ColumnDef, ColumnMap, Label, LegacyTable, ModernCell, Row, RowRef,
+    RowRefMut, Table, TableAccessor, TableBuilder,
 };
 
 use super::{FormatConvertError, TableInner};
@@ -237,11 +237,23 @@ impl<'b> From<ModernTable<'b>> for Table<'b> {
     }
 }
 
-impl<'b> TryFrom<ModernTable<'b>> for LegacyTable<'b> {
+/// Legacy -> Modern conversion
+impl<'b> TryFrom<LegacyTable<'b>> for ModernTable<'b> {
     type Error = FormatConvertError;
 
-    fn try_from(value: ModernTable<'b>) -> Result<Self, Self::Error> {
-        // TODO: check for unsupported value types
-        Ok(LegacyTable::new(TableBuilder::from(value)))
+    fn try_from(value: LegacyTable<'b>) -> Result<Self, Self::Error> {
+        if let Some(col) = value
+            .columns()
+            .find(|c| !c.value_type().is_supported(BdatVersion::Modern))
+        {
+            return Err(FormatConvertError::UnsupportedValueType(col.value_type()));
+        }
+        if value
+            .rows()
+            .any(|r| r.cells().any(|c| !matches!(c, Cell::Single(_))))
+        {
+            return Err(FormatConvertError::UnsupportedCell);
+        }
+        Ok(ModernTable::new(TableBuilder::from(value)))
     }
 }

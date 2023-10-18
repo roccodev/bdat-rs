@@ -1,6 +1,8 @@
 //! BDAT table, row, cell implementations
 
-use crate::{BdatResult, BdatVersion, Cell, ColumnDef, ColumnMap, Label, Row, RowRef, RowRefMut};
+use crate::{
+    BdatResult, BdatVersion, Cell, ColumnDef, ColumnMap, Label, Row, RowRef, RowRefMut, ValueType,
+};
 use thiserror::Error;
 use util::VersionedIter;
 
@@ -76,9 +78,28 @@ pub struct TableBuilder<'b> {
 /// Error encountered while converting tables
 /// to a different format.
 #[derive(Error, Debug)]
-pub enum FormatConvertError {}
+pub enum FormatConvertError {
+    /// One of the table's columns has an unsupported value type.
+    ///
+    /// For example, legacy tables do not support hash-ref fields.
+    #[error("unsupported value type {0:?}")]
+    UnsupportedValueType(ValueType),
+    /// One of the table's values has an unsupported cell type.
+    ///
+    /// For instance, modern tables only support single-value cells.
+    #[error("unsupported cell")]
+    UnsupportedCell,
+}
 
+/// Provides common functions to access rows and columns from a table.
+///
+/// ## Future compatibility
+///
+/// Starting from Rust 1.75.0 and (tentatively) bdat-rs 0.5.0, this trait may feature
+/// iterators to access rows and columns. Those iterators will replace the associated
+/// functions in the implementors of this trait.
 pub trait TableAccessor<'t, 'b: 't> {
+    /// The returned cell type for row queries
     type Cell;
 
     /// Returns the table's name.
@@ -274,7 +295,7 @@ impl<'b> Table<'b> {
     pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, 'b>> {
         match &self.inner {
             TableInner::Modern(m) => VersionedIter::Modern(m.rows().map(RowRef::up_cast)),
-            TableInner::Legacy(l) => VersionedIter::Legacy(l.rows().map(RowRef::up_cast)),
+            TableInner::Legacy(l) => VersionedIter::Legacy(l.rows()),
         }
     }
 
@@ -336,7 +357,7 @@ impl<'t, 'b: 't> TableAccessor<'t, 'b> for Table<'b> {
     fn row(&self, id: usize) -> RowRef<'_, 'b> {
         match &self.inner {
             TableInner::Modern(m) => m.row(id).up_cast(),
-            TableInner::Legacy(l) => l.row(id).up_cast(),
+            TableInner::Legacy(l) => l.row(id),
         }
     }
 
@@ -347,7 +368,7 @@ impl<'t, 'b: 't> TableAccessor<'t, 'b> for Table<'b> {
     fn get_row(&self, id: usize) -> Option<RowRef<'_, 'b>> {
         match &self.inner {
             TableInner::Modern(m) => m.get_row(id).map(RowRef::up_cast),
-            TableInner::Legacy(l) => l.get_row(id).map(RowRef::up_cast),
+            TableInner::Legacy(l) => l.get_row(id),
         }
     }
 

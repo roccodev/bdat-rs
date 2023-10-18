@@ -1,5 +1,5 @@
 use crate::legacy::float::BdatReal;
-use crate::{BdatVersion, Label, RowRef};
+use crate::{BdatError, BdatResult, BdatVersion, Label, RowRef};
 use enum_kinds::EnumKind;
 use num_enum::TryFromPrimitive;
 use std::borrow::Cow;
@@ -94,9 +94,11 @@ pub enum Value<'b> {
 /// An optionally-borrowed clone-on-write UTF-8 string.
 pub type Utf<'t> = Cow<'t, str>;
 
-pub struct ModernCell<'t, 'tb>(&'t Cell<'tb>);
+/// Modern is currently an alias for the value contained in single-value cells,
+/// which is the only cell type supported by the modern format.
+pub type ModernCell<'t, 'tb> = &'t Value<'tb>;
 
-// Legacy is currently an alias for the version-agnostic [`Cell`].
+/// Legacy is currently an alias for the version-agnostic [`Cell`].
 pub type LegacyCell<'t, 'tb> = &'t Cell<'tb>;
 
 pub trait FromValue<'t, 'tb>
@@ -104,6 +106,14 @@ where
     Self: Sized,
 {
     fn extract(value: &'t Value<'tb>) -> Option<Self>;
+}
+
+/// Converts from a cell reference.
+pub trait FromCell<'t, 'tb> {
+    /// Converts from a cell reference.
+    ///
+    /// The implementation can panic.
+    fn from_cell(cell: &'t Cell<'tb>) -> Self;
 }
 
 impl<'b> Cell<'b> {
@@ -163,6 +173,37 @@ impl<'b> Cell<'b> {
 }
 
 impl<'b> Value<'b> {
+    /// Casts the underlying value to `V`.
+    ///
+    /// For strings, the [`Utf`] type alias, or `&str` can be used.
+    ///
+    /// ## Panics
+    /// Panics if the value's internal type is not `V`. The type must match
+    /// exactly, e.g. `i32` is not the same as `u32`.
+    ///
+    /// To convert instead of panicking, use [`to_integer`], [`to_float`], etc.
+    ///
+    /// [`to_integer`]: Value::to_integer
+    /// [`to_float`]: Value::to_float
+    pub fn get_as<'t, V: FromValue<'t, 'b>>(&'t self) -> V {
+        self.try_get_as().unwrap()
+    }
+
+    /// Attempts to cast the underlying value to `V`.
+    ///
+    /// For strings, the [`Utf`] type alias, or `&str` can be used.
+    ///
+    /// Fails if the value's internal type is not `V`. The type must match
+    /// exactly, e.g. `i32` is not the same as `u32`.
+    ///
+    /// To convert instead of failing, use [`to_integer`], [`to_float`], etc.
+    ///
+    /// [`to_integer`]: Value::to_integer
+    /// [`to_float`]: Value::to_float
+    pub fn try_get_as<'t, V: FromValue<'t, 'b>>(&'t self) -> BdatResult<V> {
+        V::extract(self).ok_or_else(|| BdatError::ValueCast(self.into()))
+    }
+
     /// Returns the integer representation of this value.
     /// For signed values, this is the unsigned representation.
     ///
@@ -219,28 +260,6 @@ impl<'b> Value<'b> {
     }
 }
 
-impl<'t, 'tb> ModernCell<'t, 'tb> {
-    /// Casts the cell's only value to `V`.
-    ///
-    /// ## Panics
-    /// Panics if the value's internal type is not `V`. The type must match
-    /// exactly, e.g. `i32` is not the same as `u32`.
-    pub fn get_as<V: FromValue<'t, 'tb>>(&self) -> V {
-        self.try_get_as().unwrap()
-    }
-
-    /// Attempts to cast the cell's only value to `V`.
-    ///
-    /// Fails if the value's internal type is not `V`. The type must match
-    /// exactly, e.g. `i32` is not the same as `u32`.
-    pub fn try_get_as<V: FromValue<'t, 'tb>>(&self) -> Result<V, ()> {
-        match self.0 {
-            Cell::Single(v) => V::extract(v).ok_or(()), // TODO
-            _ => panic!("cell is not single: using modern with legacy version?"),
-        }
-    }
-}
-
 impl ValueType {
     /// Returns the size of a single cell with this value type.
     pub fn data_len(self) -> usize {
@@ -269,15 +288,27 @@ impl From<ValueType> for u8 {
     }
 }
 
-impl<'t, 'tb> From<&'t Cell<'tb>> for ModernCell<'t, 'tb> {
-    fn from(cell: &'t Cell<'tb>) -> Self {
-        Self(cell)
-    }
-}
-
 impl<'t, 'tb> RowRef<'t, 'tb> {
     pub fn into_modern(self) -> RowRef<'t, 'tb, ModernCell<'t, 'tb>> {
         self.down_cast()
+    }
+}
+
+impl<'t, 'tb> FromCell<'t, 'tb> for ModernCell<'t, 'tb> {
+    fn from_cell(cell: &'t Cell<'tb>) -> Self {
+        match cell {
+            Cell::Single(v) => v,
+            _ => panic!("only Cell::Single supported in modern bdats"),
+        }
+    }
+}
+
+impl<'t, 'tb: 't, T> FromCell<'t, 'tb> for T
+where
+    T: From<&'t Cell<'tb>>,
+{
+    fn from_cell(cell: &'t Cell<'tb>) -> Self {
+        Self::from(cell)
     }
 }
 

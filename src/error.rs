@@ -28,6 +28,8 @@ pub enum BdatError {
     VersionDetect(#[from] DetectError),
     #[error("Could not convert table: {0}")]
     FormatConvert(#[from] FormatConvertError),
+    #[error("Unsupported cast type for {0:?}")]
+    ValueCast(ValueType),
 }
 
 #[derive(Debug)]

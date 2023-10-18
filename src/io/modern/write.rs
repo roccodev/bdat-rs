@@ -10,7 +10,7 @@ use std::{
 use byteorder::{ByteOrder, WriteBytesExt};
 
 use crate::io::BDAT_MAGIC;
-use crate::{error::Result, Cell, Label, ModernTable, Row, Table, TableAccessor, Value};
+use crate::{error::Result, Cell, Label, ModernTable, Row, TableAccessor, Value};
 
 use super::FileHeader;
 

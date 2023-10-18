@@ -17,7 +17,7 @@ use std::ops::Range;
 use crate::error::Result;
 use crate::legacy::read::{LegacyBytes, LegacyReader};
 use crate::legacy::write::FileWriter;
-use crate::{BdatVersion, LegacyTable, Table};
+use crate::{BdatVersion, LegacyTable};
 
 pub(super) const HEADER_SIZE: usize = 64;
 pub(super) const HEADER_SIZE_WII: usize = 32;

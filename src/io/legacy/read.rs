@@ -12,7 +12,7 @@ use crate::legacy::float::BdatReal;
 use crate::legacy::scramble::{calc_checksum, scramble, unscramble, ScrambleType};
 use crate::legacy::{ColumnNodeInfo, COLUMN_NODE_SIZE};
 use crate::{
-    BdatError, BdatFile, BdatVersion, Cell, ColumnDef, FlagDef, Label, LegacyTable, Row, Table,
+    BdatError, BdatFile, BdatVersion, Cell, ColumnDef, FlagDef, Label, LegacyTable, Row,
     TableBuilder, Utf, Value, ValueType,
 };
 

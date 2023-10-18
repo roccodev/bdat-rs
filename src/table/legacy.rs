@@ -1,6 +1,6 @@
 use crate::{
-    ColumnDef, ColumnMap, Label, LegacyCell, ModernTable, Row, RowRef, RowRefMut, Table,
-    TableAccessor, TableBuilder,
+    BdatVersion, ColumnDef, ColumnMap, Label, LegacyCell, ModernTable, Row, RowRef, RowRefMut,
+    Table, TableAccessor, TableBuilder,
 };
 
 use super::{FormatConvertError, TableInner};
@@ -133,11 +133,18 @@ impl<'b> From<LegacyTable<'b>> for Table<'b> {
     }
 }
 
-impl<'b> TryFrom<LegacyTable<'b>> for ModernTable<'b> {
+/// Modern -> Legacy conversion
+impl<'b> TryFrom<ModernTable<'b>> for LegacyTable<'b> {
     type Error = FormatConvertError;
 
-    fn try_from(value: LegacyTable<'b>) -> Result<Self, Self::Error> {
-        // TODO: check for unsupported value & cell types. Maybe swap files with modern impl?
-        Ok(ModernTable::new(TableBuilder::from(value)))
+    fn try_from(value: ModernTable<'b>) -> Result<Self, Self::Error> {
+        // any legacy version works here
+        if let Some(col) = value
+            .columns()
+            .find(|c| !c.value_type().is_supported(BdatVersion::LegacySwitch))
+        {
+            return Err(FormatConvertError::UnsupportedValueType(col.value_type()));
+        }
+        Ok(LegacyTable::new(TableBuilder::from(value)))
     }
 }

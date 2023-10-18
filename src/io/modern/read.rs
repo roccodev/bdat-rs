@@ -12,7 +12,7 @@ use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
 use crate::{
     error::{BdatError, Result, Scope},
-    BdatFile, Cell, ColumnDef, Label, ModernTable, Row, Table, TableBuilder, Utf, Value, ValueType,
+    BdatFile, Cell, ColumnDef, Label, ModernTable, Row, TableBuilder, Utf, Value, ValueType,
 };
 
 use super::FileHeader;

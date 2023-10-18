@@ -1,5 +1,5 @@
-use crate::ColumnMap;
 use crate::{Cell, Label, Value};
+use crate::{ColumnMap, FromCell};
 use std::borrow::Borrow;
 use std::marker::PhantomData;
 
@@ -78,7 +78,7 @@ impl<'b> Row<'b> {
 
 impl<'t, 'tb, C> RowRef<'t, 'tb, C>
 where
-    C: From<&'t Cell<'tb>>,
+    C: FromCell<'t, 'tb>,
 {
     pub(crate) fn new(row: &'t Row<'tb>, columns: &'t ColumnMap) -> Self {
         Self {
@@ -93,7 +93,7 @@ where
     /// If there is no column with the given label, this returns [`None`].
     pub fn get_if_present(&self, column: impl Borrow<Label>) -> Option<C> {
         let index = self.columns.position(column.borrow())?;
-        self.row.cells.get(index).map(Into::into)
+        self.row.cells.get(index).map(C::from_cell)
     }
 
     /// Returns a reference to the cell at the given column.
@@ -114,10 +114,7 @@ where
 }
 
 impl<'t, 'tb> RowRef<'t, 'tb> {
-    pub(crate) fn down_cast<C>(self) -> RowRef<'t, 'tb, C>
-    where
-        C: From<&'t Cell<'tb>>,
-    {
+    pub(crate) fn down_cast<C>(self) -> RowRef<'t, 'tb, C> {
         RowRef {
             row: self.row,
             columns: self.columns,

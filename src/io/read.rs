@@ -1,5 +1,4 @@
 use crate::error::Result;
-use crate::Table;
 use std::io::Cursor;
 use std::marker::PhantomData;
 
