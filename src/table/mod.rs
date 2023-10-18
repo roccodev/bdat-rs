@@ -95,7 +95,7 @@ pub enum FormatConvertError {
 ///
 /// ## Future compatibility
 ///
-/// Starting from Rust 1.75.0 and (tentatively) bdat-rs 0.5.0, this trait may feature
+/// Starting from Rust 1.75.0 (#91611) and (tentatively) bdat-rs 0.5.0, this trait may feature
 /// iterators to access rows and columns. Those iterators will replace the associated
 /// functions in the implementors of this trait.
 pub trait TableAccessor<'t, 'b: 't> {
@@ -428,51 +428,5 @@ impl<'b> TableBuilder<'b> {
         } else {
             self.build_modern().into()
         }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    #[cfg(feature = "hash-table")]
-    #[test]
-    fn test_hash_table() {
-        use crate::{Cell, ColumnDef, Label, Row, TableBuilder, Value, ValueType};
-
-        let table = TableBuilder::with_name(Label::Hash(0xDEADBEEF))
-            .add_column(ColumnDef::new(ValueType::HashRef, 0.into()))
-            .add_column(ColumnDef::new(ValueType::UnsignedInt, 1.into()))
-            .add_row(Row::new(
-                1,
-                vec![
-                    Cell::Single(Value::HashRef(0xabcdef01)),
-                    Cell::Single(Value::UnsignedInt(256)),
-                ],
-            ))
-            .add_row(Row::new(
-                2,
-                vec![
-                    Cell::Single(Value::HashRef(0xdeadbeef)),
-                    Cell::Single(Value::UnsignedInt(100)),
-                ],
-            ))
-            .build_modern();
-        assert_eq!(1, table.get_row_by_hash(0xabcdef01).unwrap().id());
-        assert_eq!(2, table.get_row_by_hash(0xdeadbeef).unwrap().id());
-        assert_eq!(
-            256,
-            table
-                .get_row_by_hash(0xabcdef01)
-                .unwrap()
-                .get(Label::Hash(1))
-                .get_as::<u32>()
-        );
-        assert_eq!(
-            100,
-            table
-                .get_row_by_hash(0xdeadbeef)
-                .unwrap()
-                .get(Label::Hash(1))
-                .get_as::<u32>()
-        );
     }
 }

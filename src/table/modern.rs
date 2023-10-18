@@ -256,3 +256,49 @@ impl<'b> TryFrom<LegacyTable<'b>> for ModernTable<'b> {
         Ok(ModernTable::new(TableBuilder::from(value)))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    #[cfg(feature = "hash-table")]
+    #[test]
+    fn test_hash_table() {
+        use crate::{Cell, ColumnDef, Label, Row, TableBuilder, Value, ValueType};
+
+        let table = TableBuilder::with_name(Label::Hash(0xDEADBEEF))
+            .add_column(ColumnDef::new(ValueType::HashRef, 0.into()))
+            .add_column(ColumnDef::new(ValueType::UnsignedInt, 1.into()))
+            .add_row(Row::new(
+                1,
+                vec![
+                    Cell::Single(Value::HashRef(0xabcdef01)),
+                    Cell::Single(Value::UnsignedInt(256)),
+                ],
+            ))
+            .add_row(Row::new(
+                2,
+                vec![
+                    Cell::Single(Value::HashRef(0xdeadbeef)),
+                    Cell::Single(Value::UnsignedInt(100)),
+                ],
+            ))
+            .build_modern();
+        assert_eq!(1, table.get_row_by_hash(0xabcdef01).unwrap().id());
+        assert_eq!(2, table.get_row_by_hash(0xdeadbeef).unwrap().id());
+        assert_eq!(
+            256,
+            table
+                .get_row_by_hash(0xabcdef01)
+                .unwrap()
+                .get(Label::Hash(1))
+                .get_as::<u32>()
+        );
+        assert_eq!(
+            100,
+            table
+                .get_row_by_hash(0xdeadbeef)
+                .unwrap()
+                .get(Label::Hash(1))
+                .get_as::<u32>()
+        );
+    }
+}
