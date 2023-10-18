@@ -1,3 +1,4 @@
+use crate::table::FormatConvertError;
 use crate::{BdatVersion, DetectError, ValueType};
 use std::num::TryFromIntError;
 use std::str::Utf8Error;
@@ -25,6 +26,10 @@ pub enum BdatError {
     InvalidFlagType(ValueType),
     #[error("Could not detect version: {0}")]
     VersionDetect(#[from] DetectError),
+    #[error("Could not convert table: {0}")]
+    FormatConvert(#[from] FormatConvertError),
+    #[error("Unsupported cast type for {0:?}")]
+    ValueCast(ValueType),
 }
 
 #[derive(Debug)]

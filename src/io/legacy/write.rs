@@ -16,7 +16,8 @@ use crate::legacy::{
     LegacyWriteOptions, COLUMN_NODE_SIZE, COLUMN_NODE_SIZE_WII, HEADER_SIZE, HEADER_SIZE_WII,
 };
 use crate::{
-    BdatError, BdatVersion, Cell, ColumnDef, FlagDef, Row, Table, Value, ValueType, WiiEndian,
+    BdatError, BdatVersion, Cell, ColumnDef, FlagDef, LegacyTable, Row, TableAccessor, Value,
+    ValueType, WiiEndian,
 };
 
 /// Writes a full BDAT file to a writer.
@@ -29,7 +30,7 @@ pub struct FileWriter<W, E> {
 
 /// Writes a single table.
 struct TableWriter<'a, 't, E> {
-    table: &'a Table<'t>,
+    table: &'a LegacyTable<'t>,
     buf: Cursor<Vec<u8>>,
     version: BdatVersion,
     opts: LegacyWriteOptions,
@@ -138,7 +139,7 @@ impl<W: Write + Seek, E: ByteOrder + 'static> FileWriter<W, E> {
 
     pub fn write_file<'t>(
         &mut self,
-        tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
+        tables: impl IntoIterator<Item = impl Borrow<LegacyTable<'t>>>,
     ) -> Result<()> {
         let tables = tables.into_iter().by_ref().collect::<Vec<_>>();
         let mut tables = tables.iter().map(|t| t.borrow()).collect::<Vec<_>>();
@@ -147,7 +148,7 @@ impl<W: Write + Seek, E: ByteOrder + 'static> FileWriter<W, E> {
 
         let (table_bytes, table_offsets, total_len, table_count) = tables
             .into_iter()
-            .map(|table| TableWriter::<E>::new(table.borrow(), self.version, self.opts).write())
+            .map(|table| TableWriter::<E>::new(table, self.version, self.opts).write())
             .try_fold(
                 (Vec::new(), Vec::new(), 0, 0),
                 |(mut tot_bytes, mut offsets, len, count), table_bytes| {
@@ -187,7 +188,7 @@ impl<W: Write + Seek, E: ByteOrder + 'static> FileWriter<W, E> {
 }
 
 impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
-    fn new(table: &'a Table<'t>, version: BdatVersion, opts: LegacyWriteOptions) -> Self {
+    fn new(table: &'a LegacyTable<'t>, version: BdatVersion, opts: LegacyWriteOptions) -> Self {
         Self {
             table,
             buf: Cursor::new(Vec::new()),
@@ -242,7 +243,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
             self.table.columns().map(|c| c.data_size()).sum::<usize>() * self.table.row_count(),
         );
         self.strings.base_offset = row_start as usize + total_row_size;
-        for row in self.table.rows() {
+        for row in &self.table.rows {
             RowWriter::<E>::new(&mut self, row).write()?;
         }
         let row_size = (self.buf.stream_position()? - row_start) as usize;
@@ -277,7 +278,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
         let info_offset = self.version.table_header_size();
 
         let columns = ColumnTableBuilder::from_columns(
-            &self.table.columns,
+            self.table.columns.as_slice(),
             &mut self.names,
             self.opts.hash_slots.try_into()?,
             info_offset,
@@ -531,7 +532,12 @@ impl<'a, 'b, 't, E: ByteOrder> RowWriter<'a, 'b, 't, E> {
     }
 
     fn write(&mut self) -> Result<()> {
-        for (cell, col) in self.row.cells.iter().zip(self.table.table.columns.iter()) {
+        for (cell, col) in self
+            .row
+            .cells
+            .iter()
+            .zip(self.table.table.columns.as_slice().iter())
+        {
             match cell {
                 Cell::Single(v) => self.write_value(v),
                 Cell::List(values) => values.iter().try_for_each(|v| self.write_value(v)),

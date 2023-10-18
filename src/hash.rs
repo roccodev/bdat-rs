@@ -1,3 +1,5 @@
+//! Hash utilities (+ a murmur3 implementation) for XC3 BDATs
+
 const MURMUR3_SEED: u32 = 0;
 
 #[cfg(feature = "hash-table")]
@@ -34,6 +36,27 @@ mod table {
             self.0 = int | (int << 31);
         }
     }
+}
+
+/// Creates a murmur3-hashed [`Label`] from an expression.
+///
+/// ## Behavior
+/// * If a string literal is passed in, the result will be `const`-evaluated.
+/// * If an expression is passed in, the value is hashed and stored in the label. The expression's
+/// value must implement `Borrow<str>`.
+///
+/// [`Label`]: crate::Label
+#[macro_export]
+macro_rules! label_hash {
+    ($text:literal) => {{
+        // const evaluation for string literals
+        const HASH: $crate::Label = $crate::Label::Hash($crate::hash::murmur3_str($text));
+        HASH
+    }};
+    ($text:expr) => {{
+        let text: &dyn ::std::borrow::Borrow<str> = &$text;
+        $crate::Label::Hash($crate::hash::murmur3_str(text.borrow()))
+    }};
 }
 
 // MIT-licensed const version of murmur3, adapted from

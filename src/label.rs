@@ -1,3 +1,5 @@
+//! Optionally hashed labels used as table and column names
+
 use crate::io::BdatVersion;
 use crate::Utf;
 use std::borrow::Cow;
@@ -97,6 +99,12 @@ impl Label {
 impl From<String> for Label {
     fn from(s: String) -> Self {
         Self::String(s)
+    }
+}
+
+impl From<&str> for Label {
+    fn from(s: &str) -> Self {
+        s.to_string().into()
     }
 }
 

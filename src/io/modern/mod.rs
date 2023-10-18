@@ -1,10 +1,16 @@
+//! I/O operations for XC3 ("modern") BDATs
+
 use std::borrow::Borrow;
 use std::io::{Cursor, Read, Seek, Write};
 
 use self::write::BdatWriter;
 use super::read::{BdatReader, BdatSlice};
-use crate::{error::Result, Table};
+use crate::{error::Result, ModernTable};
 use byteorder::ByteOrder;
+
+// doc
+#[allow(unused_imports)]
+use crate::BdatFile;
 
 mod read;
 mod write;
@@ -20,10 +26,13 @@ pub(crate) struct FileHeader {
 /// Reads a BDAT file from a [`std::io::Read`] implementation. That type must also implement
 /// [`std::io::Seek`].
 ///
-/// This function will only read the file header. To parse tables, call [`FileReader::get_tables`].
+/// This function will only read the file header. To parse tables, call [`BdatFile::get_tables`].
 ///
 /// The BDAT file format is not recommended for streams, so it is best to read from a file or a
 /// byte buffer.
+///
+/// Tables read using this function can be easily queried for single-value cells. See
+/// [`ModernTable`] for details.
 ///
 /// ```
 /// use std::fs::File;
@@ -44,7 +53,10 @@ pub fn from_reader<R: Read + Seek, E: ByteOrder>(
 /// Reads a BDAT file from a slice. The slice needs to have the **full** file data, though any
 /// unrelated bytes at the end will be ignored.
 ///
-/// This function will only read the file header. To parse tables, call [`FileReader::get_tables`].
+/// This function will only read the file header. To parse tables, call [`BdatFile::get_tables`].
+///
+/// Tables read using this function can be easily queried for single-value cells. See
+/// [`ModernTable`] for details.
 ///
 /// ```
 /// use std::fs::File;
@@ -63,9 +75,9 @@ pub fn from_bytes<E: ByteOrder>(bytes: &[u8]) -> Result<FileReader<BdatSlice<'_,
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, Table, SwitchEndian};
+/// use bdat::{BdatResult, SwitchEndian, ModernTable};
 ///
-/// fn write_file(name: &str, tables: &[Table]) -> BdatResult<()> {
+/// fn write_file(name: &str, tables: &[ModernTable]) -> BdatResult<()> {
 ///     let file = File::create(name)?;
 ///     bdat::modern::to_writer::<_, SwitchEndian>(file, tables)?;
 ///     Ok(())
@@ -73,7 +85,7 @@ pub fn from_bytes<E: ByteOrder>(bytes: &[u8]) -> Result<FileReader<BdatSlice<'_,
 /// ```
 pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
     writer: W,
-    tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
+    tables: impl IntoIterator<Item = impl Borrow<ModernTable<'t>>>,
 ) -> Result<()> {
     let mut writer = BdatWriter::<W, E>::new(writer);
     writer.write_file(tables)
@@ -83,15 +95,15 @@ pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, Table, SwitchEndian};
+/// use bdat::{BdatResult, SwitchEndian, ModernTable};
 ///
-/// fn write_vec(tables: &[Table]) -> BdatResult<()> {
+/// fn write_vec(tables: &[ModernTable]) -> BdatResult<()> {
 ///     let vec = bdat::modern::to_vec::<SwitchEndian>(tables)?;
 ///     Ok(())
 /// }
 /// ```
 pub fn to_vec<'t, E: ByteOrder>(
-    tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
+    tables: impl IntoIterator<Item = impl Borrow<ModernTable<'t>>>,
 ) -> Result<Vec<u8>> {
     let mut vec = Vec::new();
     to_writer::<_, E>(Cursor::new(&mut vec), tables)?;
@@ -101,7 +113,9 @@ pub fn to_vec<'t, E: ByteOrder>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{io::SwitchEndian, Cell, ColumnDef, Label, Row, TableBuilder, Value, ValueType};
+    use crate::{
+        io::SwitchEndian, BdatFile, Cell, ColumnDef, Label, Row, TableBuilder, Value, ValueType,
+    };
 
     #[test]
     fn table_write_back() {
@@ -130,7 +144,7 @@ mod tests {
                     Cell::Single(Value::UnsignedInt(100)),
                 ],
             ))
-            .build();
+            .build_modern();
 
         let written = to_vec::<SwitchEndian>([&table]).unwrap();
         let read_back = &from_bytes::<SwitchEndian>(&written)

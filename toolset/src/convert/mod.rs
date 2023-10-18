@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::{Label, Table};
+use bdat::{Label, Table, TableAccessor};
 use clap::Args;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
@@ -274,7 +274,7 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
             let game = input
                 .game
                 .unwrap_or_else(|| BdatGame::version_default(schema_file.version));
-            game.to_writer(out_file, &tables)?;
+            game.to_writer(out_file, tables)?;
             progress_bar.master_bar.inc(1);
             Ok(())
         })

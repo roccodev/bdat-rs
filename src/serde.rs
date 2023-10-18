@@ -1,3 +1,5 @@
+//! Serde implementations for crate types (requires feature `serde`)
+
 use crate::legacy::float::BdatReal;
 use crate::{Cell, ColumnDef, Label, Value, ValueType};
 use serde::de::value::MapAccessDeserializer;

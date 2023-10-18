@@ -2,8 +2,8 @@
 
 use bdat::legacy::{LegacyHashTable, LegacyWriteOptions};
 use bdat::{
-    BdatVersion, ColumnBuilder, ColumnDef, FlagDef, SwitchEndian, Table, TableBuilder, ValueType,
-    WiiEndian,
+    BdatVersion, ColumnBuilder, ColumnDef, FlagDef, LegacyTable, SwitchEndian, Table, TableBuilder,
+    ValueType, WiiEndian,
 };
 use byteorder::ByteOrder;
 use std::collections::HashSet;
@@ -26,7 +26,7 @@ fn hash_table_xcx() {
 // There is no need to adapt/test the hash table on wii, because it is already used (and tested)
 // when reading
 
-fn create_table<'b>() -> Table<'b> {
+fn create_table<'b>() -> LegacyTable<'b> {
     TableBuilder::with_name("Table1".to_string().into())
         .add_column(ColumnDef::new(
             ValueType::SignedByte,
@@ -49,10 +49,10 @@ fn create_table<'b>() -> Table<'b> {
                 ])
                 .build(),
         )
-        .build()
+        .build_legacy()
 }
 
-fn test_table(table: &Table, version: BdatVersion, slots: usize) {
+fn test_table(table: &LegacyTable, version: BdatVersion, slots: usize) {
     let written = match version {
         BdatVersion::LegacySwitch => bdat::legacy::to_vec_options::<SwitchEndian>(
             [table],

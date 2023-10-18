@@ -1,5 +1,5 @@
 use bdat::legacy::LegacyWriteOptions;
-use bdat::{BdatFile, BdatVersion, Cell, SwitchEndian, Value};
+use bdat::{BdatFile, BdatVersion, Cell, Label, SwitchEndian, TableAccessor, Value};
 
 type FileEndian = SwitchEndian;
 
@@ -122,7 +122,28 @@ fn duplicate_columns() {
     let tables = [common::duplicate_table_create()];
 
     let mut bytes = bdat::legacy::to_vec::<FileEndian>(&tables, BdatVersion::LegacySwitch).unwrap();
-    let back = bdat::from_bytes(&mut bytes).unwrap().get_tables().unwrap();
+    let back = bdat::legacy::from_bytes::<FileEndian>(&mut bytes, BdatVersion::LegacySwitch)
+        .unwrap()
+        .get_tables()
+        .unwrap();
 
     assert_eq!(tables[0], back[0]);
+}
+
+#[test]
+fn table_map() {
+    let tables =
+        bdat::legacy::from_bytes_copy::<FileEndian>(TEST_FILE_1, BdatVersion::LegacySwitch)
+            .unwrap()
+            .get_tables_by_name()
+            .unwrap();
+
+    assert_eq!(1, tables.len());
+    let table = &tables[&Label::from("Table1")];
+
+    assert_eq!("Table1", table.name().to_string_convert());
+    assert_eq!(None, tables.get(&Label::from("Table2")));
+
+    // Lifetime test
+    assert_ne!(0, table.column_count());
 }

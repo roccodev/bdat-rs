@@ -12,8 +12,8 @@ use crate::legacy::float::BdatReal;
 use crate::legacy::scramble::{calc_checksum, scramble, unscramble, ScrambleType};
 use crate::legacy::{ColumnNodeInfo, COLUMN_NODE_SIZE};
 use crate::{
-    BdatError, BdatFile, BdatVersion, Cell, ColumnDef, FlagDef, Label, Row, Table, TableBuilder,
-    Utf, Value, ValueType,
+    BdatError, BdatFile, BdatVersion, Cell, ColumnDef, FlagDef, Label, LegacyTable, Row,
+    TableBuilder, Utf, Value, ValueType,
 };
 
 use super::{FileHeader, TableHeader};
@@ -327,7 +327,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         })
     }
 
-    fn read(mut self) -> Result<Table<'t>> {
+    fn read(mut self) -> Result<LegacyTable<'t>> {
         let name = self.read_string(self.header.offset_names)?.to_string();
         let TableColumns {
             columns: columns_src,
@@ -350,7 +350,9 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
                 flags: flags
                     .get_from_parent(c.info_offset)
                     .map(|f| {
-                        let ColumnCell::Flag(flag) = &f.cell else { unreachable!() };
+                        let ColumnCell::Flag(flag) = &f.cell else {
+                            unreachable!()
+                        };
                         FlagDef {
                             label: f.name.to_string(),
                             flag_index: flag.index,
@@ -377,7 +379,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         Ok(TableBuilder::with_name(Label::String(name))
             .set_columns(columns)
             .set_rows(rows)
-            .build())
+            .build_legacy())
     }
 
     fn discover_columns_from_nodes(&self, info: &ColumnNodeInfo) -> Result<TableColumns> {
@@ -673,7 +675,9 @@ impl<'t> Flags<'t> {
 }
 
 impl<'b, R: Read + Seek, E: ByteOrder> BdatFile<'b> for LegacyReader<R, E> {
-    fn get_tables(&mut self) -> Result<Vec<Table<'b>>> {
+    type TableOut = LegacyTable<'b>;
+
+    fn get_tables(&mut self) -> Result<Vec<LegacyTable<'b>>> {
         let mut tables = Vec::with_capacity(self.header.table_count);
         for offset in &self.header.table_offsets {
             self.reader.seek(SeekFrom::Start(*offset as u64))?;
@@ -688,7 +692,9 @@ impl<'b, R: Read + Seek, E: ByteOrder> BdatFile<'b> for LegacyReader<R, E> {
 }
 
 impl<'b, E: ByteOrder> BdatFile<'b> for LegacyBytes<'b, E> {
-    fn get_tables(&mut self) -> Result<Vec<Table<'b>>> {
+    type TableOut = LegacyTable<'b>;
+
+    fn get_tables(&mut self) -> Result<Vec<LegacyTable<'b>>> {
         let mut tables = Vec::with_capacity(self.header.table_count);
         for (i, offset) in self.header.table_offsets.iter().enumerate() {
             tables.push(match &self.data {

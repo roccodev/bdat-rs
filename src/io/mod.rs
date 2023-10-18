@@ -28,9 +28,17 @@ pub enum BdatVersion {
 }
 
 impl BdatVersion {
+    pub fn is_legacy(&self) -> bool {
+        *self != BdatVersion::Modern
+    }
+
+    pub fn is_modern(&self) -> bool {
+        !self.is_legacy()
+    }
+
     /// Gets whether the version forces labels to be hashed.
     pub fn are_labels_hashed(&self) -> bool {
-        *self == BdatVersion::Modern
+        self.is_modern()
     }
 
     /// Returns the size in bytes of the table header.

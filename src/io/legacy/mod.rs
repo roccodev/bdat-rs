@@ -1,3 +1,5 @@
+//! I/O operations for legacy BDATs
+
 pub mod float;
 pub mod scramble;
 
@@ -15,7 +17,7 @@ use std::ops::Range;
 use crate::error::Result;
 use crate::legacy::read::{LegacyBytes, LegacyReader};
 use crate::legacy::write::FileWriter;
-use crate::{BdatVersion, Table};
+use crate::{BdatVersion, LegacyTable};
 
 pub(super) const HEADER_SIZE: usize = 64;
 pub(super) const HEADER_SIZE_WII: usize = 32;
@@ -182,9 +184,9 @@ pub fn from_bytes_copy<E: ByteOrder>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, Table, SwitchEndian, BdatVersion};
+/// use bdat::{BdatResult, SwitchEndian, BdatVersion, LegacyTable};
 ///
-/// fn write_file(name: &str, tables: &[Table]) -> BdatResult<()> {
+/// fn write_file(name: &str, tables: &[LegacyTable]) -> BdatResult<()> {
 ///     let file = File::create(name)?;
 ///     // The legacy writer supports BdatVersion::Legacy and BdatVersion::LegacyX
 ///     bdat::legacy::to_writer::<_, SwitchEndian>(file, tables, BdatVersion::LegacySwitch)?;
@@ -193,7 +195,7 @@ pub fn from_bytes_copy<E: ByteOrder>(
 /// ```
 pub fn to_writer<'t, W: Write + Seek, E: ByteOrder + 'static>(
     writer: W,
-    tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
+    tables: impl IntoIterator<Item = impl Borrow<LegacyTable<'t>>>,
     version: BdatVersion,
 ) -> Result<()> {
     to_writer_options::<W, E>(writer, tables, version, LegacyWriteOptions::new())
@@ -207,10 +209,10 @@ pub fn to_writer<'t, W: Write + Seek, E: ByteOrder + 'static>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, Table, SwitchEndian, BdatVersion};
+/// use bdat::{BdatResult, LegacyTable, SwitchEndian, BdatVersion};
 /// use bdat::legacy::LegacyWriteOptions;
 ///
-/// fn write_file(name: &str, tables: &[Table]) -> BdatResult<()> {
+/// fn write_file(name: &str, tables: &[LegacyTable]) -> BdatResult<()> {
 ///     let file = File::create(name)?;
 ///     // The legacy writer supports BdatVersion::Legacy and BdatVersion::LegacyX
 ///     bdat::legacy::to_writer_options::<_, SwitchEndian>(file, tables, BdatVersion::LegacySwitch,
@@ -220,7 +222,7 @@ pub fn to_writer<'t, W: Write + Seek, E: ByteOrder + 'static>(
 /// ```
 pub fn to_writer_options<'t, W: Write + Seek, E: ByteOrder + 'static>(
     writer: W,
-    tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
+    tables: impl IntoIterator<Item = impl Borrow<LegacyTable<'t>>>,
     version: BdatVersion,
     opts: LegacyWriteOptions,
 ) -> Result<()> {
@@ -232,16 +234,16 @@ pub fn to_writer_options<'t, W: Write + Seek, E: ByteOrder + 'static>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, Table, SwitchEndian, BdatVersion};
+/// use bdat::{BdatResult, LegacyTable, SwitchEndian, BdatVersion};
 ///
-/// fn write_vec(tables: &[Table]) -> BdatResult<()> {
+/// fn write_vec(tables: &[LegacyTable]) -> BdatResult<()> {
 ///     // The legacy writer supports BdatVersion::Legacy and BdatVersion::LegacyX
 ///     let vec = bdat::legacy::to_vec::<SwitchEndian>(tables, BdatVersion::LegacySwitch)?;
 ///     Ok(())
 /// }
 /// ```
 pub fn to_vec<'t, E: ByteOrder + 'static>(
-    tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
+    tables: impl IntoIterator<Item = impl Borrow<LegacyTable<'t>>>,
     version: BdatVersion,
 ) -> Result<Vec<u8>> {
     to_vec_options::<E>(tables, version, LegacyWriteOptions::new())
@@ -254,10 +256,10 @@ pub fn to_vec<'t, E: ByteOrder + 'static>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, Table, SwitchEndian, BdatVersion};
+/// use bdat::{BdatResult, LegacyTable, SwitchEndian, BdatVersion};
 /// use bdat::legacy::LegacyWriteOptions;
 ///
-/// fn write_vec(tables: &[Table]) -> BdatResult<()> {
+/// fn write_vec(tables: &[LegacyTable]) -> BdatResult<()> {
 ///     // The legacy writer supports BdatVersion::Legacy and BdatVersion::LegacyX
 ///     let vec = bdat::legacy::to_vec_options::<SwitchEndian>(tables, BdatVersion::LegacySwitch,
 ///             LegacyWriteOptions::new().hash_slots(10))?;
@@ -265,7 +267,7 @@ pub fn to_vec<'t, E: ByteOrder + 'static>(
 /// }
 /// ```
 pub fn to_vec_options<'t, E: ByteOrder + 'static>(
-    tables: impl IntoIterator<Item = impl Borrow<Table<'t>>>,
+    tables: impl IntoIterator<Item = impl Borrow<LegacyTable<'t>>>,
     version: BdatVersion,
     opts: LegacyWriteOptions,
 ) -> Result<Vec<u8>> {

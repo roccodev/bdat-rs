@@ -126,7 +126,7 @@ impl BdatDeserialize for JsonConverter {
     fn read_table(
         &self,
         name: Label,
-        _schema: &FileSchema,
+        file_schema: &FileSchema,
         reader: &mut dyn Read,
     ) -> Result<Table> {
         let table: JsonTable =
@@ -196,7 +196,7 @@ impl BdatDeserialize for JsonConverter {
         Ok(TableBuilder::with_name(name)
             .set_columns(columns)
             .set_rows(rows)
-            .build())
+            .build(file_schema.version))
     }
 
     fn get_table_extension(&self) -> &'static str {
