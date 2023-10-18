@@ -1,7 +1,10 @@
 use crate::hash::PreHashedMap;
 use crate::{
-    ColumnDef, ColumnMap, Label, ModernCell, Row, RowRef, RowRefMut, TableAccessor, TableBuilder,
+    ColumnDef, ColumnMap, Label, LegacyTable, ModernCell, Row, RowRef, RowRefMut, Table,
+    TableAccessor, TableBuilder,
 };
+
+use super::{FormatConvertError, TableInner};
 
 /// The BDAT table representation in modern formats, currently used in Xenoblade 3.
 ///
@@ -213,5 +216,32 @@ impl<'t, 'b: 't> TableAccessor<'t, 'b> for ModernTable<'b> {
 
     fn column_count(&self) -> usize {
         self.columns.as_slice().len()
+    }
+}
+
+impl<'b> From<ModernTable<'b>> for TableBuilder<'b> {
+    fn from(value: ModernTable<'b>) -> Self {
+        Self {
+            name: value.name,
+            columns: value.columns,
+            rows: value.rows,
+        }
+    }
+}
+
+impl<'b> From<ModernTable<'b>> for Table<'b> {
+    fn from(value: ModernTable<'b>) -> Self {
+        Self {
+            inner: TableInner::Modern(value),
+        }
+    }
+}
+
+impl<'b> TryFrom<ModernTable<'b>> for LegacyTable<'b> {
+    type Error = FormatConvertError;
+
+    fn try_from(value: ModernTable<'b>) -> Result<Self, Self::Error> {
+        // TODO: check for unsupported value types
+        Ok(LegacyTable::new(TableBuilder::from(value)))
     }
 }

@@ -121,7 +121,7 @@
 //! Writing fully requires the user to specify the BDAT version to use, by choosing the
 //! appropriate module implementation.
 //!
-//! [`Table`]s obtained with the auto-detecting functions must be converted first.
+//! [`Table`]s obtained with the auto-detecting functions must be extracted or converted first.
 //!
 //! ```
 //! use bdat::{BdatResult, BdatVersion, SwitchEndian, WiiEndian, ModernTable, LegacyTable};
@@ -157,7 +157,7 @@ pub mod serde;
 pub(crate) mod error;
 pub(crate) mod io;
 pub(crate) mod label;
-pub(crate) mod table;
+pub mod table;
 
 pub use error::BdatError;
 pub use error::Result as BdatResult;
@@ -168,4 +168,4 @@ pub use label::*;
 pub use table::cell::*;
 pub use table::column::*;
 pub use table::row::*;
-pub use table::*;
+pub use table::{LegacyTable, ModernTable, Table, TableAccessor, TableBuilder};

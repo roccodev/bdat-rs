@@ -1,6 +1,9 @@
 use crate::{
-    ColumnDef, ColumnMap, Label, LegacyCell, Row, RowRef, RowRefMut, TableAccessor, TableBuilder,
+    ColumnDef, ColumnMap, Label, LegacyCell, ModernTable, Row, RowRef, RowRefMut, Table,
+    TableAccessor, TableBuilder,
 };
+
+use super::{FormatConvertError, TableInner};
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct LegacyTable<'b> {
@@ -38,12 +41,6 @@ impl<'b> LegacyTable<'b> {
     ///
     /// Additionally, if the iterator is used to replace rows, proper care must be taken to
     /// ensure the new rows have the same IDs, as to preserve the original table's row order.
-    ///
-    /// When the `hash-table` feature is enabled, the new rows must also retain their original
-    /// hashed ID (for modern BDATs). Failure to do so will lead to improper behavior of
-    /// [`get_row_by_hash`].
-    ///
-    /// [`get_row_by_hash`]: Table::get_row_by_hash
     pub fn rows_mut(&mut self) -> impl Iterator<Item = RowRefMut<'_, 'b>> {
         self.rows
             .iter_mut()
@@ -115,5 +112,32 @@ impl<'t, 'b: 't> TableAccessor<'t, 'b> for LegacyTable<'b> {
 
     fn column_count(&self) -> usize {
         self.columns.as_slice().len()
+    }
+}
+
+impl<'b> From<LegacyTable<'b>> for TableBuilder<'b> {
+    fn from(value: LegacyTable<'b>) -> Self {
+        Self {
+            name: value.name,
+            columns: value.columns,
+            rows: value.rows,
+        }
+    }
+}
+
+impl<'b> From<LegacyTable<'b>> for Table<'b> {
+    fn from(value: LegacyTable<'b>) -> Self {
+        Self {
+            inner: TableInner::Legacy(value),
+        }
+    }
+}
+
+impl<'b> TryFrom<LegacyTable<'b>> for ModernTable<'b> {
+    type Error = FormatConvertError;
+
+    fn try_from(value: LegacyTable<'b>) -> Result<Self, Self::Error> {
+        // TODO: check for unsupported value & cell types. Maybe swap files with modern impl?
+        Ok(ModernTable::new(TableBuilder::from(value)))
     }
 }

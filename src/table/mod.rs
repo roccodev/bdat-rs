@@ -1,4 +1,5 @@
-use crate::{BdatVersion, Cell, ColumnDef, ColumnMap, Label, Row, RowRef, RowRefMut};
+use crate::{BdatResult, BdatVersion, Cell, ColumnDef, ColumnMap, Label, Row, RowRef, RowRefMut};
+use thiserror::Error;
 use util::VersionedIter;
 
 pub mod cell;
@@ -70,6 +71,11 @@ pub struct TableBuilder<'b> {
     columns: ColumnMap,
     rows: Vec<Row<'b>>,
 }
+
+/// Error encountered while converting tables
+/// to a different format.
+#[derive(Error, Debug)]
+pub enum FormatConvertError {}
 
 pub trait TableAccessor<'t, 'b: 't> {
     type Cell;
@@ -147,20 +153,57 @@ macro_rules! versioned_iter {
 }
 
 impl<'b> Table<'b> {
-    pub fn as_modern(&self) -> &ModernTable {
+    /// If the table is modern, returns a view of the underlying table.
+    ///
+    /// ## Panics
+    /// Panics if the table is not modern.
+    pub fn as_modern(&self) -> &ModernTable<'b> {
         match &self.inner {
             TableInner::Modern(m) => m,
             _ => panic!("not modern"),
         }
     }
 
-    pub fn as_legacy(&self) -> &LegacyTable {
+    /// If the table is legacy, returns a view of the underlying table.
+    ///
+    /// ## Panics
+    /// Panics if the table is not legacy.
+    pub fn as_legacy(&self) -> &LegacyTable<'b> {
         match &self.inner {
             TableInner::Legacy(l) => l,
             _ => panic!("not legacy"),
         }
     }
 
+    /// If the table is modern, returns a mutable view of the underlying table.
+    ///
+    /// ## Panics
+    /// Panics if the table is not modern.
+    pub fn as_modern_mut(&mut self) -> &mut ModernTable<'b> {
+        match &mut self.inner {
+            TableInner::Modern(m) => m,
+            _ => panic!("not modern"),
+        }
+    }
+
+    /// If the table is legacy, returns a mutable view of the underlying table.
+    ///
+    /// ## Panics
+    /// Panics if the table is not legacy.
+    pub fn as_legacy_mut(&mut self) -> &mut LegacyTable<'b> {
+        match &mut self.inner {
+            TableInner::Legacy(l) => l,
+            _ => panic!("not legacy"),
+        }
+    }
+
+    /// If the table is modern, returns the underlying table.
+    ///
+    /// ## Panics
+    /// Panics if the table is not modern.  
+    /// For a panic-free function that converts instead, use [`to_modern`].
+    ///
+    /// [`to_modern`]: Table::to_modern
     pub fn into_modern(self) -> ModernTable<'b> {
         match self.inner {
             TableInner::Modern(m) => m,
@@ -168,6 +211,13 @@ impl<'b> Table<'b> {
         }
     }
 
+    /// If the table is legacy, returns the underlying table.
+    ///
+    /// ## Panics
+    /// Panics if the table is not legacy.  
+    /// For a panic-free function that converts instead, use [`to_legacy`].
+    ///
+    /// [`to_legacy`]: Table::to_legacy
     pub fn into_legacy(self) -> LegacyTable<'b> {
         match self.inner {
             TableInner::Legacy(l) => l,
@@ -175,12 +225,48 @@ impl<'b> Table<'b> {
         }
     }
 
+    /// Returns whether the underlying table is modern.
     pub fn is_modern(&self) -> bool {
         matches!(self.inner, TableInner::Modern(_))
     }
 
+    /// Returns whether the underlying table is legacy.
     pub fn is_legacy(&self) -> bool {
         matches!(self.inner, TableInner::Legacy(_))
+    }
+
+    /// Returns a modern table as close to the underlying table as possible.
+    ///
+    /// * If the table is modern, this does nothing and returns it.
+    /// * If the table is legacy, it tries to convert it to the
+    /// modern format, and returns the result.
+    ///
+    /// This is not to be confused with [`into_modern`], which panics if
+    /// the table is not modern.
+    ///
+    /// [`into_modern`]: Table::into_modern
+    pub fn to_modern(self) -> BdatResult<ModernTable<'b>> {
+        match self.inner {
+            TableInner::Modern(m) => Ok(m),
+            TableInner::Legacy(l) => Ok(l.try_into()?),
+        }
+    }
+
+    /// Returns a legacy table as close to the underlying table as possible.
+    ///
+    /// * If the table is legacy, this does nothing and returns it.
+    /// * If the table is modern, it tries to convert it to the
+    /// legacy format, and returns the result.
+    ///
+    /// This is not to be confused with [`into_legacy`], which panics if
+    /// the table is not legacy.
+    ///
+    /// [`into_legacy`]: Table::into_legacy
+    pub fn to_legacy(self) -> BdatResult<LegacyTable<'b>> {
+        match self.inner {
+            TableInner::Modern(m) => Ok(m.try_into()?),
+            TableInner::Legacy(l) => Ok(l),
+        }
     }
 
     /// Gets an iterator that visits this table's rows
@@ -319,32 +405,6 @@ impl<'b> TableBuilder<'b> {
             self.build_legacy().into()
         } else {
             self.build_modern().into()
-        }
-    }
-}
-
-impl<'b> From<ModernTable<'b>> for TableBuilder<'b> {
-    fn from(table: ModernTable<'b>) -> Self {
-        Self {
-            name: table.name,
-            columns: table.columns,
-            rows: table.rows,
-        }
-    }
-}
-
-impl<'b> From<ModernTable<'b>> for Table<'b> {
-    fn from(value: ModernTable<'b>) -> Self {
-        Self {
-            inner: TableInner::Modern(value),
-        }
-    }
-}
-
-impl<'b> From<LegacyTable<'b>> for Table<'b> {
-    fn from(value: LegacyTable<'b>) -> Self {
-        Self {
-            inner: TableInner::Legacy(value),
         }
     }
 }
