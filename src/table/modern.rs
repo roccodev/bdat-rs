@@ -188,11 +188,7 @@ impl<'t, 'b: 't> TableAccessor<'t, 'b> for ModernTable<'b> {
     /// }
     /// ```
     fn row(&self, id: usize) -> RowRef<'_, 'b, ModernCell<'_, 'b>> {
-        self.get_row(id).expect("no such row")
-    }
-
-    fn row_mut(&mut self, id: usize) -> RowRefMut<'_, 'b> {
-        self.get_row_mut(id).expect("no such row")
+        self.get_row(id).expect("row not found")
     }
 
     fn get_row(&self, id: usize) -> Option<RowRef<'_, 'b, ModernCell<'_, 'b>>> {

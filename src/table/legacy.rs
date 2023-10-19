@@ -109,14 +109,6 @@ impl<'t, 'b: 't> TableAccessor<'t, 'b> for LegacyTable<'b> {
         self.base_id
     }
 
-    fn row(&self, id: usize) -> RowRef<'_, 'b, LegacyCell<'_, 'b>> {
-        self.get_row(id).expect("no such row")
-    }
-
-    fn row_mut(&mut self, id: usize) -> RowRefMut<'_, 'b> {
-        self.get_row_mut(id).expect("no such row")
-    }
-
     fn get_row(&self, id: usize) -> Option<RowRef<'_, 'b, LegacyCell<'_, 'b>>> {
         let index = id.checked_sub(self.base_id)?;
         self.rows

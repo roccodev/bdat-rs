@@ -115,7 +115,9 @@ pub trait TableAccessor<'t, 'b: 't> {
     ///
     /// ## Panics
     /// If there is no row for the given ID.
-    fn row(&'t self, id: usize) -> RowRef<'t, 'b, Self::Cell>;
+    fn row(&'t self, id: usize) -> RowRef<'t, 'b, Self::Cell> {
+        self.get_row(id).expect("row not found")
+    }
 
     /// Gets a mutable view of a row by its ID
     ///
@@ -125,7 +127,9 @@ pub trait TableAccessor<'t, 'b: 't> {
     ///
     /// ## Panics
     /// If there is no row for the given ID
-    fn row_mut(&'t mut self, id: usize) -> RowRefMut<'t, 'b>;
+    fn row_mut(&'t mut self, id: usize) -> RowRefMut<'t, 'b> {
+        self.get_row_mut(id).expect("row not found")
+    }
 
     /// Attempts to get a row by its ID.  
     /// If there is no row for the given ID, this returns [`None`].
