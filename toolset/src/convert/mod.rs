@@ -11,7 +11,7 @@ use clap::Args;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 
-use crate::util::{BdatGame, ProgressBarState, RayonPoolJobs};
+use crate::{util::{BdatGame, ProgressBarState, RayonPoolJobs}, error::SchemaError};
 use crate::{
     error::Error,
     filter::{Filter, FilterArg},
@@ -199,7 +199,7 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
         .into_iter()
         .collect::<walkdir::Result<Vec<_>>>()?;
     if schema_files.is_empty() {
-        return Err(Error::DeserMissingSchema.into());
+        return Err(Error::from(SchemaError::MissingSchema).into());
     }
     let base_path = crate::util::get_common_denominator(&schema_files);
 

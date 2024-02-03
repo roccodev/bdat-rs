@@ -17,25 +17,44 @@ pub enum Error {
     NotLegacy,
     #[error("Not a modern BDAT file")]
     NotModern,
+    #[error("Schema error: {0}")]
+    Schema(#[from] SchemaError),
+    #[error("Table format error ({table}): {error}")]
+    Format { table: OptLabel, error: FormatError },
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum SchemaError {
     #[error("No schema files found, please run 'extract' without '--no-schema'")]
-    DeserMissingSchema,
+    MissingSchema,
     #[error(
         "Outdated schema for file '{}', found version {}, expected version {}, \
         please run 'extract' again without '--no-schema'", _0.0, _0.1, _0.2
     )]
-    DeserOutdatedSchema(Box<(String, usize, usize)>),
-    #[error("Table {0} is missing type information, please run 'extract' without '-u', or add types manually")]
-    DeserMissingTypeInfo(OptLabel),
+    OutdatedSchema(Box<(String, usize, usize)>),
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum FormatError {
+    #[error("Missing type information, please run 'extract' without '-u', or add types manually")]
+    MissingTypeInfo,
     #[error("Row {0} does not have entries for all columns")]
-    DeserIncompleteRow(usize),
-    #[error("Column {} in table {} exceeds the maximum duplicate column count of \
-    {MAX_DUPLICATE_COLUMNS}. Please avoid using multiple columns with the same name.",
-    _0.1, _0.0)]
-    DeserMaxDuplicateColumns(Box<(OptLabel, OptLabel)>),
-    #[error("Columns {} in table {} differ in type ({:?} / {:?}). \
+    IncompleteRow(usize),
+    #[error("Column name {0} exceeds the maximum duplicate count of \
+    {MAX_DUPLICATE_COLUMNS}. Please avoid using multiple columns with the same name.")]
+    MaxDuplicateColumns(OptLabel),
+    #[error("Columns with name {} differ in type ({:?} / {:?}). \
     Please avoid using multiple columns with the same name.", 
-    _0.1, _0.0, _0.2, _0.3)]
-    DeserDuplicateMismatch(Box<(OptLabel, OptLabel, ValueType, ValueType)>),
+    _0.0, _0.1, _0.2)]
+    DuplicateMismatch(Box<(OptLabel, ValueType, ValueType)>),
+    #[error("Entry for row {0} is missing, was a row deleted without updating the IDs?")]
+    MissingRow(usize)
+}
+
+impl FormatError {
+    pub fn with_context(self, table_name: impl Into<OptLabel>) -> Error {
+        Error::Format { table: table_name.into(), error: self }
+    }
 }
 
 impl Display for OptLabel {

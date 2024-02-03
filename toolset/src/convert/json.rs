@@ -10,7 +10,7 @@ use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
 use serde_json::Map;
 
-use crate::error::{Error, MAX_DUPLICATE_COLUMNS};
+use crate::error::{MAX_DUPLICATE_COLUMNS, FormatError};
 use crate::util::fixed_vec::FixedVec;
 
 use super::{schema::FileSchema, BdatDeserialize, BdatSerialize, ConvertArgs};
@@ -134,7 +134,7 @@ impl BdatDeserialize for JsonConverter {
 
         let schema = table
             .schema
-            .ok_or_else(|| Error::DeserMissingTypeInfo(name.clone().into()))?;
+            .ok_or_else(|| FormatError::MissingTypeInfo.with_context(name.clone()))?;
 
         let (columns, column_map, _): (Vec<ColumnDef>, HashMap<String, DuplicateColumnKey>, _) =
             schema.into_iter().try_fold(
@@ -151,18 +151,14 @@ impl BdatDeserialize for JsonConverter {
                         .entry(col.name)
                         .or_insert_with(|| (FixedVec::default(), def.clone()));
                     indices.try_push(idx).map_err(|_| {
-                        Error::DeserMaxDuplicateColumns(Box::new((
-                            name.clone().into(),
-                            label.clone().into(),
-                        )))
+                        FormatError::MaxDuplicateColumns(label.clone().into()).with_context(name.clone())
                     })?;
                     if dup_col.value_type() != col.ty {
-                        return Err(Error::DeserDuplicateMismatch(Box::new((
-                            name.clone().into(),
+                        return Err(FormatError::DuplicateMismatch(Box::new((
                             label.into(),
                             dup_col.value_type(),
                             col.ty,
-                        ))));
+                        ))).with_context(name.clone()));
                     }
                     cols.push(def);
                     Ok((cols, map, idx + 1))
@@ -187,7 +183,7 @@ impl BdatDeserialize for JsonConverter {
                 let old_len = cells.len();
                 let cells: Vec<Cell> = cells.into_iter().flatten().collect();
                 if cells.len() != old_len {
-                    return Err(Error::DeserIncompleteRow(id).into());
+                    return Err(FormatError::IncompleteRow(id).with_context(name.clone()).into());
                 }
                 Ok(Row::new(id, cells))
             })

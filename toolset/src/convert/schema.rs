@@ -5,7 +5,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use crate::error::Error;
+use crate::error::{Error, SchemaError};
 use bdat::{BdatVersion, Label, Table, TableAccessor, Utf};
 use serde::{Deserialize, Serialize};
 
@@ -40,11 +40,11 @@ impl FileSchema {
     pub fn read(reader: impl Read) -> anyhow::Result<Self> {
         let schema: FileSchema = serde_json::from_reader(reader)?;
         if schema.format_version != FORMAT_VERSION {
-            return Err(Error::DeserOutdatedSchema(Box::new((
+            return Err(Error::from(SchemaError::OutdatedSchema(Box::new((
                 schema.file_name,
                 schema.format_version,
                 FORMAT_VERSION,
-            )))
+            ))))
             .into());
         }
         Ok(schema)

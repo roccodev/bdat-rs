@@ -1,5 +1,5 @@
 use crate::table::FormatConvertError;
-use crate::{BdatVersion, DetectError, ValueType};
+use crate::{BdatVersion, DetectError, ValueType, Label};
 use std::num::TryFromIntError;
 use std::str::Utf8Error;
 use thiserror::Error;
@@ -20,7 +20,7 @@ pub enum BdatError {
     UnknownCellType(u8),
     #[error("Unknown value type: {0}")]
     UnknownValueType(u8),
-    #[error("Unsupported type: BDAT version {0:?} does not support value type {1:?}")]
+    #[error("Unsupported type: BDAT version {1:?} does not support value type {0:?}")]
     UnsupportedType(ValueType, BdatVersion),
     #[error("Invalid flag type: value type {0:?} does not support flags")]
     InvalidFlagType(ValueType),
@@ -30,6 +30,11 @@ pub enum BdatError {
     FormatConvert(#[from] FormatConvertError),
     #[error("Unsupported cast type for {0:?}")]
     ValueCast(ValueType),
+    #[error(
+        "Duplicate hash key ({}: {}) in rows {} and {}. Duplicate keys are not allowed in the primary key table.",
+        _0.0, _0.1, _0.2, _0.3
+    )]
+    DuplicateKey(Box<(Label, Label, usize, usize)>),
 }
 
 #[derive(Debug)]

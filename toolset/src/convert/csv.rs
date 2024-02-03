@@ -20,6 +20,7 @@ pub struct CsvOptions {
 pub struct CsvConverter {
     separator_ch: char,
     expand_lists: bool,
+    untyped: bool,
 }
 
 /// Utility to `flat_map` multiple iterator types
@@ -34,28 +35,33 @@ impl CsvConverter {
         Self {
             separator_ch: args.csv_opts.csv_separator.unwrap_or(','),
             expand_lists: args.csv_opts.expand_lists,
+            untyped: args.untyped,
         }
     }
 
-    fn format_column<'a>(
-        &self,
-        column: &'a ColumnDef,
-    ) -> ColumnIter<String, impl Iterator<Item = String> + 'a, impl Iterator<Item = String> + 'a>
-    {
-        if !column.flags().is_empty() {
-            return ColumnIter::Flags(
-                column
-                    .flags()
-                    .iter()
-                    .map(|flag| format!("{} [{}]", column.label(), flag.label())),
-            );
-        }
-        if column.count() > 1 && self.expand_lists {
-            return ColumnIter::Array(
-                (0..column.count()).map(|i| format!("{}[{i}]", column.label())),
-            );
-        }
-        ColumnIter::Single(std::iter::once(column.label().to_string()))
+    fn format_column<'a>(&'a self, column: &'a ColumnDef) -> impl Iterator<Item = String> + 'a {
+        let iter = {
+            if !column.flags().is_empty() {
+                ColumnIter::Flags(
+                    column
+                        .flags()
+                        .iter()
+                        .map(|flag| format!("{} [{}]", column.label(), flag.label())),
+                )
+            } else if column.count() > 1 && self.expand_lists {
+                ColumnIter::Array((0..column.count()).map(|i| format!("{}[{i}]", column.label())))
+            } else {
+                ColumnIter::Single(std::iter::once(column.label().to_string()))
+            }
+        };
+        let value_type = column.value_type() as u8;
+        iter.map(move |s| {
+            if !self.untyped {
+                format!("{s} {{{}}}", value_type)
+            } else {
+                s
+            }
+        })
     }
 
     fn format_cell<'b, 'a: 'b, 't: 'a>(

@@ -9,6 +9,7 @@ use std::{
 
 use byteorder::{ByteOrder, WriteBytesExt};
 
+use crate::{BdatError, ValueType};
 use crate::io::BDAT_MAGIC;
 use crate::{error::Result, Cell, Label, ModernTable, Row, TableAccessor, Value};
 
@@ -101,11 +102,7 @@ where
         Ok(())
     }
 
-    pub fn write_table(&mut self, table: &ModernTable) -> Result<()> {
-        self.write_table_v2(table)
-    }
-
-    fn write_table_v2(&mut self, table: &ModernTable) -> Result<()> {
+    fn write_table(&mut self, table: &ModernTable) -> Result<()> {
         let table_offset = self.stream.stream_position()?;
 
         let columns = table.columns.as_slice();
@@ -122,6 +119,7 @@ where
 
         let mut primary_keys = vec![];
         let mut label_table = LabelTable::default();
+        let mut primary_col: Option<(Label, usize)> = None;
         // Table name should be the first label in the table
         label_table.get(Cow::Borrowed(table.name()));
 
@@ -129,7 +127,10 @@ where
         let column_table: Vec<u8> = {
             let mut data = Vec::with_capacity(columns.len() * (1 + 4));
 
-            for col in table.columns.as_slice() {
+            for (i, col) in table.columns.as_slice().iter().enumerate() {
+                if col.value_type() == ValueType::HashRef {
+                    primary_col.get_or_insert_with(|| (col.label.clone(), i));
+                }
                 data.write_u8(col.value_type as u8)?;
                 data.write_u16::<E>(u16::try_from(label_table.get(Cow::Borrowed(&col.label)))?)?;
             }
@@ -142,18 +143,18 @@ where
             let mut data = vec![];
             let mut row_len = 0;
 
-            for row in &table.rows {
-                let mut found_primary = false;
-
-                for cell in &row.cells {
+            for (row_idx, row) in table.rows.iter().enumerate() {
+                for (cell_idx, cell) in row.cells.iter().enumerate() {
                     match cell {
                         Cell::Single(v) => {
-                            if let (false, Value::HashRef(hash)) = (found_primary, &v) {
-                                found_primary = true;
-                                // TODO: check if ID == row.index
-                                primary_keys.push((*hash, u32::try_from(row.id())?));
+                            match (&primary_col, v) {
+                                (Some((_, i)), Value::HashRef(hash)) if *i == cell_idx => {
+                                    // TODO: check if ID == row.index
+                                    primary_keys.push((*hash, u32::try_from(row.id())?));
+                                }
+                                _ => {}
                             }
-                            Self::write_value_v2(&mut data, v, &mut label_table)?
+                            Self::write_value(&mut data, v, &mut label_table)?
                         }
                         _ => panic!("flag/list cells are not supported by modern BDAT"),
                     }
@@ -169,6 +170,13 @@ where
         // Mapping of ID hash -> row index, sorted by hash
         let primary_key_table = {
             primary_keys.sort_unstable();
+
+            // Make sure there are no duplicate hashes
+            if let Some(dups) = primary_keys.windows(2).find(|w| w.len() > 1 && w[0].0 == w[1].0) {
+                let &[a, b] = dups else { unreachable!() };
+                return Err(BdatError::DuplicateKey(Box::new((primary_col.unwrap().0, Label::Hash(a.0), a.1.try_into()?, b.1.try_into()?))));
+            }
+
             let mut buf = Vec::with_capacity(primary_keys.len() * 8);
             for (hash, i) in primary_keys {
                 buf.write_u32::<E>(hash)?;
@@ -214,7 +222,7 @@ where
         Ok(())
     }
 
-    fn write_value_v2(
+    fn write_value(
         writer: &mut impl Write,
         value: &Value,
         string_map: &mut LabelTable,
