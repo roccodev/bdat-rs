@@ -143,13 +143,12 @@ where
             let mut data = vec![];
             let mut row_len = 0;
 
-            for (row_idx, row) in table.rows.iter().enumerate() {
+            for row in &table.rows {
                 for (cell_idx, cell) in row.cells.iter().enumerate() {
                     match cell {
                         Cell::Single(v) => {
                             match (&primary_col, v) {
                                 (Some((_, i)), Value::HashRef(hash)) if *i == cell_idx => {
-                                    // TODO: check if ID == row.index
                                     primary_keys.push((*hash, u32::try_from(row.id())?));
                                 }
                                 _ => {}

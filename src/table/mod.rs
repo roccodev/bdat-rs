@@ -403,12 +403,43 @@ impl<'b> TableBuilder<'b> {
         self
     }
 
+    /// Adds a new row at the end of the table.
+    ///
+    /// ## Panics
+    /// Panics if the new row ID's isn't exactly the ID of the current
+    /// last row + 1, or if no more rows can be added.
     pub fn add_row(mut self, row: Row<'b>) -> Self {
+        // ID sanity check
+        if let Some(last_row) = self.rows.last() {
+            if last_row.id() == u32::MAX as usize {
+                panic!("row limit of {} reached, no more rows can be added", u32::MAX);
+            }
+            if last_row.id() + 1 != row.id() {
+                panic!("attempted to add non-consecutive row ID, expected {}, found {}",
+                    last_row.id() + 1, row.id());
+            }
+        }
         self.rows.push(row);
         self
     }
 
+    /// Sets the entire row list for the table.
+    ///
+    /// ## Panics
+    /// Panics if any two consecutive rows have non-consecutive or wrongly
+    /// ordered IDs.
     pub fn set_rows(mut self, rows: Vec<Row<'b>>) -> Self {
+        for w in rows.windows(2) {
+            let [a, b] = w else { continue }; // Only 1 row
+            let (a, b) = (a.id(), b.id());
+            if a >= b {
+                panic!("found pair of wrongly-ordered IDs, {} >= {}", a, b);
+            }
+            if b - a != 1 {
+                panic!("found pair of non-consecutive row IDs, expected {}/{}, found {}/{}",
+                    a, a + 1, a, b);
+            }
+        }
         self.rows = rows;
         self
     }

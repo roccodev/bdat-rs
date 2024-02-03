@@ -73,11 +73,7 @@ impl<'b> ModernTable<'b> {
                 .min()
                 .unwrap_or_default(),
             #[cfg(feature = "hash-table")]
-            row_hash_table: builder
-                .rows
-                .iter()
-                .filter_map(|r| Some((r.id_hash()?, r.id())))
-                .collect(),
+            row_hash_table: build_id_map_checked(&builder.rows),
             rows: builder.rows,
         }
     }
@@ -152,6 +148,27 @@ impl<'b> ModernTable<'b> {
     pub fn into_columns(self) -> impl Iterator<Item = ColumnDef> {
         self.columns.into_raw().into_iter()
     }
+}
+
+/// Builds a primary key index for the table.
+///
+/// If there is no hash-type column, the map will be empty.
+///
+/// ## Panics
+/// Panics if there are two rows with the same key hash.
+#[cfg(feature = "hash-table")]
+fn build_id_map_checked(rows: &[Row]) -> PreHashedMap<u32, usize> {
+    use std::collections::hash_map::Entry;
+
+    let mut res = PreHashedMap::with_capacity_and_hasher(rows.len(), Default::default());
+    for row in rows {
+        let Some(hash) = row.id_hash() else { continue };
+        match res.entry(hash) {
+            Entry::Occupied(_) => panic!("failed to build row hash table: duplicate key {:?}", Label::Hash(hash)),
+            e => e.or_insert(row.id()),
+        };
+    }
+    res
 }
 
 impl<'t, 'b: 't> TableAccessor<'t, 'b> for ModernTable<'b> {
