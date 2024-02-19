@@ -1,0 +1,97 @@
+name: Build toolset for release
+
+on:
+  release:
+    types: ["created"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag name
+        type: string
+
+jobs:
+  clippy:
+    name: Check/Clippy
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          components: clippy
+          profile: minimal
+          override: true
+
+      - name: Run clippy
+        uses: actions-rs/clippy-check@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          args: --all-features
+  
+  test:
+    name: Run tests
+    needs: [clippy]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v1
+
+      - name: Install rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          profile: minimal
+          override: true
+
+      - name: Test API
+        uses: actions-rs/cargo@v1
+        with:
+          command: test
+          args: --all-features
+
+      - name: Test toolset
+        run: cd toolset && cargo test --all-features
+  
+  build-toolset:
+    name: Build & package toolset
+    needs: [test]
+    runs-on: ${{ matrix.builds.os }}
+    strategy:
+      matrix:
+        builds:
+          - os: ubuntu-latest
+            file: linux-x86_64-glibc
+            out: bdat-toolset
+            target: x86_64-unknown-linux-gnu
+          - os: ubuntu-latest
+            file: linux-x86_64-musl
+            out: bdat-toolset
+            target: x86_64-unknown-linux-musl
+          - os: windows-2019
+            file: win64.exe
+            out: bdat-toolset.exe
+            target: x86_64-pc-windows-msvc
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Install Rust
+        uses: actions-rs/toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.builds.target }}
+      - name: Build
+        run: cd toolset && cargo build --release --target ${{ matrix.builds.target }}
+      - name: Rename files
+        working-directory: toolset/target/${{ matrix.builds.target }}/release
+        run: mv ${{ matrix.builds.out }} bdat-toolset-${{ matrix.builds.file }}
+      - name: Upload executable to release
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        working-directory: toolset/target/${{ matrix.builds.target }}/release
+        run: gh release upload ${{ inputs.tag || github.ref_name }} bdat-toolset-${{ matrix.builds.file }} --clobber
+  
+ 
+    
