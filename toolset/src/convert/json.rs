@@ -4,13 +4,13 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::{Cell, ColumnDef, Label, Row, Table, TableBuilder, ValueType};
+use bdat::{Cell, ColumnDef, Label, RowId, Table, TableBuilder, ValueType};
 use bdat::{ColumnBuilder, FlagDef};
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
 use serde_json::Map;
 
-use crate::error::{MAX_DUPLICATE_COLUMNS, FormatError};
+use crate::error::{FormatError, MAX_DUPLICATE_COLUMNS};
 use crate::util::fixed_vec::FixedVec;
 
 use super::{schema::FileSchema, BdatDeserialize, BdatSerialize, ConvertArgs};
@@ -32,7 +32,7 @@ struct JsonTable {
 #[derive(Serialize, Deserialize)]
 struct TableRow {
     #[serde(rename = "$id")]
-    id: usize,
+    id: RowId,
     #[serde(flatten)]
     cells: Map<String, serde_json::Value>,
 }
@@ -88,16 +88,15 @@ impl BdatSerialize for JsonConverter {
         let columns = table.columns().cloned().collect::<Vec<_>>();
 
         let rows = table
-            .into_rows()
-            .map(|row| {
-                let id = row.id();
+            .into_rows_id()
+            .map(|(id, row)| {
                 let cells = columns
                     .iter()
                     .zip(row.cells())
                     .map(|(col, cell)| {
                         (
                             col.label().to_string(),
-                            serde_json::to_value(col.cell_serializer(cell)).unwrap(),
+                            serde_json::to_value(col.owned_cell_serializer(cell)).unwrap(),
                         )
                     })
                     .collect();
@@ -151,14 +150,16 @@ impl BdatDeserialize for JsonConverter {
                         .entry(col.name)
                         .or_insert_with(|| (FixedVec::default(), def.clone()));
                     indices.try_push(idx).map_err(|_| {
-                        FormatError::MaxDuplicateColumns(label.clone().into()).with_context(name.clone())
+                        FormatError::MaxDuplicateColumns(label.clone().into())
+                            .with_context(name.clone())
                     })?;
                     if dup_col.value_type() != col.ty {
                         return Err(FormatError::DuplicateMismatch(Box::new((
                             label.into(),
                             dup_col.value_type(),
                             col.ty,
-                        ))).with_context(name.clone()));
+                        )))
+                        .with_context(name.clone()));
                     }
                     cols.push(def);
                     Ok((cols, map, idx + 1))
@@ -183,9 +184,11 @@ impl BdatDeserialize for JsonConverter {
                 let old_len = cells.len();
                 let cells: Vec<Cell> = cells.into_iter().flatten().collect();
                 if cells.len() != old_len {
-                    return Err(FormatError::IncompleteRow(id).with_context(name.clone()).into());
+                    return Err(FormatError::IncompleteRow(id)
+                        .with_context(name.clone())
+                        .into());
                 }
-                Ok(Row::new(id, cells))
+                Ok(cells.into())
             })
             .collect::<Result<Vec<_>>>()?;
 

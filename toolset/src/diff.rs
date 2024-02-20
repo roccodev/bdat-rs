@@ -1,4 +1,5 @@
 use std::hash::{Hash, Hasher};
+use std::ops::Deref;
 use std::{
     borrow::Cow,
     cmp::Ordering,
@@ -14,7 +15,7 @@ use indicatif::ProgressBar;
 use itertools::Itertools;
 use rayon::{iter::Either, prelude::*};
 
-use bdat::{BdatFile, Cell, Label, Table, TableAccessor};
+use bdat::{BdatFile, Cell, CompatRef, Label, RowId, RowRef, Table, TableAccessor};
 
 use crate::{hash::MurmurHashSet, InputData};
 
@@ -46,13 +47,13 @@ struct PathDiff<'p> {
 }
 
 struct RowDiff<'t, 'tb> {
-    row_id: usize,
+    row_id: RowId,
     old: &'t Table<'tb>,
     new: &'t Table<'tb>,
 }
 
 struct RowChanges<'t, 'tb> {
-    row_id: usize,
+    row_id: RowId,
     old_hash: Option<Label>,
     new_hash: Option<Label>,
     changes: Vec<ColumnChange<'t, 'tb>>,
@@ -61,7 +62,7 @@ struct RowChanges<'t, 'tb> {
 struct ColumnChange<'t, 'tb> {
     label: &'t Label,
     added: bool,
-    value: &'t Cell<'tb>,
+    value: Cell<'tb>,
 }
 
 #[derive(Debug)]
@@ -213,7 +214,7 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
 }
 
 impl<'t, 'tb> RowDiff<'t, 'tb> {
-    fn new(old: &'t Table<'tb>, new: &'t Table<'tb>, row_id: usize) -> Self {
+    fn new(old: &'t Table<'tb>, new: &'t Table<'tb>, row_id: RowId) -> Self {
         Self { row_id, old, new }
     }
 
@@ -266,10 +267,17 @@ impl<'t, 'tb> RowDiff<'t, 'tb> {
 
         (!changed_cols.is_empty()).then_some(RowChanges {
             row_id: self.row_id,
-            old_hash: old.as_ref().and_then(|t| t.id_hash()).map(Label::Hash),
-            new_hash: new.as_ref().and_then(|t| t.id_hash()).map(Label::Hash),
+            old_hash: old.and_then(Self::row_hash),
+            new_hash: new.and_then(Self::row_hash),
             changes: changed_cols,
         })
+    }
+
+    fn row_hash(row: RowRef<CompatRef>) -> Option<Label> {
+        match *row {
+            CompatRef::Modern(m) => m.id_hash().map(Label::Hash),
+            _ => None,
+        }
     }
 }
 
@@ -360,8 +368,8 @@ impl<'p> PathDiff<'p> {
     }
 }
 
-impl<'t, 'tb> From<(&'t Label, bool, &'t Cell<'tb>)> for ColumnChange<'t, 'tb> {
-    fn from(value: (&'t Label, bool, &'t Cell<'tb>)) -> Self {
+impl<'t, 'tb> From<(&'t Label, bool, Cell<'tb>)> for ColumnChange<'t, 'tb> {
+    fn from(value: (&'t Label, bool, Cell<'tb>)) -> Self {
         Self {
             label: value.0,
             added: value.1,

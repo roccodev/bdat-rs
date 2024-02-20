@@ -1,12 +1,12 @@
 use std::marker::PhantomData;
 
 use crate::{
-    BdatResult, BdatVersion, Cell, ColumnDef, ColumnMap, Label, ModernTable, LegacyTable, Table, RowId
+    BdatVersion, Cell, ColumnDef, ColumnMap, Label, LegacyTable, ModernTable, RowId, Table,
 };
 
-use super::{modern::ModernRow, legacy::LegacyRow, compat::CompatRow};
+use super::{legacy::LegacyRow, modern::ModernRow};
 
-pub type TableBuilder<'b> = TableBuilderImpl<'b, CompatRow<'b>>;
+pub type TableBuilder<'b> = TableBuilderImpl<'b, CompatBuilderRow<'b>>;
 pub type ModernTableBuilder<'b> = TableBuilderImpl<'b, ModernRow<'b>>;
 pub type LegacyTableBuilder<'b> = TableBuilderImpl<'b, LegacyRow<'b>>;
 
@@ -19,6 +19,8 @@ pub struct TableBuilderImpl<'b, R: 'b> {
     _buf: PhantomData<&'b ()>,
 }
 
+pub struct CompatBuilderRow<'b>(Vec<Cell<'b>>);
+
 impl<'b, R: 'b> TableBuilderImpl<'b, R> {
     pub fn with_name(name: Label) -> Self {
         Self {
@@ -30,8 +32,19 @@ impl<'b, R: 'b> TableBuilderImpl<'b, R> {
         }
     }
 
-    pub(crate) fn from_table(name: Label, base_id: RowId, columns: ColumnMap, rows: Vec<R>) -> Self {
-        Self { name, columns, base_id, rows, _buf: PhantomData }
+    pub(crate) fn from_table(
+        name: Label,
+        base_id: RowId,
+        columns: ColumnMap,
+        rows: Vec<R>,
+    ) -> Self {
+        Self {
+            name,
+            columns,
+            base_id,
+            rows,
+            _buf: PhantomData,
+        }
     }
 
     pub fn add_column(mut self, column: ColumnDef) -> Self {
@@ -65,9 +78,16 @@ impl<'b, R: 'b> TableBuilderImpl<'b, R> {
 /// Modern builder -> Modern table
 impl<'b> TableBuilderImpl<'b, ModernRow<'b>> {
     fn from_compat(builder: TableBuilder<'b>) -> Self {
-        Self::from_table(builder.name, builder.base_id, builder.columns, builder.rows.into_iter()
-                .map(CompatRow::to_modern)
-                .collect())
+        Self::from_table(
+            builder.name,
+            builder.base_id,
+            builder.columns,
+            builder
+                .rows
+                .into_iter()
+                .map(CompatBuilderRow::to_modern)
+                .collect(),
+        )
     }
 
     pub fn build(self) -> ModernTable<'b> {
@@ -78,20 +98,41 @@ impl<'b> TableBuilderImpl<'b, ModernRow<'b>> {
 /// Legacy builder -> Legacy table
 impl<'b> TableBuilderImpl<'b, LegacyRow<'b>> {
     fn from_compat(builder: TableBuilder<'b>) -> Self {
-        Self::from_table(builder.name, builder.base_id, builder.columns, builder.rows.into_iter()
-            .map(CompatRow::to_legacy)
-            .collect())
+        Self::from_table(
+            builder.name,
+            builder.base_id,
+            builder.columns,
+            builder
+                .rows
+                .into_iter()
+                .map(CompatBuilderRow::to_legacy)
+                .collect(),
+        )
     }
 
     pub fn build(self) -> LegacyTable<'b> {
-        assert!(self.rows.len() < u16::MAX as usize, "legacy tables only allow up to {} rows", u16::MAX);
+        assert!(
+            self.rows.len() < u16::MAX as usize,
+            "legacy tables only allow up to {} rows",
+            u16::MAX
+        );
         // TODO check base id
         LegacyTable::new(self)
     }
 }
 
+impl<'b> CompatBuilderRow<'b> {
+    pub fn to_modern(self) -> ModernRow<'b> {
+        todo!()
+    }
+
+    pub fn to_legacy(self) -> LegacyRow<'b> {
+        todo!()
+    }
+}
+
 /// Compat builder -> Compat table
-impl<'b> TableBuilderImpl<'b, CompatRow<'b>> {
+impl<'b> TableBuilderImpl<'b, CompatBuilderRow<'b>> {
     pub fn to_legacy(self) -> LegacyTableBuilder<'b> {
         LegacyTableBuilder::from_compat(self)
     }
@@ -106,5 +147,11 @@ impl<'b> TableBuilderImpl<'b, CompatRow<'b>> {
         } else {
             self.to_modern().build().into()
         }
+    }
+}
+
+impl<'b> From<Vec<Cell<'b>>> for CompatBuilderRow<'b> {
+    fn from(value: Vec<Cell<'b>>) -> Self {
+        Self(value)
     }
 }

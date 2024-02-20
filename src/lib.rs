@@ -167,8 +167,9 @@ pub use label::Label;
 
 pub use table::cell::*;
 pub use table::column::*;
+pub use table::compat::*;
 pub use table::row::*;
 pub use table::{
-    LegacyTable, ModernTable, Table, TableAccessor, TableBuilder, LegacyTableBuilder, ModernTableBuilder,
-    ModernRow, LegacyRow,
+    LegacyRow, LegacyTable, LegacyTableBuilder, ModernRow, ModernTable, ModernTableBuilder, Table,
+    TableAccessor, TableBuilder,
 };

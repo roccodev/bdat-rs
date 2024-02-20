@@ -1,24 +1,23 @@
-use crate::{
-    BdatResult, Cell, LegacyTable, ModernTable, ColumnDef, Label, RowRef, RowRefMut, Table, TableAccessor, RowId, ColumnMap, CellAccessor
-};
-use super::TableInner;
+//! Adapters for legacy<->modern BDAT compatibility.
+
 use super::legacy::LegacyRow;
 use super::modern::ModernRow;
 use super::util::{self, VersionedIter};
+use super::TableInner;
+use crate::{
+    BdatResult, Cell, CellAccessor, ColumnDef, Label, LegacyTable, ModernTable, RowId, RowRef,
+    Table, TableAccessor,
+};
 
 pub enum CompatRow<'buf> {
     Modern(ModernRow<'buf>),
-    Legacy(LegacyRow<'buf>)
+    Legacy(LegacyRow<'buf>),
 }
 
+#[derive(Clone, Copy)]
 pub enum CompatRef<'t, 'buf> {
     Modern(&'t ModernRow<'buf>),
-    Legacy(&'t LegacyRow<'buf>)
-}
-
-pub enum CompatRefMut<'t, 'buf> {
-    Modern(&'t mut ModernRow<'buf>),
-    Legacy(&'t mut LegacyRow<'buf>)
+    Legacy(&'t LegacyRow<'buf>),
 }
 
 macro_rules! versioned {
@@ -165,29 +164,12 @@ impl<'b> Table<'b> {
     /// Gets an iterator that visits this table's rows
     pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, CompatRef<'_, 'b>>> {
         match &self.inner {
-            TableInner::Modern(m) => VersionedIter::Modern(m.rows().map(|r| r.map(CompatRef::Modern))),
-            TableInner::Legacy(l) => VersionedIter::Legacy(l.rows().map(|r| r.map(CompatRef::Legacy))),
-        }
-    }
-
-    /// Gets an iterator over mutable references to this table's
-    /// rows.
-    ///
-    /// The iterator does not allow structural modifications to the table. To add, remove, or
-    /// reorder rows, convert the table to a new builder first. (`TableBuilder::from(table)`)
-    ///
-    /// Additionally, if the iterator is used to replace rows, proper care must be taken to
-    /// ensure the new rows have the same IDs, as to preserve the original table's row order.
-    ///
-    /// When the `hash-table` feature is enabled, the new rows must also retain their original
-    /// hashed ID (for modern BDATs). Failure to do so will lead to improper behavior of
-    /// [`get_row_by_hash`].
-    ///
-    /// [`get_row_by_hash`]: ModernTable::get_row_by_hash
-    pub fn rows_mut(&mut self) -> impl Iterator<Item = RowRef<'_, CompatRefMut<'_, 'b>>> {
-        match &mut self.inner {
-            TableInner::Modern(m) => VersionedIter::Modern(m.rows_mut().map(|r| r.map(CompatRefMut::Modern))),
-            TableInner::Legacy(l) => VersionedIter::Legacy(l.rows_mut().map(|r| r.map(CompatRefMut::Legacy))),
+            TableInner::Modern(m) => {
+                VersionedIter::Modern(m.rows().map(|r| r.map(CompatRef::Modern)))
+            }
+            TableInner::Legacy(l) => {
+                VersionedIter::Legacy(l.rows().map(|r| r.map(CompatRef::Legacy)))
+            }
         }
     }
 
@@ -199,20 +181,68 @@ impl<'b> Table<'b> {
         }
     }
 
+    /// Gets an owning iterator over this table's rows, in pairs of
+    /// `(row ID, row)`.
+    pub fn into_rows_id(self) -> impl Iterator<Item = (u32, CompatRow<'b>)> {
+        match self.inner {
+            TableInner::Modern(m) => {
+                VersionedIter::Modern(m.into_rows_id().map(|(id, r)| (id, CompatRow::Modern(r))))
+            }
+            TableInner::Legacy(l) => VersionedIter::Legacy(
+                l.into_rows_id()
+                    .map(|(id, r)| (id as u32, CompatRow::Legacy(r))),
+            ),
+        }
+    }
+
     /// Gets an iterator that visits this table's column definitions
     pub fn columns(&self) -> impl Iterator<Item = &ColumnDef> {
         versioned_iter!(&self.inner, columns())
     }
 
-    /// Gets an iterator over mutable references to this table's
-    /// column definitions.
-    pub fn columns_mut(&mut self) -> impl Iterator<Item = &mut ColumnDef> {
-        versioned_iter!(&mut self.inner, columns_mut())
-    }
-
     /// Gets an owning iterator over this table's column definitions
     pub fn into_columns(self) -> impl Iterator<Item = ColumnDef> {
         versioned_iter!(self.inner, into_columns())
+    }
+
+    pub fn name(&self) -> &Label {
+        versioned!(&self.inner, name)
+    }
+
+    pub fn set_name(&mut self, name: Label) {
+        versioned!(&mut self.inner, set_name(name))
+    }
+
+    pub fn base_id(&self) -> RowId {
+        match &self.inner {
+            TableInner::Modern(m) => m.base_id(),
+            TableInner::Legacy(l) => l.base_id() as u32,
+        }
+    }
+
+    pub fn row(&self, id: RowId) -> RowRef<'_, CompatRef<'_, 'b>> {
+        match &self.inner {
+            TableInner::Modern(m) => m.row(id).map(CompatRef::Modern),
+            TableInner::Legacy(l) => l.row(LegacyTable::check_id(id)).map(CompatRef::Legacy),
+        }
+    }
+
+    pub fn get_row(&self, id: RowId) -> Option<RowRef<'_, CompatRef<'_, 'b>>> {
+        match &self.inner {
+            TableInner::Modern(m) => m.get_row(id).map(|r| r.map(CompatRef::Modern)),
+            // TODO use option on id fail
+            TableInner::Legacy(l) => l
+                .get_row(LegacyTable::check_id(id))
+                .map(|r| r.map(CompatRef::Legacy)),
+        }
+    }
+
+    pub fn row_count(&self) -> usize {
+        versioned!(&self.inner, row_count())
+    }
+
+    pub fn column_count(&self) -> usize {
+        versioned!(&self.inner, column_count())
     }
 }
 
@@ -224,67 +254,42 @@ impl<'b> CompatRow<'b> {
     pub fn to_legacy(self) -> LegacyRow<'b> {
         todo!()
     }
+
+    pub fn cells(&self) -> impl Iterator<Item = Cell<'b>> + '_ {
+        match self {
+            CompatRow::Modern(m) => {
+                VersionedIter::Modern(m.values.iter().map(|v| Cell::Single(v.clone())))
+            }
+            CompatRow::Legacy(l) => VersionedIter::Legacy(l.cells.iter().cloned()),
+        }
+    }
+
+    pub fn into_cells(self) -> impl Iterator<Item = Cell<'b>> {
+        match self {
+            CompatRow::Modern(m) => VersionedIter::Modern(m.into_values().map(Cell::Single)),
+            CompatRow::Legacy(l) => VersionedIter::Legacy(l.into_cells()),
+        }
+    }
+}
+
+impl<'t, 'b> CompatRef<'t, 'b> {
+    pub fn cells(&self) -> impl Iterator<Item = Cell<'b>> + '_ {
+        match self {
+            CompatRef::Modern(m) => {
+                VersionedIter::Modern(m.values.iter().map(|v| Cell::Single(v.clone())))
+            }
+            CompatRef::Legacy(l) => VersionedIter::Legacy(l.cells.iter().cloned()),
+        }
+    }
 }
 
 impl<'t, 'b> CellAccessor for CompatRef<'t, 'b> {
-    type Target = &'t Cell<'b>;
+    type Target = Cell<'b>;
 
-    fn access(&self, pos: usize) -> Option<Self::Target> {
-        todo!();
+    fn access(self, pos: usize) -> Option<Self::Target> {
+        match self {
+            CompatRef::Modern(m) => m.values.get(pos).map(|v| Cell::Single(v.clone())),
+            CompatRef::Legacy(l) => l.cells.get(pos).cloned(),
+        }
     }
 }
-
-impl<'t, 'b: 't> TableAccessor<'t, 'b> for Table<'b> {
-    type Row = CompatRef<'t, 'b>;
-    type RowMut = CompatRefMut<'t, 'b>;
-    type RowId = u32;
-
-    fn name(&self) -> &Label {
-        versioned!(&self.inner, name)
-    }
-
-    fn set_name(&mut self, name: Label) {
-        versioned!(&mut self.inner, set_name(name))
-    }
-
-    fn base_id(&self) -> Self::RowId {
-        match &self.inner {
-            TableInner::Modern(m) => m.base_id(),
-            TableInner::Legacy(l) => l.base_id() as u32,
-        }
-    }
-
-    fn row(&'t self, id: Self::RowId) -> RowRef<'t, Self::Row> {
-        match &self.inner {
-            TableInner::Modern(m) => m.row(id).map(CompatRef::Modern),
-            TableInner::Legacy(l) => l.row(LegacyTable::check_id(id)).map(CompatRef::Legacy),
-        }
-    }
-
-    fn row_mut(&mut self, id: Self::RowId) -> RowRef<'_, Self::RowMut> {
-        todo!();
-        //versioned_id!(&mut self.inner, row_mut(id))
-    }
-
-    fn get_row(&'t self, id: Self::RowId) -> Option<RowRef<'t, Self::Row>> {
-        match &self.inner {
-            TableInner::Modern(m) => m.get_row(id).map(|r| r.map(CompatRef::Modern)),
-            // TODO use option on id fail
-            TableInner::Legacy(l) => l.get_row(LegacyTable::check_id(id)).map(|r| r.map(CompatRef::Legacy)),
-        }
-    }
-
-    fn get_row_mut(&mut self, id: Self::RowId) -> Option<RowRef<'_, Self::RowMut>> {
-        todo!();
-        //versioned_id!(&mut self.inner, get_row_mut(id))
-    }
-
-    fn row_count(&self) -> usize {
-        versioned!(&self.inner, row_count())
-    }
-
-    fn column_count(&self) -> usize {
-        versioned!(&self.inner, column_count())
-    }
-}
-

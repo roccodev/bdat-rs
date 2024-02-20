@@ -1,21 +1,21 @@
 //! BDAT table, row, cell implementations
 
-use crate::{Label, RowRef, RowRefMut, ValueType};
+use crate::{CellAccessor, Label, RowRef, ValueType};
 use thiserror::Error;
 
 pub mod cell;
 pub mod column;
+pub mod compat;
 pub mod row;
 
+mod builder;
 mod legacy;
 mod modern;
-mod compat;
 mod util;
-mod builder;
 
-pub use legacy::{LegacyTable, LegacyRow};
-pub use modern::{ModernTable, ModernRow};
-pub use builder::{TableBuilder, LegacyTableBuilder, ModernTableBuilder};
+pub use builder::{LegacyTableBuilder, ModernTableBuilder, TableBuilder};
+pub use legacy::{LegacyRow, LegacyTable};
+pub use modern::{ModernRow, ModernTable};
 
 /// A BDAT table. Depending on how they were read, BDAT tables can either own their data source
 /// or borrow from it.
@@ -93,8 +93,8 @@ pub enum FormatConvertError {
 /// functions in the implementors of this trait.
 pub trait TableAccessor<'t, 'b: 't> {
     /// The returned row view type
-    type Row;
-    type RowMut;
+    type Row: CellAccessor;
+    type RowMut: CellAccessor;
     /// The integer type that defines the boundaries of a row ID
     type RowId;
 
@@ -149,4 +149,3 @@ pub trait TableAccessor<'t, 'b: 't> {
     /// Gets the number of columns in the table
     fn column_count(&self) -> usize;
 }
-

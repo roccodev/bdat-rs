@@ -67,7 +67,7 @@ impl CsvConverter {
     fn format_cell<'b, 'a: 'b, 't: 'a>(
         &self,
         column: &'a ColumnDef,
-        cell: &'b Cell<'t>,
+        cell: Cell<'t>,
     ) -> ColumnIter<
         SerializeCell<'a, 'b, 't>,
         impl Iterator<Item = SerializeCell<'a, 'b, 't>>,
@@ -75,24 +75,26 @@ impl CsvConverter {
     > {
         match cell {
             // Single values: serialize normally
-            c @ Cell::Single(_) => ColumnIter::Single(std::iter::once(column.cell_serializer(c))),
+            c @ Cell::Single(_) => {
+                ColumnIter::Single(std::iter::once(column.owned_cell_serializer(c)))
+            }
             // List values + expand lists: serialize into multiple columns
             Cell::List(values) if self.expand_lists => ColumnIter::Array(
                 values
-                    .iter()
+                    .into_iter()
                     .map(|v| column.owned_cell_serializer(Cell::Single(v.clone()))),
             ),
             // List values: serialize as JSON
             Cell::List(values) => {
                 ColumnIter::Single(std::iter::once(column.owned_cell_serializer(Cell::Single(
-                    Value::String(serde_json::to_string(values).unwrap().into()),
+                    Value::String(serde_json::to_string(&values).unwrap().into()),
                 ))))
             }
             // Flags: serialize into multiple columns
             Cell::Flags(flags) => ColumnIter::Flags(
                 flags
-                    .iter()
-                    .map(|i| column.owned_cell_serializer(Cell::Single(Value::UnsignedInt(*i)))),
+                    .into_iter()
+                    .map(|i| column.owned_cell_serializer(Cell::Single(Value::UnsignedInt(i)))),
             ),
         }
     }

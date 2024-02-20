@@ -1,8 +1,9 @@
 use crate::{
-    BdatVersion, ColumnDef, ColumnMap, Label, ModernTable, RowRef, Table, TableAccessor, Cell, CellAccessor,
+    BdatVersion, Cell, CellAccessor, ColumnDef, ColumnMap, Label, ModernTable, RowRef, Table,
+    TableAccessor,
 };
 
-use super::{FormatConvertError, TableInner, builder::LegacyTableBuilder, util::EnumId};
+use super::{builder::LegacyTableBuilder, util::EnumId, FormatConvertError, TableInner};
 
 /// The BDAT table representation in legacy formats, used for all games before Xenoblade 3.
 ///
@@ -22,7 +23,7 @@ use super::{FormatConvertError, TableInner, builder::LegacyTableBuilder, util::E
 /// ```
 /// use bdat::{Label, LegacyTable, TableAccessor, label_hash};
 ///
-/// fn get_character_id(table: &LegacyTable, row_id: usize) -> u32 {
+/// fn get_character_id(table: &LegacyTable, row_id: u16) -> u32 {
 ///     let cell = table.row(row_id).get(Label::from("CharacterID"));
 ///     // Unlike modern tables, we can't simply operate on the value.
 ///     // We can `match` on cell types, or simply cast them and handle errors:
@@ -54,7 +55,8 @@ impl<'b> LegacyTable<'b> {
 
     /// Gets an iterator that visits this table's rows
     pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, &LegacyRow<'b>>> {
-        self.rows.iter()
+        self.rows
+            .iter()
             .enum_id(self.base_id as u32)
             .map(|(id, row)| RowRef::new(id, row, &self.columns))
     }
@@ -77,6 +79,12 @@ impl<'b> LegacyTable<'b> {
     /// Gets an owning iterator over this table's rows
     pub fn into_rows(self) -> impl Iterator<Item = LegacyRow<'b>> {
         self.rows.into_iter()
+    }
+
+    /// Gets an owning iterator over this table's rows, in pairs of
+    /// `(row ID, row)`.
+    pub fn into_rows_id(self) -> impl Iterator<Item = (u16, LegacyRow<'b>)> {
+        self.rows.into_iter().enum_id(self.base_id)
     }
 
     /// Gets an iterator that visits this table's column definitions
@@ -107,6 +115,10 @@ impl<'b> LegacyRow<'b> {
 
     pub fn cells(&self) -> impl Iterator<Item = &Cell<'b>> {
         self.cells.iter()
+    }
+
+    pub fn into_cells(self) -> impl Iterator<Item = Cell<'b>> {
+        self.cells.into_iter()
     }
 }
 
@@ -153,8 +165,16 @@ impl<'t, 'b: 't> TableAccessor<'t, 'b> for LegacyTable<'b> {
 impl<'a, 'b> CellAccessor for &'a LegacyRow<'b> {
     type Target = &'a Cell<'b>;
 
-    fn access(&self, pos: usize) -> Option<Self::Target> {
+    fn access(self, pos: usize) -> Option<Self::Target> {
         self.cells.get(pos)
+    }
+}
+
+impl<'a, 'b> CellAccessor for &'a mut LegacyRow<'b> {
+    type Target = &'a mut Cell<'b>;
+
+    fn access(self, pos: usize) -> Option<Self::Target> {
+        self.cells.get_mut(pos)
     }
 }
 

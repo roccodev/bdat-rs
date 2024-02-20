@@ -109,13 +109,13 @@ impl HashNameTable {
     }
 
     pub fn convert_all(&self, table: &mut Table) {
-        if self.inner.is_empty() {
+        if table.is_legacy() || self.inner.is_empty() {
             return;
         }
         let mut name = table.name().clone();
         self.convert_label(&mut name);
         table.set_name(name);
-        for col in table.columns_mut() {
+        for col in table.as_modern_mut().columns_mut() {
             self.convert_label(col.label_mut());
         }
     }

@@ -1,7 +1,7 @@
 use crate::hash::PreHashedMap;
 use crate::{
-    BdatVersion, Cell, ColumnDef, ColumnMap, Label, LegacyTable, RowRef,
-    RowRefMut, Table, TableAccessor, ModernTableBuilder, RowId, Value, CellAccessor, ModernCell
+    BdatVersion, Cell, CellAccessor, ColumnDef, ColumnMap, Label, LegacyTable, ModernTableBuilder,
+    RowId, RowRef, Table, TableAccessor, Value,
 };
 
 use super::util::EnumId;
@@ -43,7 +43,7 @@ use super::{FormatConvertError, TableInner};
 /// ```
 /// use bdat::{Label, ModernTable, TableAccessor, label_hash};
 ///
-/// fn get_character_id(table: &ModernTable, row_id: usize) -> u32 {
+/// fn get_character_id(table: &ModernTable, row_id: u32) -> u32 {
 ///     table.row(row_id).get(label_hash!("CharacterID")).get_as()
 /// }
 /// ```
@@ -106,7 +106,8 @@ impl<'b> ModernTable<'b> {
 
     /// Gets an iterator that visits this table's rows
     pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, &ModernRow<'b>>> {
-        self.rows.iter()
+        self.rows
+            .iter()
             .enum_id(self.base_id)
             .map(|(id, row)| RowRef::new(id, row, &self.columns))
     }
@@ -135,6 +136,12 @@ impl<'b> ModernTable<'b> {
     /// Gets an owning iterator over this table's rows
     pub fn into_rows(self) -> impl Iterator<Item = ModernRow<'b>> {
         self.rows.into_iter()
+    }
+
+    /// Gets an owning iterator over this table's rows, in pairs of
+    /// `(row ID, row)`.
+    pub fn into_rows_id(self) -> impl Iterator<Item = (u32, ModernRow<'b>)> {
+        self.rows.into_iter().enum_id(self.base_id)
     }
 
     /// Gets an iterator that visits this table's column definitions
@@ -193,7 +200,10 @@ fn build_id_map_checked(rows: &[ModernRow], base_id: u32) -> PreHashedMap<u32, R
     for (id, row) in rows.iter().enum_id(base_id) {
         let Some(hash) = row.id_hash() else { continue };
         match res.entry(hash) {
-            Entry::Occupied(_) => panic!("failed to build row hash table: duplicate key {:?}", Label::Hash(hash)),
+            Entry::Occupied(_) => panic!(
+                "failed to build row hash table: duplicate key {:?}",
+                Label::Hash(hash)
+            ),
             e => e.or_insert(id),
         };
     }
@@ -265,8 +275,16 @@ impl<'t, 'b: 't> TableAccessor<'t, 'b> for ModernTable<'b> {
 impl<'a, 'b> CellAccessor for &'a ModernRow<'b> {
     type Target = &'a Value<'b>;
 
-    fn access(&self, pos: usize) -> Option<Self::Target> {
+    fn access(self, pos: usize) -> Option<Self::Target> {
         self.values.get(pos)
+    }
+}
+
+impl<'a, 'b> CellAccessor for &'a mut ModernRow<'b> {
+    type Target = &'a mut Value<'b>;
+
+    fn access(self, pos: usize) -> Option<Self::Target> {
+        self.values.get_mut(pos)
     }
 }
 
@@ -312,24 +330,20 @@ mod tests {
     #[cfg(feature = "hash-table")]
     #[test]
     fn test_hash_table() {
-        use crate::{ColumnDef, Label, ModernTableBuilder, Value, ValueType, ModernRow};
+        use crate::{ColumnDef, Label, ModernRow, ModernTableBuilder, Value, ValueType};
 
         let table = ModernTableBuilder::with_name(Label::Hash(0xDEADBEEF))
             .set_base_id(1)
             .add_column(ColumnDef::new(ValueType::HashRef, 0.into()))
             .add_column(ColumnDef::new(ValueType::UnsignedInt, 1.into()))
-            .add_row(ModernRow::new(
-                vec![
-                    Value::HashRef(0xabcdef01),
-                    Value::UnsignedInt(256),
-                ],
-            ))
-            .add_row(ModernRow::new(
-                vec![
-                    Value::HashRef(0xdeadbeef),
-                    Value::UnsignedInt(100),
-                ],
-            ))
+            .add_row(ModernRow::new(vec![
+                Value::HashRef(0xabcdef01),
+                Value::UnsignedInt(256),
+            ]))
+            .add_row(ModernRow::new(vec![
+                Value::HashRef(0xdeadbeef),
+                Value::UnsignedInt(100),
+            ]))
             .build();
         assert_eq!(1, table.get_row_by_hash(0xabcdef01).unwrap().id());
         assert_eq!(2, table.get_row_by_hash(0xdeadbeef).unwrap().id());
