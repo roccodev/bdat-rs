@@ -12,7 +12,7 @@ use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
 use crate::{
     error::{BdatError, Result, Scope},
-    BdatFile, Cell, ColumnDef, Label, ModernTable, Row, TableBuilder, Utf, Value, ValueType,
+    BdatFile, Cell, ColumnDef, Label, ModernTable, ModernRow, ModernTableBuilder, Utf, Value, ValueType,
 };
 
 use super::FileHeader;
@@ -125,7 +125,7 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
 
         let columns = self.reader.read_u32()? as usize;
         let rows = self.reader.read_u32()? as usize;
-        let base_id = self.reader.read_u32()? as usize;
+        let base_id = self.reader.read_u32()?;
         if self.reader.read_u32()? != 0 {
             panic!("Found unknown value at index 0x14 that was not 0");
         }
@@ -174,25 +174,23 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
 
         for i in 0..rows {
             let row = &table_data.data[offset_row + i * row_length..];
-            let mut cells = Vec::with_capacity(col_data.len());
+            let mut values = Vec::with_capacity(col_data.len());
             let mut cursor = Cursor::new(row);
             for col in &col_data {
-                let value = Self::read_value_v2(&table_data, &mut cursor, col.value_type)?;
-                cells.push(Cell::Single(value));
+                let value = Self::read_value(&table_data, &mut cursor, col.value_type)?;
+                values.push(value);
             }
-            row_data.push(Row {
-                id: base_id + i,
-                cells,
-            });
+            row_data.push(ModernRow::new(values));
         }
 
-        Ok(TableBuilder::with_name(name)
+        Ok(ModernTableBuilder::with_name(name)
+            .set_base_id(base_id)
             .set_columns(col_data)
             .set_rows(row_data)
-            .build_modern())
+            .build())
     }
 
-    fn read_value_v2(
+    fn read_value(
         table_data: &TableData<'b>,
         mut buf: impl Read,
         col_type: ValueType,

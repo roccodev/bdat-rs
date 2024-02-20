@@ -288,12 +288,6 @@ impl From<ValueType> for u8 {
     }
 }
 
-impl<'t, 'tb> RowRef<'t, 'tb> {
-    pub fn into_modern(self) -> RowRef<'t, 'tb, ModernCell<'t, 'tb>> {
-        self.down_cast()
-    }
-}
-
 impl<'t, 'tb> FromCell<'t, 'tb> for ModernCell<'t, 'tb> {
     fn from_cell(cell: &'t Cell<'tb>) -> Self {
         match cell {

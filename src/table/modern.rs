@@ -1,9 +1,10 @@
 use crate::hash::PreHashedMap;
 use crate::{
-    BdatVersion, Cell, ColumnDef, ColumnMap, Label, LegacyTable, ModernCell, Row, RowRef,
-    RowRefMut, Table, TableAccessor, TableBuilder,
+    BdatVersion, Cell, ColumnDef, ColumnMap, Label, LegacyTable, RowRef,
+    RowRefMut, Table, TableAccessor, ModernTableBuilder, RowId, Value, CellAccessor, ModernCell
 };
 
+use super::util::EnumId;
 use super::{FormatConvertError, TableInner};
 
 /// The BDAT table representation in modern formats, currently used in Xenoblade 3.
@@ -54,26 +55,26 @@ use super::{FormatConvertError, TableInner};
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModernTable<'b> {
     pub(crate) name: Label,
-    pub(crate) base_id: usize,
+    pub(crate) base_id: u32,
     pub(crate) columns: ColumnMap,
-    pub(crate) rows: Vec<Row<'b>>,
+    pub(crate) rows: Vec<ModernRow<'b>>,
     #[cfg(feature = "hash-table")]
-    row_hash_table: PreHashedMap<u32, usize>,
+    row_hash_table: PreHashedMap<u32, RowId>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ModernRow<'b> {
+    pub(crate) values: Vec<Value<'b>>,
 }
 
 impl<'b> ModernTable<'b> {
-    pub(crate) fn new(builder: TableBuilder<'b>) -> Self {
+    pub(crate) fn new(builder: ModernTableBuilder<'b>) -> Self {
         Self {
             name: builder.name,
             columns: builder.columns,
-            base_id: builder
-                .rows
-                .iter()
-                .map(|r| r.id())
-                .min()
-                .unwrap_or_default(),
+            base_id: builder.base_id,
             #[cfg(feature = "hash-table")]
-            row_hash_table: build_id_map_checked(&builder.rows),
+            row_hash_table: build_id_map_checked(&builder.rows, builder.base_id),
             rows: builder.rows,
         }
     }
@@ -84,7 +85,7 @@ impl<'b> ModernTable<'b> {
     /// This requires the `hash-table` feature flag, which is enabled
     /// by default.
     #[cfg(feature = "hash-table")]
-    pub fn get_row_by_hash(&self, hash_id: u32) -> Option<RowRef<'_, 'b, ModernCell<'_, 'b>>> {
+    pub fn get_row_by_hash(&self, hash_id: u32) -> Option<RowRef<'_, &ModernRow<'b>>> {
         self.row_hash_table
             .get(&hash_id)
             .and_then(|&id| self.get_row(id))
@@ -98,14 +99,16 @@ impl<'b> ModernTable<'b> {
     /// ## Panics
     /// Panics if there is no row for the given ID.
     #[cfg(feature = "hash-table")]
-    pub fn row_by_hash(&self, hash_id: u32) -> RowRef<'_, 'b, ModernCell<'_, 'b>> {
+    pub fn row_by_hash(&self, hash_id: u32) -> RowRef<'_, &ModernRow<'b>> {
         self.get_row_by_hash(hash_id)
             .expect("no row with given hash")
     }
 
     /// Gets an iterator that visits this table's rows
-    pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, 'b, ModernCell<'_, 'b>>> {
-        self.rows.iter().map(|row| RowRef::new(row, &self.columns))
+    pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, &ModernRow<'b>>> {
+        self.rows.iter()
+            .enum_id(self.base_id)
+            .map(|(id, row)| RowRef::new(id, row, &self.columns))
     }
 
     /// Gets an iterator over mutable references to this table's
@@ -122,14 +125,15 @@ impl<'b> ModernTable<'b> {
     /// [`get_row_by_hash`].
     ///
     /// [`get_row_by_hash`]: ModernTable::get_row_by_hash
-    pub fn rows_mut(&mut self) -> impl Iterator<Item = RowRefMut<'_, 'b>> {
+    pub fn rows_mut(&mut self) -> impl Iterator<Item = RowRef<'_, &mut ModernRow<'b>>> {
         self.rows
             .iter_mut()
-            .map(|row| RowRefMut::new(row, &self.columns))
+            .enum_id(self.base_id)
+            .map(|(id, row)| RowRef::new(id, row, &self.columns))
     }
 
     /// Gets an owning iterator over this table's rows
-    pub fn into_rows(self) -> impl Iterator<Item = Row<'b>> {
+    pub fn into_rows(self) -> impl Iterator<Item = ModernRow<'b>> {
         self.rows.into_iter()
     }
 
@@ -150,6 +154,31 @@ impl<'b> ModernTable<'b> {
     }
 }
 
+impl<'b> ModernRow<'b> {
+    pub fn new(values: Vec<Value<'b>>) -> Self {
+        Self { values }
+    }
+
+    /// Gets an owning iterator over this row's values
+    pub fn into_values(self) -> impl Iterator<Item = Value<'b>> {
+        self.values.into_iter()
+    }
+
+    /// Gets an iterator over this row's values
+    pub fn values(&self) -> impl Iterator<Item = &Value<'b>> {
+        self.values.iter()
+    }
+
+    /// Searches the row's cells for a ID hash field, returning the ID
+    /// of this row if found.
+    pub fn id_hash(&self) -> Option<RowId> {
+        self.values.iter().find_map(|value| match value {
+            Value::HashRef(id) => Some(*id),
+            _ => None,
+        })
+    }
+}
+
 /// Builds a primary key index for the table.
 ///
 /// If there is no hash-type column, the map will be empty.
@@ -157,22 +186,24 @@ impl<'b> ModernTable<'b> {
 /// ## Panics
 /// Panics if there are two rows with the same key hash.
 #[cfg(feature = "hash-table")]
-fn build_id_map_checked(rows: &[Row]) -> PreHashedMap<u32, usize> {
+fn build_id_map_checked(rows: &[ModernRow], base_id: u32) -> PreHashedMap<u32, RowId> {
     use std::collections::hash_map::Entry;
 
     let mut res = PreHashedMap::with_capacity_and_hasher(rows.len(), Default::default());
-    for row in rows {
+    for (id, row) in rows.iter().enum_id(base_id) {
         let Some(hash) = row.id_hash() else { continue };
         match res.entry(hash) {
             Entry::Occupied(_) => panic!("failed to build row hash table: duplicate key {:?}", Label::Hash(hash)),
-            e => e.or_insert(row.id()),
+            e => e.or_insert(id),
         };
     }
     res
 }
 
 impl<'t, 'b: 't> TableAccessor<'t, 'b> for ModernTable<'b> {
-    type Cell = ModernCell<'t, 'b>;
+    type Row = &'t ModernRow<'b>;
+    type RowMut = &'t mut ModernRow<'b>;
+    type RowId = u32;
 
     fn name(&self) -> &Label {
         &self.name
@@ -182,7 +213,7 @@ impl<'t, 'b: 't> TableAccessor<'t, 'b> for ModernTable<'b> {
         self.name = name;
     }
 
-    fn base_id(&self) -> usize {
+    fn base_id(&self) -> RowId {
         self.base_id
     }
 
@@ -204,22 +235,22 @@ impl<'t, 'b: 't> TableAccessor<'t, 'b> for ModernTable<'b> {
     ///     cell.get_as::<u32>()
     /// }
     /// ```
-    fn row(&self, id: usize) -> RowRef<'_, 'b, ModernCell<'_, 'b>> {
+    fn row(&'t self, id: RowId) -> RowRef<'t, Self::Row> {
         self.get_row(id).expect("row not found")
     }
 
-    fn get_row(&self, id: usize) -> Option<RowRef<'_, 'b, ModernCell<'_, 'b>>> {
+    fn get_row(&'t self, id: RowId) -> Option<RowRef<'t, Self::Row>> {
         let index = id.checked_sub(self.base_id)?;
         self.rows
-            .get(index)
-            .map(|row| RowRef::new(row, &self.columns))
+            .get(index as usize)
+            .map(move |row| RowRef::new(id, row, &self.columns))
     }
 
-    fn get_row_mut(&mut self, id: usize) -> Option<RowRefMut<'_, 'b>> {
+    fn get_row_mut(&'t mut self, id: RowId) -> Option<RowRef<'t, Self::RowMut>> {
         let index = id.checked_sub(self.base_id)?;
         self.rows
-            .get_mut(index)
-            .map(|row| RowRefMut::new(row, &self.columns))
+            .get_mut(index as usize)
+            .map(|row| RowRef::new(id, row, &self.columns))
     }
 
     fn row_count(&self) -> usize {
@@ -231,13 +262,17 @@ impl<'t, 'b: 't> TableAccessor<'t, 'b> for ModernTable<'b> {
     }
 }
 
-impl<'b> From<ModernTable<'b>> for TableBuilder<'b> {
+impl<'a, 'b> CellAccessor for &'a ModernRow<'b> {
+    type Target = &'a Value<'b>;
+
+    fn access(&self, pos: usize) -> Option<Self::Target> {
+        self.values.get(pos)
+    }
+}
+
+impl<'b> From<ModernTable<'b>> for ModernTableBuilder<'b> {
     fn from(value: ModernTable<'b>) -> Self {
-        Self {
-            name: value.name,
-            columns: value.columns,
-            rows: value.rows,
-        }
+        Self::from_table(value.name, value.base_id, value.columns, value.rows)
     }
 }
 
@@ -261,12 +296,14 @@ impl<'b> TryFrom<LegacyTable<'b>> for ModernTable<'b> {
             return Err(FormatConvertError::UnsupportedValueType(col.value_type()));
         }
         if value
-            .rows()
-            .any(|r| r.cells().any(|c| !matches!(c, Cell::Single(_))))
+            .rows
+            .iter()
+            .any(|r| r.cells.iter().any(|c| !matches!(c, Cell::Single(_))))
         {
             return Err(FormatConvertError::UnsupportedCell);
         }
-        Ok(ModernTable::new(TableBuilder::from(value)))
+        //Ok(ModernTable::new(TableBuilder::from(value)))
+        todo!()
     }
 }
 
@@ -275,26 +312,25 @@ mod tests {
     #[cfg(feature = "hash-table")]
     #[test]
     fn test_hash_table() {
-        use crate::{Cell, ColumnDef, Label, Row, TableBuilder, Value, ValueType};
+        use crate::{ColumnDef, Label, ModernTableBuilder, Value, ValueType, ModernRow};
 
-        let table = TableBuilder::with_name(Label::Hash(0xDEADBEEF))
+        let table = ModernTableBuilder::with_name(Label::Hash(0xDEADBEEF))
+            .set_base_id(1)
             .add_column(ColumnDef::new(ValueType::HashRef, 0.into()))
             .add_column(ColumnDef::new(ValueType::UnsignedInt, 1.into()))
-            .add_row(Row::new(
-                1,
+            .add_row(ModernRow::new(
                 vec![
-                    Cell::Single(Value::HashRef(0xabcdef01)),
-                    Cell::Single(Value::UnsignedInt(256)),
+                    Value::HashRef(0xabcdef01),
+                    Value::UnsignedInt(256),
                 ],
             ))
-            .add_row(Row::new(
-                2,
+            .add_row(ModernRow::new(
                 vec![
-                    Cell::Single(Value::HashRef(0xdeadbeef)),
-                    Cell::Single(Value::UnsignedInt(100)),
+                    Value::HashRef(0xdeadbeef),
+                    Value::UnsignedInt(100),
                 ],
             ))
-            .build_modern();
+            .build();
         assert_eq!(1, table.get_row_by_hash(0xabcdef01).unwrap().id());
         assert_eq!(2, table.get_row_by_hash(0xdeadbeef).unwrap().id());
         assert_eq!(

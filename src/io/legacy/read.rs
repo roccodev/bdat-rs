@@ -12,8 +12,8 @@ use crate::legacy::float::BdatReal;
 use crate::legacy::scramble::{calc_checksum, scramble, unscramble, ScrambleType};
 use crate::legacy::{ColumnNodeInfo, COLUMN_NODE_SIZE};
 use crate::{
-    BdatError, BdatFile, BdatVersion, Cell, ColumnDef, FlagDef, Label, LegacyTable, Row,
-    TableBuilder, Utf, Value, ValueType,
+    BdatError, BdatFile, BdatVersion, Cell, ColumnDef, FlagDef, Label, LegacyTable, LegacyRow,
+    LegacyTableBuilder, Utf, Value, ValueType,
 };
 
 use super::{FileHeader, TableHeader};
@@ -202,7 +202,7 @@ impl TableHeader {
         let hash_slot_count = reader.read_u16::<E>()? as usize;
         let offset_rows = reader.read_u16::<E>()? as usize;
         let row_count = reader.read_u16::<E>()? as usize;
-        let base_id = reader.read_u16::<E>()? as usize;
+        let base_id = reader.read_u16::<E>()?;
         assert_eq!(2, reader.read_u16::<E>()?, "unknown constant is not 2");
         let scramble_key = reader.read_u16::<E>()?;
         let offset_strings = reader.read_u32::<E>()? as usize;
@@ -367,19 +367,20 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
             .seek(SeekFrom::Start(self.header.offset_rows.try_into()?))?;
 
         let mut rows = vec![];
-        let row_count = self.header.row_count;
+        let row_count = self.header.row_count as u32;
         let base_id = self.header.base_id;
         let mut row_reader = RowReader::new(&mut self, &columns);
         for i in 0..row_count {
             let cells = row_reader.read_row()?;
-            rows.push(Row::new(base_id + i, cells));
+            rows.push(LegacyRow::new(cells));
             row_reader.next_row()?;
         }
 
-        Ok(TableBuilder::with_name(Label::String(name))
+        Ok(LegacyTableBuilder::with_name(Label::String(name))
+            .set_base_id(base_id as u32)
             .set_columns(columns)
             .set_rows(rows)
-            .build_legacy())
+            .build())
     }
 
     fn discover_columns_from_nodes(&self, info: &ColumnNodeInfo) -> Result<TableColumns> {

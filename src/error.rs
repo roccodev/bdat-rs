@@ -1,5 +1,5 @@
 use crate::table::FormatConvertError;
-use crate::{BdatVersion, DetectError, ValueType, Label};
+use crate::{BdatVersion, DetectError, Label, ValueType};
 use std::num::TryFromIntError;
 use std::str::Utf8Error;
 use thiserror::Error;

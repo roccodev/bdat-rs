@@ -114,12 +114,12 @@ pub fn to_vec<'t, E: ByteOrder>(
 mod tests {
     use super::*;
     use crate::{
-        io::SwitchEndian, BdatFile, Cell, ColumnDef, Label, Row, TableBuilder, Value, ValueType,
+        io::SwitchEndian, BdatFile, ColumnDef, Label, ModernRow, ModernTableBuilder, Value, ValueType,
     };
 
     #[test]
     fn table_write_back() {
-        let table = TableBuilder::with_name(Label::Hash(0xca_fe_ba_be))
+        let table = ModernTableBuilder::with_name(Label::Hash(0xca_fe_ba_be))
             .add_column(ColumnDef::new(
                 ValueType::HashRef,
                 Label::Hash(0xde_ad_be_ef),
@@ -130,21 +130,19 @@ mod tests {
                 flags: Vec::new(),
                 count: 1,
             })
-            .add_row(Row::new(
-                1,
+            .add_row(ModernRow::new(
                 vec![
-                    Cell::Single(Value::HashRef(0x00_00_00_01)),
-                    Cell::Single(Value::UnsignedInt(10)),
+                    Value::HashRef(0x00_00_00_01),
+                    Value::UnsignedInt(10),
                 ],
             ))
-            .add_row(Row::new(
-                2,
+            .add_row(ModernRow::new(
                 vec![
-                    Cell::Single(Value::HashRef(0x01_00_00_01)),
-                    Cell::Single(Value::UnsignedInt(100)),
+                    Value::HashRef(0x01_00_00_01),
+                    Value::UnsignedInt(100),
                 ],
             ))
-            .build_modern();
+            .build();
 
         let written = to_vec::<SwitchEndian>([&table]).unwrap();
         let read_back = &from_bytes::<SwitchEndian>(&written)

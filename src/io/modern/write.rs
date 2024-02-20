@@ -11,7 +11,7 @@ use byteorder::{ByteOrder, WriteBytesExt};
 
 use crate::{BdatError, ValueType};
 use crate::io::BDAT_MAGIC;
-use crate::{error::Result, Cell, Label, ModernTable, Row, TableAccessor, Value};
+use crate::{error::Result, Label, ModernTable, ModernRow, TableAccessor, Value};
 
 use super::FileHeader;
 
@@ -109,15 +109,9 @@ where
 
         let column_count = columns.len().try_into()?;
         let row_count = table.rows.len().try_into()?;
-        let base_id = table
-            .rows
-            .iter()
-            .map(Row::id)
-            .min()
-            .unwrap_or_default()
-            .try_into()?;
+        let base_id = table.base_id();
 
-        let mut primary_keys = vec![];
+        let mut primary_keys: Vec<(u32, u32)> = vec![];
         let mut label_table = LabelTable::default();
         let mut primary_col: Option<(Label, usize)> = None;
         // Table name should be the first label in the table
@@ -143,20 +137,15 @@ where
             let mut data = vec![];
             let mut row_len = 0;
 
-            for row in &table.rows {
-                for (cell_idx, cell) in row.cells.iter().enumerate() {
-                    match cell {
-                        Cell::Single(v) => {
-                            match (&primary_col, v) {
-                                (Some((_, i)), Value::HashRef(hash)) if *i == cell_idx => {
-                                    primary_keys.push((*hash, u32::try_from(row.id())?));
-                                }
-                                _ => {}
-                            }
-                            Self::write_value(&mut data, v, &mut label_table)?
+            for row in table.rows() {
+                for (value_idx, value) in row.values.iter().enumerate() {
+                    match (&primary_col, value) {
+                        (Some((_, i)), Value::HashRef(hash)) if *i == value_idx => {
+                            primary_keys.push((*hash, row.id()));
                         }
-                        _ => panic!("flag/list cells are not supported by modern BDAT"),
+                        _ => {}
                     }
+                    Self::write_value(&mut data, value, &mut label_table)?
                 }
                 if row_len == 0 {
                     row_len = data.len();

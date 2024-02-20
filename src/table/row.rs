@@ -1,16 +1,13 @@
-use crate::{Cell, Label, Value};
-use crate::{ColumnMap, FromCell};
+use crate::{Label, ColumnMap};
+
 use std::borrow::Borrow;
 use std::marker::PhantomData;
+use std::ops::{Deref, DerefMut};
 
-use std::ops::{Deref, DerefMut, Index};
-
-/// A row from a Bdat table
-#[derive(Debug, Clone, PartialEq)]
-pub struct Row<'b> {
-    pub(crate) id: usize,
-    pub(crate) cells: Vec<Cell<'b>>,
-}
+/// Best-fit type for row IDs.
+/// In legacy BDATs, row identifiers are 16-bit.
+/// In modern BDATs, row IDs are 32-bit.
+pub type RowId = u32;
 
 /// A reference to a row that also keeps information about the parent table.
 ///
@@ -33,146 +30,107 @@ pub struct Row<'b> {
 /// }
 /// ```
 #[derive(Clone, Copy, Debug)]
-pub struct RowRef<'t, 'tb, C = &'t Cell<'tb>> {
-    row: &'t Row<'tb>,
+pub struct RowRef<'t, R> {
+    id: RowId,
+    row: R,
     columns: &'t ColumnMap,
-    _cell: PhantomData<C>,
 }
 
 #[derive(Debug)]
-pub struct RowRefMut<'t, 'tb> {
-    row: &'t mut Row<'tb>,
+pub struct RowRefMut<'t, 'tbuf, R: 'tbuf> {
+    id: RowId,
+    row: &'t mut R,
     columns: &'t ColumnMap,
+    _buf: PhantomData<&'tbuf ()>,
 }
 
-impl<'b> Row<'b> {
-    /// Creates a new [`Row`].
-    pub fn new(id: usize, cells: Vec<Cell<'b>>) -> Self {
-        Self { id, cells }
-    }
+pub trait CellAccessor {
+    type Target;
 
-    /// Gets the row's ID
-    pub fn id(&self) -> usize {
-        self.id
-    }
-
-    /// Gets an owning iterator over this row's cells
-    pub fn into_cells(self) -> impl Iterator<Item = Cell<'b>> {
-        self.cells.into_iter()
-    }
-
-    /// Gets an iterator over this row's cells
-    pub fn cells(&self) -> impl Iterator<Item = &Cell<'b>> {
-        self.cells.iter()
-    }
-
-    /// Searches the row's cells for a ID hash field, returning the ID
-    /// of this row if found.
-    pub fn id_hash(&self) -> Option<u32> {
-        self.cells.iter().find_map(|cell| match cell {
-            Cell::Single(Value::HashRef(id)) => Some(*id),
-            _ => None,
-        })
-    }
+    fn access(&self, pos: usize) -> Option<Self::Target>;
 }
 
-impl<'t, 'tb, C> RowRef<'t, 'tb, C>
-where
-    C: FromCell<'t, 'tb>,
+impl<'t, R> RowRef<'t, R>
 {
-    pub(crate) fn new(row: &'t Row<'tb>, columns: &'t ColumnMap) -> Self {
+    pub(crate) fn new(id: RowId, row: R, columns: &'t ColumnMap) -> Self {
         Self {
+            id,
             row,
             columns,
-            _cell: PhantomData,
         }
     }
 
+    pub(crate) fn map<O>(self, mapper: impl FnOnce(R) -> O) -> RowRef<'t, O> {
+        RowRef { id: self.id, row: mapper(self.row), columns: self.columns }
+    }
+
+    pub fn id(&self) -> RowId {
+        self.id
+    }
+}
+
+impl<'t, R> RowRef<'t, R>
+where
+    R: CellAccessor,
+{
     /// Returns a reference to the cell at the given column.
     ///
     /// If there is no column with the given label, this returns [`None`].
-    pub fn get_if_present(&self, column: impl Borrow<Label>) -> Option<C> {
+    pub fn get_if_present(&self, column: impl Borrow<Label>) -> Option<R::Target> {
         let index = self.columns.position(column.borrow())?;
-        self.row.cells.get(index).map(C::from_cell)
+        self.row.access(index)
     }
 
     /// Returns a reference to the cell at the given column.
     ///
     /// ## Panics
     /// Panics if there is no column with the given label.
-    pub fn get(&self, column: impl Borrow<Label>) -> C {
+    pub fn get(&self, column: impl Borrow<Label>) -> R::Target {
         self.get_if_present(column).expect("no such column")
     }
+}
 
-    pub(crate) fn up_cast(self) -> RowRef<'t, 'tb> {
-        RowRef {
-            row: self.row,
-            columns: self.columns,
-            _cell: PhantomData,
-        }
+impl<'a, 't: 'a, 'tbuf, R: 'tbuf> RowRefMut<'t, 'tbuf, R> {
+    pub(crate) fn new(id: RowId, row: &'t mut R, columns: &'t ColumnMap) -> Self {
+        Self { id, row, columns, _buf: PhantomData }
     }
 }
 
-impl<'t, 'tb> RowRef<'t, 'tb> {
-    pub(crate) fn down_cast<C>(self) -> RowRef<'t, 'tb, C> {
-        RowRef {
-            row: self.row,
-            columns: self.columns,
-            _cell: PhantomData,
-        }
-    }
-}
-
-impl<'a, 't: 'a, 'tb> RowRefMut<'t, 'tb> {
-    pub(crate) fn new(row: &'t mut Row<'tb>, columns: &'t ColumnMap) -> Self {
-        Self { row, columns }
-    }
-
+impl<'a, 't: 'a, 'tbuf, R: 'tbuf> RowRefMut<'t, 'tbuf, R> where R: CellAccessor {
     /// Returns a reference to the cell at the given column.
-    pub fn get(&'t self, column: &'a Label) -> Option<&'t Cell<'tb>> {
+    pub fn get(&'t self, column: &'a Label) -> Option<R::Target> {
         let index = self.columns.position(column)?;
-        self.row.cells.get(index)
+        self.row.access(index)
     }
 }
 
-#[allow(useless_deprecated)]
-#[deprecated(
-    since = "0.4.0",
-    note = "for removal in 0.5.0. The Index trait can't return owned types (required for specialized cells)"
-)]
-/// **Deprecated for removal**
-///
-/// Since: 0.4.0  
-/// To be removed in 0.5.0
-impl<'a, 't: 'a, 'tb, S> Index<S> for RowRef<'t, 'tb>
-where
-    S: Into<Label> + PartialEq,
-{
-    type Output = Cell<'tb>;
 
-    fn index(&self, index: S) -> &Self::Output {
-        self.get(&index.into())
+impl<'t, R> Deref for RowRef<'t, R> {
+    type Target = R;
+
+    fn deref(&self) -> &Self::Target {
+        &self.row
     }
 }
 
-impl<'t, 'tb, C> Deref for RowRef<'t, 'tb, C> {
-    type Target = Row<'tb>;
+impl<'t, R> DerefMut for RowRef<'t, R> {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.row
+    }
+}
+
+impl<'t, 'tbuf, R: 'tbuf> Deref for RowRefMut<'t, 'tbuf, R> {
+    type Target = R;
 
     fn deref(&self) -> &Self::Target {
         self.row
     }
 }
 
-impl<'t, 'tb> Deref for RowRefMut<'t, 'tb> {
-    type Target = Row<'tb>;
-
-    fn deref(&self) -> &Self::Target {
-        self.row
-    }
-}
-
-impl<'t, 'tb> DerefMut for RowRefMut<'t, 'tb> {
+impl<'t, 'tbuf, R: 'tbuf> DerefMut for RowRefMut<'t, 'tbuf, R> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         self.row
     }
 }
+
+

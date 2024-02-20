@@ -16,7 +16,7 @@ use crate::legacy::{
     LegacyWriteOptions, COLUMN_NODE_SIZE, COLUMN_NODE_SIZE_WII, HEADER_SIZE, HEADER_SIZE_WII,
 };
 use crate::{
-    BdatError, BdatVersion, Cell, ColumnDef, FlagDef, LegacyTable, Row, TableAccessor, Value,
+    BdatError, BdatVersion, Cell, ColumnDef, FlagDef, LegacyTable, LegacyRow, TableAccessor, Value,
     ValueType, WiiEndian,
 };
 
@@ -51,7 +51,7 @@ struct HeaderData {
 
 /// Writes cells from a row.
 struct RowWriter<'a, 'b, 't, E> {
-    row: &'a Row<'t>,
+    row: &'a LegacyRow<'t>,
     table: &'b mut TableWriter<'a, 't, E>,
 }
 
@@ -336,15 +336,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
         // Number of rows
         self.buf.write_u16::<E>(self.table.rows.len().try_into()?)?;
         // ID of the first row
-        self.buf.write_u16::<E>(
-            self.table
-                .rows
-                .first()
-                .map(Row::id)
-                .unwrap_or_default()
-                .try_into()
-                .unwrap(),
-        )?;
+        self.buf.write_u16::<E>(self.table.base_id)?;
         // UNKNOWN - asserted 2 when reading
         self.buf.write_u16::<E>(2)?;
 
@@ -527,7 +519,7 @@ impl ColumnTables {
 }
 
 impl<'a, 'b, 't, E: ByteOrder> RowWriter<'a, 'b, 't, E> {
-    fn new(table: &'b mut TableWriter<'a, 't, E>, row: &'a Row<'t>) -> Self {
+    fn new(table: &'b mut TableWriter<'a, 't, E>, row: &'a LegacyRow<'t>) -> Self {
         Self { table, row }
     }
 

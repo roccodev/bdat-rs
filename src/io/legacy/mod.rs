@@ -49,7 +49,7 @@ pub struct TableHeader {
     offset_rows: usize,
     row_count: usize,
     row_len: usize,
-    base_id: usize,
+    base_id: u16,
     columns: Option<ColumnNodeInfo>,
 }
 
