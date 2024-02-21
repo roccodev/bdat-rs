@@ -1,5 +1,5 @@
 use bdat::legacy::LegacyWriteOptions;
-use bdat::{BdatFile, BdatVersion, Cell, TableAccessor, Value, WiiEndian};
+use bdat::{BdatFile, BdatVersion, Cell, Value, WiiEndian};
 
 type FileEndian = WiiEndian;
 

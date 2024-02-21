@@ -14,7 +14,7 @@ pub type RowId = u32;
 /// Accessing cells from a `RowRef` is very easy:
 ///
 /// ```
-/// use bdat::{RowRef, ModernTable, TableAccessor};
+/// use bdat::{RowRef, ModernTable};
 ///
 /// fn param_1(table: ModernTable) -> u32 {
 ///     let row = table.row(1);

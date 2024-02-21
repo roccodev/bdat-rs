@@ -1,7 +1,7 @@
 use crate::hash::PreHashedMap;
 use crate::{
     BdatVersion, Cell, CellAccessor, ColumnDef, ColumnMap, Label, LegacyTable, ModernTableBuilder,
-    RowId, RowRef, Table, TableAccessor, Value,
+    RowId, RowRef, Table, Value,
 };
 
 use super::util::EnumId;
@@ -41,7 +41,7 @@ use super::{FormatConvertError, TableInner};
 /// ## Operating on single-value cells
 ///
 /// ```
-/// use bdat::{Label, ModernTable, TableAccessor, label_hash};
+/// use bdat::{Label, ModernTable, label_hash};
 ///
 /// fn get_character_id(table: &ModernTable, row_id: u32) -> u32 {
 ///     table.row(row_id).get(label_hash!("CharacterID")).get_as()
@@ -159,6 +159,91 @@ impl<'b> ModernTable<'b> {
     pub fn into_columns(self) -> impl Iterator<Item = ColumnDef> {
         self.columns.into_raw().into_iter()
     }
+
+    pub fn name(&self) -> &Label {
+        &self.name
+    }
+
+    pub fn set_name(&mut self, name: Label) {
+        self.name = name;
+    }
+
+    /// Gets the minimum row ID in the table.
+    pub fn base_id(&self) -> RowId {
+        self.base_id
+    }
+
+    /// Gets a row by its ID.
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    ///
+    /// ## Panics
+    /// If there is no row for the given ID.
+    ///
+    /// ## Example
+    /// ```
+    /// use bdat::{Label, ModernTable};
+    ///
+    /// fn foo(table: &ModernTable) -> u32 {
+    ///     // This is a `ModernCell`, which is essentially a single value.
+    ///     // As such, it can be used to avoid having to match on single-value cells
+    ///     // that are included for legacy compatibility.
+    ///     let cell = table.row(1).get(Label::Hash(0xDEADBEEF));
+    ///     // Casting values is also supported:
+    ///     cell.get_as::<u32>()
+    /// }
+    /// ```
+    pub fn row(&self, id: RowId) -> RowRef<&ModernRow<'b>> {
+        self.get_row(id).expect("row not found")
+    }
+
+    /// Gets a mutable view of a row by its ID
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    ///
+    /// ## Panics
+    /// If there is no row for the given ID
+    pub fn row_mut(&mut self, id: RowId) -> RowRef<&mut ModernRow<'b>> {
+        self.get_row_mut(id).expect("row not found")
+    }
+
+    /// Attempts to get a row by its ID.  
+    /// If there is no row for the given ID, this returns [`None`].
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    pub fn get_row(&self, id: RowId) -> Option<RowRef<&ModernRow<'b>>> {
+        let index = id.checked_sub(self.base_id)?;
+        self.rows
+            .get(index as usize)
+            .map(move |row| RowRef::new(id, row, &self.columns))
+    }
+
+    /// Attempts to get a mutable view of a row by its ID.  
+    /// If there is no row for the given ID, this returns [`None`].
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    pub fn get_row_mut(&mut self, id: RowId) -> Option<RowRef<&mut ModernRow<'b>>> {
+        let index = id.checked_sub(self.base_id)?;
+        self.rows
+            .get_mut(index as usize)
+            .map(|row| RowRef::new(id, row, &self.columns))
+    }
+
+    pub fn row_count(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub fn column_count(&self) -> usize {
+        self.columns.as_slice().len()
+    }
 }
 
 impl<'b> ModernRow<'b> {
@@ -208,68 +293,6 @@ fn build_id_map_checked(rows: &[ModernRow], base_id: u32) -> PreHashedMap<u32, R
         };
     }
     res
-}
-
-impl<'t, 'b: 't> TableAccessor<'t, 'b> for ModernTable<'b> {
-    type Row = &'t ModernRow<'b>;
-    type RowMut = &'t mut ModernRow<'b>;
-    type RowId = u32;
-
-    fn name(&self) -> &Label {
-        &self.name
-    }
-
-    fn set_name(&mut self, name: Label) {
-        self.name = name;
-    }
-
-    fn base_id(&self) -> RowId {
-        self.base_id
-    }
-
-    /// Gets a row by its ID.
-    ///
-    /// ## Panics
-    /// If there is no row for the given ID.
-    ///
-    /// ## Example
-    /// ```
-    /// use bdat::{Label, ModernTable, TableAccessor};
-    ///
-    /// fn foo(table: &ModernTable) -> u32 {
-    ///     // This is a `ModernCell`, which is essentially a single value.
-    ///     // As such, it can be used to avoid having to match on single-value cells
-    ///     // that are included for legacy compatibility.
-    ///     let cell = table.row(1).get(Label::Hash(0xDEADBEEF));
-    ///     // Casting values is also supported:
-    ///     cell.get_as::<u32>()
-    /// }
-    /// ```
-    fn row(&'t self, id: RowId) -> RowRef<'t, Self::Row> {
-        self.get_row(id).expect("row not found")
-    }
-
-    fn get_row(&'t self, id: RowId) -> Option<RowRef<'t, Self::Row>> {
-        let index = id.checked_sub(self.base_id)?;
-        self.rows
-            .get(index as usize)
-            .map(move |row| RowRef::new(id, row, &self.columns))
-    }
-
-    fn get_row_mut(&'t mut self, id: RowId) -> Option<RowRef<'t, Self::RowMut>> {
-        let index = id.checked_sub(self.base_id)?;
-        self.rows
-            .get_mut(index as usize)
-            .map(|row| RowRef::new(id, row, &self.columns))
-    }
-
-    fn row_count(&self) -> usize {
-        self.rows.len()
-    }
-
-    fn column_count(&self) -> usize {
-        self.columns.as_slice().len()
-    }
 }
 
 impl<'a, 'b> CellAccessor for &'a ModernRow<'b> {

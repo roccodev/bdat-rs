@@ -19,7 +19,7 @@
 //! See also: [`ModernTable`]
 //!
 //! ```
-//! use bdat::{BdatResult, SwitchEndian, BdatFile, ModernTable, label_hash, TableAccessor};
+//! use bdat::{BdatResult, SwitchEndian, BdatFile, ModernTable, label_hash};
 //! use bdat::hash::murmur3_str;
 //!
 //! fn read_xc3() -> BdatResult<()> {
@@ -55,7 +55,7 @@
 //! See also: [`LegacyTable`]
 //!
 //! ```
-//! use bdat::{BdatResult, SwitchEndian, BdatFile, LegacyTable, BdatVersion, Label, TableAccessor};
+//! use bdat::{BdatResult, SwitchEndian, BdatFile, LegacyTable, BdatVersion, Label};
 //!
 //! fn read_legacy() -> BdatResult<()> {
 //!     // Mutable access is required as text might need to be unscrambled.
@@ -87,7 +87,7 @@
 //! crate root can be used instead.
 //!
 //! ```
-//! use bdat::{BdatResult, SwitchEndian, BdatFile, Table, Label, TableAccessor, label_hash};
+//! use bdat::{BdatResult, SwitchEndian, BdatFile, Table, Label, label_hash};
 //!
 //! fn read_detect() -> BdatResult<()> {
 //!     // Mutable access is required, as this might be a legacy table.
@@ -171,5 +171,5 @@ pub use table::compat::*;
 pub use table::row::*;
 pub use table::{
     LegacyRow, LegacyTable, LegacyTableBuilder, ModernRow, ModernTable, ModernTableBuilder, Table,
-    TableAccessor, TableBuilder,
+    TableBuilder,
 };

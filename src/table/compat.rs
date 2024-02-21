@@ -6,7 +6,7 @@ use super::util::{self, VersionedIter};
 use super::TableInner;
 use crate::{
     BdatResult, Cell, CellAccessor, ColumnDef, Label, LegacyTable, ModernTable, RowId, RowRef,
-    Table, TableAccessor,
+    Table,
 };
 
 pub enum CompatRow<'buf> {
@@ -161,6 +161,53 @@ impl<'b> Table<'b> {
         }
     }
 
+    pub fn name(&self) -> &Label {
+        versioned!(&self.inner, name)
+    }
+
+    pub fn set_name(&mut self, name: Label) {
+        versioned!(&mut self.inner, set_name(name))
+    }
+
+    /// Gets the minimum row ID in the table.
+    pub fn base_id(&self) -> RowId {
+        match &self.inner {
+            TableInner::Modern(m) => m.base_id(),
+            TableInner::Legacy(l) => l.base_id() as u32,
+        }
+    }
+
+    /// Gets a row by its ID.
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    ///
+    /// ## Panics
+    /// If there is no row for the given ID.
+    pub fn row(&self, id: RowId) -> RowRef<'_, CompatRef<'_, 'b>> {
+        match &self.inner {
+            TableInner::Modern(m) => m.row(id).map(CompatRef::Modern),
+            TableInner::Legacy(l) => l.row(LegacyTable::check_id(id)).map(CompatRef::Legacy),
+        }
+    }
+
+    /// Attempts to get a row by its ID.  
+    /// If there is no row for the given ID, this returns [`None`].
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    pub fn get_row(&self, id: RowId) -> Option<RowRef<'_, CompatRef<'_, 'b>>> {
+        match &self.inner {
+            TableInner::Modern(m) => m.get_row(id).map(|r| r.map(CompatRef::Modern)),
+            // TODO use option on id fail
+            TableInner::Legacy(l) => l
+                .get_row(LegacyTable::check_id(id))
+                .map(|r| r.map(CompatRef::Legacy)),
+        }
+    }
+
     /// Gets an iterator that visits this table's rows
     pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, CompatRef<'_, 'b>>> {
         match &self.inner {
@@ -203,38 +250,6 @@ impl<'b> Table<'b> {
     /// Gets an owning iterator over this table's column definitions
     pub fn into_columns(self) -> impl Iterator<Item = ColumnDef> {
         versioned_iter!(self.inner, into_columns())
-    }
-
-    pub fn name(&self) -> &Label {
-        versioned!(&self.inner, name)
-    }
-
-    pub fn set_name(&mut self, name: Label) {
-        versioned!(&mut self.inner, set_name(name))
-    }
-
-    pub fn base_id(&self) -> RowId {
-        match &self.inner {
-            TableInner::Modern(m) => m.base_id(),
-            TableInner::Legacy(l) => l.base_id() as u32,
-        }
-    }
-
-    pub fn row(&self, id: RowId) -> RowRef<'_, CompatRef<'_, 'b>> {
-        match &self.inner {
-            TableInner::Modern(m) => m.row(id).map(CompatRef::Modern),
-            TableInner::Legacy(l) => l.row(LegacyTable::check_id(id)).map(CompatRef::Legacy),
-        }
-    }
-
-    pub fn get_row(&self, id: RowId) -> Option<RowRef<'_, CompatRef<'_, 'b>>> {
-        match &self.inner {
-            TableInner::Modern(m) => m.get_row(id).map(|r| r.map(CompatRef::Modern)),
-            // TODO use option on id fail
-            TableInner::Legacy(l) => l
-                .get_row(LegacyTable::check_id(id))
-                .map(|r| r.map(CompatRef::Legacy)),
-        }
     }
 
     pub fn row_count(&self) -> usize {

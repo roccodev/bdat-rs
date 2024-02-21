@@ -1,6 +1,5 @@
 use crate::{
     BdatVersion, Cell, CellAccessor, ColumnDef, ColumnMap, Label, ModernTable, RowRef, Table,
-    TableAccessor,
 };
 
 use super::{builder::LegacyTableBuilder, util::EnumId, FormatConvertError, TableInner};
@@ -21,7 +20,7 @@ use super::{builder::LegacyTableBuilder, util::EnumId, FormatConvertError, Table
 /// ## Operating on cells
 ///
 /// ```
-/// use bdat::{Label, LegacyTable, TableAccessor, label_hash};
+/// use bdat::{Label, LegacyTable, label_hash};
 ///
 /// fn get_character_id(table: &LegacyTable, row_id: u16) -> u32 {
 ///     let cell = table.row(row_id).get(Label::from("CharacterID"));
@@ -53,8 +52,71 @@ impl<'b> LegacyTable<'b> {
         }
     }
 
+    pub fn name(&self) -> &Label {
+        &self.name
+    }
+
+    pub fn set_name(&mut self, name: Label) {
+        self.name = name;
+    }
+
+    /// Gets the minimum row ID in the table.
+    pub fn base_id(&self) -> u16 {
+        self.base_id
+    }
+
+    /// Gets a row by its ID.
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    ///
+    /// ## Panics
+    /// If there is no row for the given ID.
+    pub fn row(&self, id: u16) -> RowRef<&LegacyRow<'b>> {
+        self.get_row(id).expect("row not found")
+    }
+
+    /// Gets a mutable view of a row by its ID
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    ///
+    /// ## Panics
+    /// If there is no row for the given ID
+    pub fn row_mut(&mut self, id: u16) -> RowRef<&mut LegacyRow<'b>> {
+        self.get_row_mut(id).expect("row not found")
+    }
+
+    /// Attempts to get a row by its ID.  
+    /// If there is no row for the given ID, this returns [`None`].
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    pub fn get_row(&self, id: u16) -> Option<RowRef<&LegacyRow<'b>>> {
+        let index = id.checked_sub(self.base_id)?;
+        self.rows
+            .get(index as usize)
+            .map(|row| RowRef::new(id as u32, row, &self.columns))
+    }
+
+    /// Attempts to get a mutable view of a row by its ID.  
+    /// If there is no row for the given ID, this returns [`None`].
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    pub fn get_row_mut(&mut self, id: u16) -> Option<RowRef<&mut LegacyRow<'b>>> {
+        let index = id.checked_sub(self.base_id)?;
+        self.rows
+            .get_mut(index as usize)
+            .map(|row| RowRef::new(id as u32, row, &self.columns))
+    }
+
     /// Gets an iterator that visits this table's rows
-    pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, &LegacyRow<'b>>> {
+    pub fn rows(&self) -> impl Iterator<Item = RowRef<&LegacyRow<'b>>> {
         self.rows
             .iter()
             .enum_id(self.base_id as u32)
@@ -69,7 +131,7 @@ impl<'b> LegacyTable<'b> {
     ///
     /// Additionally, if the iterator is used to replace rows, proper care must be taken to
     /// ensure the new rows have the same IDs, as to preserve the original table's row order.
-    pub fn rows_mut(&mut self) -> impl Iterator<Item = RowRef<'_, &mut LegacyRow<'b>>> {
+    pub fn rows_mut(&mut self) -> impl Iterator<Item = RowRef<&mut LegacyRow<'b>>> {
         self.rows
             .iter_mut()
             .enum_id(self.base_id as u32)
@@ -103,6 +165,14 @@ impl<'b> LegacyTable<'b> {
         self.columns.into_raw().into_iter()
     }
 
+    pub fn row_count(&self) -> usize {
+        self.rows.len()
+    }
+
+    pub fn column_count(&self) -> usize {
+        self.columns.as_slice().len()
+    }
+
     pub(crate) fn check_id(id: u32) -> u16 {
         id.try_into().expect("invalid id for legacy row")
     }
@@ -119,46 +189,6 @@ impl<'b> LegacyRow<'b> {
 
     pub fn into_cells(self) -> impl Iterator<Item = Cell<'b>> {
         self.cells.into_iter()
-    }
-}
-
-impl<'t, 'b: 't> TableAccessor<'t, 'b> for LegacyTable<'b> {
-    type Row = &'t LegacyRow<'b>;
-    type RowMut = &'t mut LegacyRow<'b>;
-    type RowId = u16;
-
-    fn name(&self) -> &Label {
-        &self.name
-    }
-
-    fn set_name(&mut self, name: Label) {
-        self.name = name;
-    }
-
-    fn base_id(&self) -> Self::RowId {
-        self.base_id
-    }
-
-    fn get_row(&'t self, id: Self::RowId) -> Option<RowRef<'t, Self::Row>> {
-        let index = id.checked_sub(self.base_id)?;
-        self.rows
-            .get(index as usize)
-            .map(|row| RowRef::new(id as u32, row, &self.columns))
-    }
-
-    fn get_row_mut(&'t mut self, id: Self::RowId) -> Option<RowRef<'_, Self::RowMut>> {
-        let index = id.checked_sub(self.base_id)?;
-        self.rows
-            .get_mut(index as usize)
-            .map(|row| RowRef::new(id as u32, row, &self.columns))
-    }
-
-    fn row_count(&self) -> usize {
-        self.rows.len()
-    }
-
-    fn column_count(&self) -> usize {
-        self.columns.as_slice().len()
     }
 }
 

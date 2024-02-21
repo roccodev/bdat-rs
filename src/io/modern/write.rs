@@ -9,9 +9,9 @@ use std::{
 
 use byteorder::{ByteOrder, WriteBytesExt};
 
-use crate::{BdatError, ValueType};
 use crate::io::BDAT_MAGIC;
-use crate::{error::Result, Label, ModernTable, ModernRow, TableAccessor, Value};
+use crate::{error::Result, Label, ModernTable, Value};
+use crate::{BdatError, ValueType};
 
 use super::FileHeader;
 
@@ -160,9 +160,17 @@ where
             primary_keys.sort_unstable();
 
             // Make sure there are no duplicate hashes
-            if let Some(dups) = primary_keys.windows(2).find(|w| w.len() > 1 && w[0].0 == w[1].0) {
+            if let Some(dups) = primary_keys
+                .windows(2)
+                .find(|w| w.len() > 1 && w[0].0 == w[1].0)
+            {
                 let &[a, b] = dups else { unreachable!() };
-                return Err(BdatError::DuplicateKey(Box::new((primary_col.unwrap().0, Label::Hash(a.0), a.1.try_into()?, b.1.try_into()?))));
+                return Err(BdatError::DuplicateKey(Box::new((
+                    primary_col.unwrap().0,
+                    Label::Hash(a.0),
+                    a.1.try_into()?,
+                    b.1.try_into()?,
+                ))));
             }
 
             let mut buf = Vec::with_capacity(primary_keys.len() * 8);

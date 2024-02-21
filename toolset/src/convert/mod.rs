@@ -6,17 +6,20 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::{Label, Table, TableAccessor};
+use bdat::{Label, Table};
 use clap::Args;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
 
-use crate::{util::{BdatGame, ProgressBarState, RayonPoolJobs}, error::SchemaError};
 use crate::{
     error::Error,
     filter::{Filter, FilterArg},
     hash::HashNameTable,
     InputData,
+};
+use crate::{
+    error::SchemaError,
+    util::{BdatGame, ProgressBarState, RayonPoolJobs},
 };
 
 use self::schema::{AsFileName, FileSchema};

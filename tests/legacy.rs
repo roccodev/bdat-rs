@@ -1,5 +1,5 @@
 use bdat::legacy::LegacyWriteOptions;
-use bdat::{BdatFile, BdatVersion, Cell, Label, SwitchEndian, TableAccessor, Value};
+use bdat::{BdatFile, BdatVersion, Cell, Label, SwitchEndian, Value};
 
 type FileEndian = SwitchEndian;
 

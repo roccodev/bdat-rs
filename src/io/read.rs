@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::{Label, TableAccessor};
+use crate::{Label, LegacyTable, ModernTable, Table};
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::marker::PhantomData;
@@ -32,17 +32,17 @@ pub trait BdatFile<'b> {
     fn table_count(&self) -> usize;
 
     /// Reads all tables from the BDAT source, then groups them by name.
-    ///
-    /// ## Future compatibility
-    /// This function might start returning an iterator when Rust 1.75.0
-    /// hits stable (specifically [this issue](https://github.com/rust-lang/rust/issues/91611)).
     fn get_tables_by_name<'t, 'tb: 't>(&mut self) -> Result<HashMap<Label, Self::TableOut>>
     where
-        Self::TableOut: TableAccessor<'t, 'tb>,
+        Self::TableOut: TableName,
     {
         self.get_tables()
             .map(|tables| tables.into_iter().map(|t| (t.name().clone(), t)).collect())
     }
+}
+
+pub trait TableName {
+    fn name(&self) -> &Label;
 }
 
 impl<'b, E> BdatSlice<'b, E> {
@@ -62,5 +62,23 @@ impl<R, E> BdatReader<R, E> {
             table_offset: 0,
             _endianness: PhantomData,
         }
+    }
+}
+
+impl<'b> TableName for ModernTable<'b> {
+    fn name(&self) -> &Label {
+        self.name()
+    }
+}
+
+impl<'b> TableName for LegacyTable<'b> {
+    fn name(&self) -> &Label {
+        self.name()
+    }
+}
+
+impl<'b> TableName for Table<'b> {
+    fn name(&self) -> &Label {
+        self.name()
     }
 }
