@@ -164,6 +164,10 @@ impl ColumnMap {
     pub fn into_raw(self) -> Vec<ColumnDef> {
         self.columns
     }
+
+    pub fn iter(&self) -> impl Iterator<Item = &ColumnDef> {
+        self.columns.iter()
+    }
 }
 
 impl<T> From<T> for ColumnMap

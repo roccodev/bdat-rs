@@ -4,7 +4,7 @@ use crate::{
     BdatVersion, Cell, ColumnDef, ColumnMap, Label, LegacyTable, ModernTable, RowId, Table,
 };
 
-use super::{legacy::LegacyRow, modern::ModernRow};
+use super::{legacy::LegacyRow, modern::ModernRow, FormatConvertError};
 
 pub type TableBuilder<'b> = TableBuilderImpl<'b, CompatBuilderRow<'b>>;
 pub type ModernTableBuilder<'b> = TableBuilderImpl<'b, ModernRow<'b>>;
@@ -25,7 +25,7 @@ impl<'b, R: 'b> TableBuilderImpl<'b, R> {
     pub fn with_name(name: Label) -> Self {
         Self {
             name,
-            base_id: 0,
+            base_id: 1, // more sensible default, it's very rare for a table to have 0
             columns: ColumnMap::default(),
             rows: vec![],
             _buf: PhantomData,
@@ -77,27 +77,114 @@ impl<'b, R: 'b> TableBuilderImpl<'b, R> {
 
 /// Modern builder -> Modern table
 impl<'b> TableBuilderImpl<'b, ModernRow<'b>> {
-    fn from_compat(builder: TableBuilder<'b>) -> Self {
-        Self::from_table(
+    fn from_compat(builder: TableBuilder<'b>) -> Result<Self, FormatConvertError> {
+        if let Some(col) = builder
+            .columns
+            .iter()
+            .find(|c| !c.value_type().is_supported(BdatVersion::Modern))
+        {
+            return Err(FormatConvertError::UnsupportedValueType(col.value_type()));
+        }
+        let rows: Result<Vec<_>, FormatConvertError> =
+            builder.rows.into_iter().map(|r| r.to_modern()).collect();
+        Ok(Self::from_table(
             builder.name,
-            builder.base_id,
+            builder.base_id as u32,
             builder.columns,
-            builder
-                .rows
-                .into_iter()
-                .map(CompatBuilderRow::to_modern)
-                .collect(),
-        )
+            rows?,
+        ))
+    }
+
+    pub fn try_build(self) -> Result<ModernTable<'b>, FormatConvertError> {
+        // No need for MaxRowCountExceeded here, we panic on row insertions if
+        // the limit is reached, and all legacy table formats have a lower limit
+        // than modern tables.
+        Ok(ModernTable::new(self))
     }
 
     pub fn build(self) -> ModernTable<'b> {
-        ModernTable::new(self)
+        self.try_build().unwrap()
     }
 }
 
 /// Legacy builder -> Legacy table
 impl<'b> TableBuilderImpl<'b, LegacyRow<'b>> {
-    fn from_compat(builder: TableBuilder<'b>) -> Self {
+    fn from_compat(
+        builder: TableBuilder<'b>,
+    ) -> Result<LegacyTableBuilder<'b>, FormatConvertError> {
+        // any legacy version works here
+        if let Some(col) = builder
+            .columns
+            .iter()
+            .find(|c| !c.value_type().is_supported(BdatVersion::LegacySwitch))
+        {
+            return Err(FormatConvertError::UnsupportedValueType(col.value_type()));
+        }
+        let rows: Result<Vec<_>, FormatConvertError> = builder
+            .rows
+            .into_iter()
+            .map(CompatBuilderRow::to_legacy)
+            .collect();
+        Ok(Self::from_table(
+            builder.name,
+            builder.base_id,
+            builder.columns,
+            rows?,
+        ))
+    }
+
+    pub fn try_build(self) -> Result<LegacyTable<'b>, FormatConvertError> {
+        if self.rows.len() >= u16::MAX as usize {
+            return Err(FormatConvertError::MaxRowCountExceeded);
+        }
+        // TODO check base id
+        Ok(LegacyTable::new(self))
+    }
+
+    pub fn build(self) -> LegacyTable<'b> {
+        self.try_build().unwrap()
+    }
+}
+
+impl<'b> CompatBuilderRow<'b> {
+    pub fn to_modern(self) -> Result<ModernRow<'b>, FormatConvertError> {
+        let rows: Result<Vec<_>, FormatConvertError> = self
+            .0
+            .into_iter()
+            .map(|c| match c {
+                Cell::Single(v) => Ok(v),
+                _ => Err(FormatConvertError::UnsupportedCell),
+            })
+            .collect();
+        rows.map(ModernRow::new)
+    }
+
+    pub fn to_legacy(self) -> Result<LegacyRow<'b>, FormatConvertError> {
+        Ok(LegacyRow::new(self.0))
+    }
+}
+
+/// Compat builder -> Compat table
+impl<'b> TableBuilderImpl<'b, CompatBuilderRow<'b>> {
+    pub fn to_legacy(self) -> Result<LegacyTableBuilder<'b>, FormatConvertError> {
+        LegacyTableBuilder::from_compat(self)
+    }
+
+    pub fn to_modern(self) -> Result<ModernTableBuilder<'b>, FormatConvertError> {
+        ModernTableBuilder::from_compat(self)
+    }
+
+    pub fn build(self, version: BdatVersion) -> Table<'b> {
+        if version.is_legacy() {
+            self.to_legacy().unwrap().build().into()
+        } else {
+            self.to_modern().unwrap().build().into()
+        }
+    }
+}
+
+impl<'b> From<ModernTableBuilder<'b>> for TableBuilder<'b> {
+    fn from(builder: ModernTableBuilder<'b>) -> Self {
         Self::from_table(
             builder.name,
             builder.base_id,
@@ -105,48 +192,34 @@ impl<'b> TableBuilderImpl<'b, LegacyRow<'b>> {
             builder
                 .rows
                 .into_iter()
-                .map(CompatBuilderRow::to_legacy)
+                .map(|r| {
+                    CompatBuilderRow::from(r.into_values().map(Cell::Single).collect::<Vec<_>>())
+                })
                 .collect(),
         )
     }
+}
 
-    pub fn build(self) -> LegacyTable<'b> {
-        assert!(
-            self.rows.len() < u16::MAX as usize,
-            "legacy tables only allow up to {} rows",
-            u16::MAX
-        );
-        // TODO check base id
-        LegacyTable::new(self)
+impl<'b> From<LegacyTableBuilder<'b>> for TableBuilder<'b> {
+    fn from(builder: LegacyTableBuilder<'b>) -> Self {
+        Self::from_table(
+            builder.name,
+            builder.base_id,
+            builder.columns,
+            builder
+                .rows
+                .into_iter()
+                .map(|r| CompatBuilderRow::from(r.cells))
+                .collect(),
+        )
     }
 }
 
-impl<'b> CompatBuilderRow<'b> {
-    pub fn to_modern(self) -> ModernRow<'b> {
-        todo!()
-    }
+impl<'b> TryFrom<TableBuilder<'b>> for ModernTableBuilder<'b> {
+    type Error = FormatConvertError;
 
-    pub fn to_legacy(self) -> LegacyRow<'b> {
-        todo!()
-    }
-}
-
-/// Compat builder -> Compat table
-impl<'b> TableBuilderImpl<'b, CompatBuilderRow<'b>> {
-    pub fn to_legacy(self) -> LegacyTableBuilder<'b> {
-        LegacyTableBuilder::from_compat(self)
-    }
-
-    pub fn to_modern(self) -> ModernTableBuilder<'b> {
-        ModernTableBuilder::from_compat(self)
-    }
-
-    pub fn build(self, version: BdatVersion) -> Table<'b> {
-        if version.is_legacy() {
-            self.to_legacy().build().into()
-        } else {
-            self.to_modern().build().into()
-        }
+    fn try_from(builder: TableBuilder<'b>) -> Result<Self, Self::Error> {
+        builder.to_modern()
     }
 }
 

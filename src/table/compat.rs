@@ -262,14 +262,6 @@ impl<'b> Table<'b> {
 }
 
 impl<'b> CompatRow<'b> {
-    pub fn to_modern(self) -> ModernRow<'b> {
-        todo!()
-    }
-
-    pub fn to_legacy(self) -> LegacyRow<'b> {
-        todo!()
-    }
-
     pub fn cells(&self) -> impl Iterator<Item = Cell<'b>> + '_ {
         match self {
             CompatRow::Modern(m) => {

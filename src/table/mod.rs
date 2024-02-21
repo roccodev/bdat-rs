@@ -44,6 +44,7 @@ pub use modern::{ModernRow, ModernTable};
 /// use bdat::{Table, TableBuilder, Cell, ColumnDef, Value, ValueType, Label, BdatVersion};
 ///
 /// let table: Table = TableBuilder::with_name(Label::Hash(0xDEADBEEF))
+///     .set_base_id(1) // default, if you want 0 it must be set manually
 ///     .add_column(ColumnDef::new(ValueType::UnsignedInt, Label::Hash(0xCAFEBABE)))
 ///     .add_row(vec![Cell::Single(Value::UnsignedInt(10))].into())
 ///     .build(BdatVersion::Modern);
@@ -82,4 +83,8 @@ pub enum FormatConvertError {
     /// For instance, modern tables only support single-value cells.
     #[error("unsupported cell")]
     UnsupportedCell,
+    /// The max number of rows in the table has been reached, so no
+    /// more rows can be added.
+    #[error("max row count exceeded")]
+    MaxRowCountExceeded,
 }

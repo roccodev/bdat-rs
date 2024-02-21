@@ -1,5 +1,6 @@
 use crate::{
     BdatVersion, Cell, CellAccessor, ColumnDef, ColumnMap, Label, ModernTable, RowRef, Table,
+    TableBuilder,
 };
 
 use super::{builder::LegacyTableBuilder, util::EnumId, FormatConvertError, TableInner};
@@ -214,6 +215,12 @@ impl<'b> From<LegacyTable<'b>> for LegacyTableBuilder<'b> {
     }
 }
 
+impl<'b> From<LegacyTable<'b>> for TableBuilder<'b> {
+    fn from(value: LegacyTable<'b>) -> Self {
+        Self::from(LegacyTableBuilder::from(value))
+    }
+}
+
 impl<'b> From<LegacyTable<'b>> for Table<'b> {
     fn from(value: LegacyTable<'b>) -> Self {
         Self {
@@ -222,19 +229,10 @@ impl<'b> From<LegacyTable<'b>> for Table<'b> {
     }
 }
 
-/// Modern -> Legacy conversion
 impl<'b> TryFrom<ModernTable<'b>> for LegacyTable<'b> {
     type Error = FormatConvertError;
 
     fn try_from(value: ModernTable<'b>) -> Result<Self, Self::Error> {
-        // any legacy version works here
-        if let Some(col) = value
-            .columns()
-            .find(|c| !c.value_type().is_supported(BdatVersion::LegacySwitch))
-        {
-            return Err(FormatConvertError::UnsupportedValueType(col.value_type()));
-        }
-        //Ok(LegacyTable::new(TableBuilder::from(value)))
-        todo!()
+        TableBuilder::from(value).to_legacy()?.try_build()
     }
 }

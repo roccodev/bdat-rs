@@ -1,7 +1,7 @@
 use crate::hash::PreHashedMap;
 use crate::{
-    BdatVersion, Cell, CellAccessor, ColumnDef, ColumnMap, Label, LegacyTable, ModernTableBuilder,
-    RowId, RowRef, Table, Value,
+    BdatVersion, Cell, CellAccessor, ColumnDef, ColumnMap, Label, LegacyTable, LegacyTableBuilder,
+    ModernTableBuilder, RowId, RowRef, Table, TableBuilder, Value,
 };
 
 use super::util::EnumId;
@@ -77,6 +77,83 @@ impl<'b> ModernTable<'b> {
             row_hash_table: build_id_map_checked(&builder.rows, builder.base_id),
             rows: builder.rows,
         }
+    }
+
+    pub fn name(&self) -> &Label {
+        &self.name
+    }
+
+    pub fn set_name(&mut self, name: Label) {
+        self.name = name;
+    }
+
+    /// Gets the minimum row ID in the table.
+    pub fn base_id(&self) -> RowId {
+        self.base_id
+    }
+
+    /// Gets a row by its ID.
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    ///
+    /// ## Panics
+    /// If there is no row for the given ID.
+    ///
+    /// ## Example
+    /// ```
+    /// use bdat::{Label, ModernTable};
+    ///
+    /// fn foo(table: &ModernTable) -> u32 {
+    ///     // This is a `ModernCell`, which is essentially a single value.
+    ///     // As such, it can be used to avoid having to match on single-value cells
+    ///     // that are included for legacy compatibility.
+    ///     let cell = table.row(1).get(Label::Hash(0xDEADBEEF));
+    ///     // Casting values is also supported:
+    ///     cell.get_as::<u32>()
+    /// }
+    /// ```
+    pub fn row(&self, id: RowId) -> RowRef<&ModernRow<'b>> {
+        self.get_row(id).expect("row not found")
+    }
+
+    /// Gets a mutable view of a row by its ID
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    ///
+    /// ## Panics
+    /// If there is no row for the given ID
+    pub fn row_mut(&mut self, id: RowId) -> RowRef<&mut ModernRow<'b>> {
+        self.get_row_mut(id).expect("row not found")
+    }
+
+    /// Attempts to get a row by its ID.  
+    /// If there is no row for the given ID, this returns [`None`].
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    pub fn get_row(&self, id: RowId) -> Option<RowRef<&ModernRow<'b>>> {
+        let index = id.checked_sub(self.base_id)?;
+        self.rows
+            .get(index as usize)
+            .map(move |row| RowRef::new(id, row, &self.columns))
+    }
+
+    /// Attempts to get a mutable view of a row by its ID.  
+    /// If there is no row for the given ID, this returns [`None`].
+    ///
+    /// Note: the ID is the row's numerical ID, which could be different
+    /// from the index of the row in the table's row list. That is because
+    /// BDAT tables can have arbitrary start IDs.
+    pub fn get_row_mut(&mut self, id: RowId) -> Option<RowRef<&mut ModernRow<'b>>> {
+        let index = id.checked_sub(self.base_id)?;
+        self.rows
+            .get_mut(index as usize)
+            .map(|row| RowRef::new(id, row, &self.columns))
     }
 
     /// Attempts to get a row by its hashed 32-bit ID.
@@ -160,83 +237,6 @@ impl<'b> ModernTable<'b> {
         self.columns.into_raw().into_iter()
     }
 
-    pub fn name(&self) -> &Label {
-        &self.name
-    }
-
-    pub fn set_name(&mut self, name: Label) {
-        self.name = name;
-    }
-
-    /// Gets the minimum row ID in the table.
-    pub fn base_id(&self) -> RowId {
-        self.base_id
-    }
-
-    /// Gets a row by its ID.
-    ///
-    /// Note: the ID is the row's numerical ID, which could be different
-    /// from the index of the row in the table's row list. That is because
-    /// BDAT tables can have arbitrary start IDs.
-    ///
-    /// ## Panics
-    /// If there is no row for the given ID.
-    ///
-    /// ## Example
-    /// ```
-    /// use bdat::{Label, ModernTable};
-    ///
-    /// fn foo(table: &ModernTable) -> u32 {
-    ///     // This is a `ModernCell`, which is essentially a single value.
-    ///     // As such, it can be used to avoid having to match on single-value cells
-    ///     // that are included for legacy compatibility.
-    ///     let cell = table.row(1).get(Label::Hash(0xDEADBEEF));
-    ///     // Casting values is also supported:
-    ///     cell.get_as::<u32>()
-    /// }
-    /// ```
-    pub fn row(&self, id: RowId) -> RowRef<&ModernRow<'b>> {
-        self.get_row(id).expect("row not found")
-    }
-
-    /// Gets a mutable view of a row by its ID
-    ///
-    /// Note: the ID is the row's numerical ID, which could be different
-    /// from the index of the row in the table's row list. That is because
-    /// BDAT tables can have arbitrary start IDs.
-    ///
-    /// ## Panics
-    /// If there is no row for the given ID
-    pub fn row_mut(&mut self, id: RowId) -> RowRef<&mut ModernRow<'b>> {
-        self.get_row_mut(id).expect("row not found")
-    }
-
-    /// Attempts to get a row by its ID.  
-    /// If there is no row for the given ID, this returns [`None`].
-    ///
-    /// Note: the ID is the row's numerical ID, which could be different
-    /// from the index of the row in the table's row list. That is because
-    /// BDAT tables can have arbitrary start IDs.
-    pub fn get_row(&self, id: RowId) -> Option<RowRef<&ModernRow<'b>>> {
-        let index = id.checked_sub(self.base_id)?;
-        self.rows
-            .get(index as usize)
-            .map(move |row| RowRef::new(id, row, &self.columns))
-    }
-
-    /// Attempts to get a mutable view of a row by its ID.  
-    /// If there is no row for the given ID, this returns [`None`].
-    ///
-    /// Note: the ID is the row's numerical ID, which could be different
-    /// from the index of the row in the table's row list. That is because
-    /// BDAT tables can have arbitrary start IDs.
-    pub fn get_row_mut(&mut self, id: RowId) -> Option<RowRef<&mut ModernRow<'b>>> {
-        let index = id.checked_sub(self.base_id)?;
-        self.rows
-            .get_mut(index as usize)
-            .map(|row| RowRef::new(id, row, &self.columns))
-    }
-
     pub fn row_count(&self) -> usize {
         self.rows.len()
     }
@@ -317,6 +317,12 @@ impl<'b> From<ModernTable<'b>> for ModernTableBuilder<'b> {
     }
 }
 
+impl<'b> From<ModernTable<'b>> for TableBuilder<'b> {
+    fn from(value: ModernTable<'b>) -> Self {
+        Self::from(ModernTableBuilder::from(value))
+    }
+}
+
 impl<'b> From<ModernTable<'b>> for Table<'b> {
     fn from(value: ModernTable<'b>) -> Self {
         Self {
@@ -330,21 +336,7 @@ impl<'b> TryFrom<LegacyTable<'b>> for ModernTable<'b> {
     type Error = FormatConvertError;
 
     fn try_from(value: LegacyTable<'b>) -> Result<Self, Self::Error> {
-        if let Some(col) = value
-            .columns()
-            .find(|c| !c.value_type().is_supported(BdatVersion::Modern))
-        {
-            return Err(FormatConvertError::UnsupportedValueType(col.value_type()));
-        }
-        if value
-            .rows
-            .iter()
-            .any(|r| r.cells.iter().any(|c| !matches!(c, Cell::Single(_))))
-        {
-            return Err(FormatConvertError::UnsupportedCell);
-        }
-        //Ok(ModernTable::new(TableBuilder::from(value)))
-        todo!()
+        TableBuilder::from(value).to_modern()?.try_build()
     }
 }
 
