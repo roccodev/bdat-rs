@@ -36,3 +36,5 @@ harness = false
 name = "murmur"
 harness = false
 
+[workspace]
+members = ["toolset"]
