@@ -1,6 +1,6 @@
 //! BDAT table, row, cell implementations
 
-use crate::{CellAccessor, Label, RowRef, ValueType};
+use crate::{RowId, ValueType};
 use thiserror::Error;
 
 pub mod cell;
@@ -13,7 +13,7 @@ mod legacy;
 mod modern;
 mod util;
 
-pub use builder::{LegacyTableBuilder, ModernTableBuilder, TableBuilder};
+pub use builder::{CompatTableBuilder, LegacyTableBuilder, ModernTableBuilder};
 pub use legacy::{LegacyRow, LegacyTable};
 pub use modern::{ModernRow, ModernTable};
 
@@ -87,4 +87,9 @@ pub enum FormatConvertError {
     /// more rows can be added.
     #[error("max row count exceeded")]
     MaxRowCountExceeded,
+    /// The destination format (legacy) does not support the row ID because it is too high.
+    /// This can happen if the base ID or any of the rows's ID is outside of the format's
+    /// row ID boundaries.
+    #[error("unsupported row ID {0}")]
+    UnsupportedRowId(RowId),
 }

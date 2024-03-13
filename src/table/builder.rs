@@ -6,38 +6,36 @@ use crate::{
 
 use super::{legacy::LegacyRow, modern::ModernRow, FormatConvertError};
 
-pub type TableBuilder<'b> = TableBuilderImpl<'b, CompatBuilderRow<'b>>;
-pub type ModernTableBuilder<'b> = TableBuilderImpl<'b, ModernRow<'b>>;
-pub type LegacyTableBuilder<'b> = TableBuilderImpl<'b, LegacyRow<'b>>;
+pub type CompatTableBuilder<'b> = TableBuilderImpl<'b, CompatBuilderRow<'b>, RowId>;
+pub type ModernTableBuilder<'b> = TableBuilderImpl<'b, ModernRow<'b>, u32>;
+pub type LegacyTableBuilder<'b> = TableBuilderImpl<'b, LegacyRow<'b>, u16>;
 
 /// A builder interface for [`Table`].
-pub struct TableBuilderImpl<'b, R: 'b> {
+pub struct TableBuilderImpl<'b, R: 'b, N> {
     pub(crate) name: Label,
     pub(crate) columns: ColumnMap,
-    pub(crate) base_id: RowId,
+    pub(crate) base_id: N,
     pub(crate) rows: Vec<R>,
     _buf: PhantomData<&'b ()>,
 }
 
 pub struct CompatBuilderRow<'b>(Vec<Cell<'b>>);
 
-impl<'b, R: 'b> TableBuilderImpl<'b, R> {
+impl<'b, R: 'b, N> TableBuilderImpl<'b, R, N>
+where
+    N: From<u8>,
+{
     pub fn with_name(name: Label) -> Self {
         Self {
             name,
-            base_id: 1, // more sensible default, it's very rare for a table to have 0
+            base_id: 1.into(), // more sensible default, it's very rare for a table to have 0
             columns: ColumnMap::default(),
             rows: vec![],
             _buf: PhantomData,
         }
     }
 
-    pub(crate) fn from_table(
-        name: Label,
-        base_id: RowId,
-        columns: ColumnMap,
-        rows: Vec<R>,
-    ) -> Self {
+    pub(crate) fn from_table(name: Label, base_id: N, columns: ColumnMap, rows: Vec<R>) -> Self {
         Self {
             name,
             columns,
@@ -69,15 +67,15 @@ impl<'b, R: 'b> TableBuilderImpl<'b, R> {
         self
     }
 
-    pub fn set_base_id(mut self, base_id: RowId) -> Self {
+    pub fn set_base_id(mut self, base_id: N) -> Self {
         self.base_id = base_id;
         self
     }
 }
 
 /// Modern builder -> Modern table
-impl<'b> TableBuilderImpl<'b, ModernRow<'b>> {
-    fn from_compat(builder: TableBuilder<'b>) -> Result<Self, FormatConvertError> {
+impl<'b> ModernTableBuilder<'b> {
+    fn from_compat(builder: CompatTableBuilder<'b>) -> Result<Self, FormatConvertError> {
         if let Some(col) = builder
             .columns
             .iter()
@@ -85,11 +83,14 @@ impl<'b> TableBuilderImpl<'b, ModernRow<'b>> {
         {
             return Err(FormatConvertError::UnsupportedValueType(col.value_type()));
         }
-        let rows: Result<Vec<_>, FormatConvertError> =
-            builder.rows.into_iter().map(|r| r.to_modern()).collect();
+        let rows: Result<Vec<_>, FormatConvertError> = builder
+            .rows
+            .into_iter()
+            .map(|r| r.try_into_modern())
+            .collect();
         Ok(Self::from_table(
             builder.name,
-            builder.base_id as u32,
+            builder.base_id,
             builder.columns,
             rows?,
         ))
@@ -108,9 +109,9 @@ impl<'b> TableBuilderImpl<'b, ModernRow<'b>> {
 }
 
 /// Legacy builder -> Legacy table
-impl<'b> TableBuilderImpl<'b, LegacyRow<'b>> {
+impl<'b> LegacyTableBuilder<'b> {
     fn from_compat(
-        builder: TableBuilder<'b>,
+        builder: CompatTableBuilder<'b>,
     ) -> Result<LegacyTableBuilder<'b>, FormatConvertError> {
         // any legacy version works here
         if let Some(col) = builder
@@ -123,21 +124,26 @@ impl<'b> TableBuilderImpl<'b, LegacyRow<'b>> {
         let rows: Result<Vec<_>, FormatConvertError> = builder
             .rows
             .into_iter()
-            .map(CompatBuilderRow::to_legacy)
+            .map(CompatBuilderRow::try_into_legacy)
             .collect();
+        let base_id = u16::try_from(builder.base_id)
+            .map_err(|_| FormatConvertError::UnsupportedRowId(builder.base_id))?;
         Ok(Self::from_table(
             builder.name,
-            builder.base_id,
+            base_id,
             builder.columns,
             rows?,
         ))
     }
 
     pub fn try_build(self) -> Result<LegacyTable<'b>, FormatConvertError> {
-        if self.rows.len() >= u16::MAX as usize {
-            return Err(FormatConvertError::MaxRowCountExceeded);
+        let rows =
+            u16::try_from(self.rows.len()).map_err(|_| FormatConvertError::MaxRowCountExceeded)?;
+        if self.base_id.checked_add(rows).is_none() {
+            // If there are enough rows to overflow from base_id, then we definitely have a row
+            // with ID u16::MAX
+            return Err(FormatConvertError::UnsupportedRowId(u16::MAX as u32));
         }
-        // TODO check base id
         Ok(LegacyTable::new(self))
     }
 
@@ -147,7 +153,7 @@ impl<'b> TableBuilderImpl<'b, LegacyRow<'b>> {
 }
 
 impl<'b> CompatBuilderRow<'b> {
-    pub fn to_modern(self) -> Result<ModernRow<'b>, FormatConvertError> {
+    pub fn try_into_modern(self) -> Result<ModernRow<'b>, FormatConvertError> {
         let rows: Result<Vec<_>, FormatConvertError> = self
             .0
             .into_iter()
@@ -159,31 +165,31 @@ impl<'b> CompatBuilderRow<'b> {
         rows.map(ModernRow::new)
     }
 
-    pub fn to_legacy(self) -> Result<LegacyRow<'b>, FormatConvertError> {
+    pub fn try_into_legacy(self) -> Result<LegacyRow<'b>, FormatConvertError> {
         Ok(LegacyRow::new(self.0))
     }
 }
 
 /// Compat builder -> Compat table
-impl<'b> TableBuilderImpl<'b, CompatBuilderRow<'b>> {
-    pub fn to_legacy(self) -> Result<LegacyTableBuilder<'b>, FormatConvertError> {
+impl<'b> CompatTableBuilder<'b> {
+    pub fn try_into_legacy(self) -> Result<LegacyTableBuilder<'b>, FormatConvertError> {
         LegacyTableBuilder::from_compat(self)
     }
 
-    pub fn to_modern(self) -> Result<ModernTableBuilder<'b>, FormatConvertError> {
+    pub fn try_into_modern(self) -> Result<ModernTableBuilder<'b>, FormatConvertError> {
         ModernTableBuilder::from_compat(self)
     }
 
     pub fn build(self, version: BdatVersion) -> Table<'b> {
         if version.is_legacy() {
-            self.to_legacy().unwrap().build().into()
+            self.try_into_legacy().unwrap().build().into()
         } else {
-            self.to_modern().unwrap().build().into()
+            self.try_into_modern().unwrap().build().into()
         }
     }
 }
 
-impl<'b> From<ModernTableBuilder<'b>> for TableBuilder<'b> {
+impl<'b> From<ModernTableBuilder<'b>> for CompatTableBuilder<'b> {
     fn from(builder: ModernTableBuilder<'b>) -> Self {
         Self::from_table(
             builder.name,
@@ -200,11 +206,11 @@ impl<'b> From<ModernTableBuilder<'b>> for TableBuilder<'b> {
     }
 }
 
-impl<'b> From<LegacyTableBuilder<'b>> for TableBuilder<'b> {
+impl<'b> From<LegacyTableBuilder<'b>> for CompatTableBuilder<'b> {
     fn from(builder: LegacyTableBuilder<'b>) -> Self {
         Self::from_table(
             builder.name,
-            builder.base_id,
+            builder.base_id.into(),
             builder.columns,
             builder
                 .rows
@@ -215,11 +221,11 @@ impl<'b> From<LegacyTableBuilder<'b>> for TableBuilder<'b> {
     }
 }
 
-impl<'b> TryFrom<TableBuilder<'b>> for ModernTableBuilder<'b> {
+impl<'b> TryFrom<CompatTableBuilder<'b>> for ModernTableBuilder<'b> {
     type Error = FormatConvertError;
 
-    fn try_from(builder: TableBuilder<'b>) -> Result<Self, Self::Error> {
-        builder.to_modern()
+    fn try_from(builder: CompatTableBuilder<'b>) -> Result<Self, Self::Error> {
+        builder.try_into_modern()
     }
 }
 

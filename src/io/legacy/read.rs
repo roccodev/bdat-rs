@@ -12,7 +12,7 @@ use crate::legacy::float::BdatReal;
 use crate::legacy::scramble::{calc_checksum, scramble, unscramble, ScrambleType};
 use crate::legacy::{ColumnNodeInfo, COLUMN_NODE_SIZE};
 use crate::{
-    BdatError, BdatFile, BdatVersion, Cell, ColumnDef, FlagDef, Label, LegacyTable, LegacyRow,
+    BdatError, BdatFile, BdatVersion, Cell, ColumnDef, FlagDef, Label, LegacyRow, LegacyTable,
     LegacyTableBuilder, Utf, Value, ValueType,
 };
 
@@ -370,14 +370,14 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         let row_count = self.header.row_count as u32;
         let base_id = self.header.base_id;
         let mut row_reader = RowReader::new(&mut self, &columns);
-        for i in 0..row_count {
+        for _ in 0..row_count {
             let cells = row_reader.read_row()?;
             rows.push(LegacyRow::new(cells));
             row_reader.next_row()?;
         }
 
         Ok(LegacyTableBuilder::with_name(Label::String(name))
-            .set_base_id(base_id as u32)
+            .set_base_id(base_id)
             .set_columns(columns)
             .set_rows(rows)
             .build())

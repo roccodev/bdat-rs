@@ -1,5 +1,5 @@
 use crate::legacy::float::BdatReal;
-use crate::{BdatError, BdatResult, BdatVersion, Label, RowRef};
+use crate::{BdatError, BdatResult, BdatVersion, Label};
 use enum_kinds::EnumKind;
 use num_enum::TryFromPrimitive;
 use std::borrow::Cow;

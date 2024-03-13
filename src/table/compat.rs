@@ -132,12 +132,7 @@ impl<'b> Table<'b> {
     /// * If the table is modern, this does nothing and returns it.
     /// * If the table is legacy, it tries to convert it to the
     /// modern format, and returns the result.
-    ///
-    /// This is not to be confused with [`into_modern`], which panics if
-    /// the table is not modern.
-    ///
-    /// [`into_modern`]: Table::into_modern
-    pub fn to_modern(self) -> BdatResult<ModernTable<'b>> {
+    pub fn try_into_modern(self) -> BdatResult<ModernTable<'b>> {
         match self.inner {
             TableInner::Modern(m) => Ok(m),
             TableInner::Legacy(l) => Ok(l.try_into()?),
@@ -149,12 +144,7 @@ impl<'b> Table<'b> {
     /// * If the table is legacy, this does nothing and returns it.
     /// * If the table is modern, it tries to convert it to the
     /// legacy format, and returns the result.
-    ///
-    /// This is not to be confused with [`into_legacy`], which panics if
-    /// the table is not legacy.
-    ///
-    /// [`into_legacy`]: Table::into_legacy
-    pub fn to_legacy(self) -> BdatResult<LegacyTable<'b>> {
+    pub fn try_into_legacy(self) -> BdatResult<LegacyTable<'b>> {
         match self.inner {
             TableInner::Modern(m) => Ok(m.try_into()?),
             TableInner::Legacy(l) => Ok(l),
@@ -188,7 +178,9 @@ impl<'b> Table<'b> {
     pub fn row(&self, id: RowId) -> RowRef<'_, CompatRef<'_, 'b>> {
         match &self.inner {
             TableInner::Modern(m) => m.row(id).map(CompatRef::Modern),
-            TableInner::Legacy(l) => l.row(LegacyTable::check_id(id)).map(CompatRef::Legacy),
+            TableInner::Legacy(l) => l
+                .row(id.try_into().expect("invalid id for legacy row"))
+                .map(CompatRef::Legacy),
         }
     }
 
@@ -201,9 +193,10 @@ impl<'b> Table<'b> {
     pub fn get_row(&self, id: RowId) -> Option<RowRef<'_, CompatRef<'_, 'b>>> {
         match &self.inner {
             TableInner::Modern(m) => m.get_row(id).map(|r| r.map(CompatRef::Modern)),
-            // TODO use option on id fail
-            TableInner::Legacy(l) => l
-                .get_row(LegacyTable::check_id(id))
+            TableInner::Legacy(l) => id
+                .try_into()
+                .ok()
+                .and_then(|id| l.get_row(id))
                 .map(|r| r.map(CompatRef::Legacy)),
         }
     }

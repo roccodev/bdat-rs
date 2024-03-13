@@ -1,6 +1,5 @@
 use crate::{
-    BdatVersion, Cell, CellAccessor, ColumnDef, ColumnMap, Label, ModernTable, RowRef, Table,
-    TableBuilder,
+    Cell, CellAccessor, ColumnDef, ColumnMap, CompatTableBuilder, Label, ModernTable, RowRef, Table,
 };
 
 use super::{builder::LegacyTableBuilder, util::EnumId, FormatConvertError, TableInner};
@@ -48,7 +47,7 @@ impl<'b> LegacyTable<'b> {
         Self {
             name: builder.name,
             columns: builder.columns,
-            base_id: builder.base_id.try_into().unwrap(), // TODO move to builder
+            base_id: builder.base_id,
             rows: builder.rows,
         }
     }
@@ -173,10 +172,6 @@ impl<'b> LegacyTable<'b> {
     pub fn column_count(&self) -> usize {
         self.columns.as_slice().len()
     }
-
-    pub(crate) fn check_id(id: u32) -> u16 {
-        id.try_into().expect("invalid id for legacy row")
-    }
 }
 
 impl<'b> LegacyRow<'b> {
@@ -211,11 +206,11 @@ impl<'a, 'b> CellAccessor for &'a mut LegacyRow<'b> {
 
 impl<'b> From<LegacyTable<'b>> for LegacyTableBuilder<'b> {
     fn from(value: LegacyTable<'b>) -> Self {
-        Self::from_table(value.name, value.base_id as u32, value.columns, value.rows)
+        Self::from_table(value.name, value.base_id, value.columns, value.rows)
     }
 }
 
-impl<'b> From<LegacyTable<'b>> for TableBuilder<'b> {
+impl<'b> From<LegacyTable<'b>> for CompatTableBuilder<'b> {
     fn from(value: LegacyTable<'b>) -> Self {
         Self::from(LegacyTableBuilder::from(value))
     }
@@ -233,6 +228,8 @@ impl<'b> TryFrom<ModernTable<'b>> for LegacyTable<'b> {
     type Error = FormatConvertError;
 
     fn try_from(value: ModernTable<'b>) -> Result<Self, Self::Error> {
-        TableBuilder::from(value).to_legacy()?.try_build()
+        CompatTableBuilder::from(value)
+            .try_into_legacy()?
+            .try_build()
     }
 }

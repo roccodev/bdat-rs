@@ -1,7 +1,7 @@
 use crate::hash::PreHashedMap;
 use crate::{
-    BdatVersion, Cell, CellAccessor, ColumnDef, ColumnMap, Label, LegacyTable, LegacyTableBuilder,
-    ModernTableBuilder, RowId, RowRef, Table, TableBuilder, Value,
+    CellAccessor, ColumnDef, ColumnMap, CompatTableBuilder, Label, LegacyTable, ModernTableBuilder,
+    RowId, RowRef, Table, Value,
 };
 
 use super::util::EnumId;
@@ -317,7 +317,7 @@ impl<'b> From<ModernTable<'b>> for ModernTableBuilder<'b> {
     }
 }
 
-impl<'b> From<ModernTable<'b>> for TableBuilder<'b> {
+impl<'b> From<ModernTable<'b>> for CompatTableBuilder<'b> {
     fn from(value: ModernTable<'b>) -> Self {
         Self::from(ModernTableBuilder::from(value))
     }
@@ -336,7 +336,9 @@ impl<'b> TryFrom<LegacyTable<'b>> for ModernTable<'b> {
     type Error = FormatConvertError;
 
     fn try_from(value: LegacyTable<'b>) -> Result<Self, Self::Error> {
-        TableBuilder::from(value).to_modern()?.try_build()
+        CompatTableBuilder::from(value)
+            .try_into_modern()?
+            .try_build()
     }
 }
 

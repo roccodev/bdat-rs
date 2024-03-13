@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::{Cell, ColumnDef, Label, RowId, Table, TableBuilder, ValueType};
+use bdat::{Cell, ColumnDef, CompatTableBuilder, Label, RowId, Table, ValueType};
 use bdat::{ColumnBuilder, FlagDef};
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
@@ -192,7 +192,7 @@ impl BdatDeserialize for JsonConverter {
             })
             .collect::<Result<Vec<_>>>()?;
 
-        Ok(TableBuilder::with_name(name)
+        Ok(CompatTableBuilder::with_name(name)
             .set_columns(columns)
             .set_rows(rows)
             .build(file_schema.version))
