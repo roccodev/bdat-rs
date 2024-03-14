@@ -54,9 +54,9 @@ use super::{FormatConvertError, TableInner};
 /// [`Cell::Single`]: crate::Cell::Single
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModernTable<'b> {
-    pub(crate) name: Label,
+    pub(crate) name: Label<'b>,
     pub(crate) base_id: u32,
-    pub(crate) columns: ColumnMap,
+    pub(crate) columns: ColumnMap<'b>,
     pub(crate) rows: Vec<ModernRow<'b>>,
     #[cfg(feature = "hash-table")]
     row_hash_table: PreHashedMap<u32, RowId>,
@@ -79,11 +79,11 @@ impl<'b> ModernTable<'b> {
         }
     }
 
-    pub fn name(&self) -> &Label {
-        &self.name
+    pub fn name(&self) -> Label {
+        self.name.as_ref()
     }
 
-    pub fn set_name(&mut self, name: Label) {
+    pub fn set_name(&mut self, name: Label<'b>) {
         self.name = name;
     }
 
@@ -228,12 +228,12 @@ impl<'b> ModernTable<'b> {
 
     /// Gets an iterator over mutable references to this table's
     /// column definitions.
-    pub fn columns_mut(&mut self) -> impl Iterator<Item = &mut ColumnDef> {
+    pub fn columns_mut(&mut self) -> impl Iterator<Item = &mut ColumnDef<'b>> {
         self.columns.as_mut_slice().iter_mut()
     }
 
     /// Gets an owning iterator over this table's column definitions
-    pub fn into_columns(self) -> impl Iterator<Item = ColumnDef> {
+    pub fn into_columns(self) -> impl Iterator<Item = ColumnDef<'b>> {
         self.columns.into_raw().into_iter()
     }
 

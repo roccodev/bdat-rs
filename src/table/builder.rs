@@ -1,51 +1,46 @@
-use std::marker::PhantomData;
-
 use crate::{
-    BdatVersion, Cell, ColumnDef, ColumnMap, Label, LegacyTable, ModernTable, RowId, Table,
+    BdatVersion, Cell, ColumnDef, ColumnMap, Label, LegacyTable, ModernTable, RowId, Table, Utf,
 };
 
 use super::{legacy::LegacyRow, modern::ModernRow, FormatConvertError};
 
-pub type CompatTableBuilder<'b> = TableBuilderImpl<'b, CompatBuilderRow<'b>, RowId>;
-pub type ModernTableBuilder<'b> = TableBuilderImpl<'b, ModernRow<'b>, u32>;
-pub type LegacyTableBuilder<'b> = TableBuilderImpl<'b, LegacyRow<'b>, u16>;
+pub type CompatTableBuilder<'b> = TableBuilderImpl<'b, CompatBuilderRow<'b>, RowId, Label<'b>>;
+pub type ModernTableBuilder<'b> = TableBuilderImpl<'b, ModernRow<'b>, u32, Label<'b>>;
+pub type LegacyTableBuilder<'b> = TableBuilderImpl<'b, LegacyRow<'b>, u16, Utf<'b>>;
 
 /// A builder interface for [`Table`].
-pub struct TableBuilderImpl<'b, R: 'b, N> {
-    pub(crate) name: Label,
-    pub(crate) columns: ColumnMap,
+pub struct TableBuilderImpl<'b, R: 'b, N, L> {
+    pub(crate) name: L,
+    pub(crate) columns: ColumnMap<'b>,
     pub(crate) base_id: N,
     pub(crate) rows: Vec<R>,
-    _buf: PhantomData<&'b ()>,
 }
 
 pub struct CompatBuilderRow<'b>(Vec<Cell<'b>>);
 
-impl<'b, R: 'b, N> TableBuilderImpl<'b, R, N>
+impl<'b, R: 'b, N, L> TableBuilderImpl<'b, R, N, L>
 where
     N: From<u8>,
 {
-    pub fn with_name(name: Label) -> Self {
+    pub fn with_name(name: impl Into<L>) -> Self {
         Self {
-            name,
+            name: name.into(),
             base_id: 1.into(), // more sensible default, it's very rare for a table to have 0
             columns: ColumnMap::default(),
             rows: vec![],
-            _buf: PhantomData,
         }
     }
 
-    pub(crate) fn from_table(name: Label, base_id: N, columns: ColumnMap, rows: Vec<R>) -> Self {
+    pub(crate) fn from_table(name: L, base_id: N, columns: ColumnMap<'b>, rows: Vec<R>) -> Self {
         Self {
             name,
             columns,
             base_id,
             rows,
-            _buf: PhantomData,
         }
     }
 
-    pub fn add_column(mut self, column: ColumnDef) -> Self {
+    pub fn add_column(mut self, column: ColumnDef<'b>) -> Self {
         self.columns.push(column);
         self
     }
@@ -62,7 +57,7 @@ where
         self
     }
 
-    pub fn set_columns(mut self, columns: Vec<ColumnDef>) -> Self {
+    pub fn set_columns(mut self, columns: Vec<ColumnDef<'b>>) -> Self {
         self.columns = ColumnMap::from(columns);
         self
     }
@@ -128,12 +123,11 @@ impl<'b> LegacyTableBuilder<'b> {
             .collect();
         let base_id = u16::try_from(builder.base_id)
             .map_err(|_| FormatConvertError::UnsupportedRowId(builder.base_id))?;
-        Ok(Self::from_table(
-            builder.name,
-            base_id,
-            builder.columns,
-            rows?,
-        ))
+        let name = builder
+            .name
+            .try_into()
+            .map_err(|_| FormatConvertError::UnsupportedLabelType)?;
+        Ok(Self::from_table(name, base_id, builder.columns, rows?))
     }
 
     pub fn try_build(self) -> Result<LegacyTable<'b>, FormatConvertError> {
@@ -209,7 +203,7 @@ impl<'b> From<ModernTableBuilder<'b>> for CompatTableBuilder<'b> {
 impl<'b> From<LegacyTableBuilder<'b>> for CompatTableBuilder<'b> {
     fn from(builder: LegacyTableBuilder<'b>) -> Self {
         Self::from_table(
-            builder.name,
+            builder.name.into(),
             builder.base_id.into(),
             builder.columns,
             builder

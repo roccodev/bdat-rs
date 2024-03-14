@@ -13,17 +13,14 @@ pub struct LabelNotStringError;
 /// A name for a BDAT element (table, column, ID, etc.)
 #[derive(PartialEq, Eq, Debug, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub enum Label {
+pub enum Label<'buf> {
     /// 32-bit hash, notably used in [`BdatVersion::Modern`] BDATs.
     Hash(u32),
     /// Plain-text string, used in older BDAT formats.
-    String(String),
-    /// Equivalent to [`Label::String`], but it is made explicit that the label
-    /// was originally hashed.
-    Unhashed(String),
+    String(Utf<'buf>),
 }
 
-impl Label {
+impl<'buf> Label<'buf> {
     /// Extracts a [`Label`] from a [`String`].
     ///
     /// The format is as follows:  
@@ -31,8 +28,8 @@ impl Label {
     /// * s => `Label::String(s)`
     ///
     /// If `force_hash` is `true`, the label will be re-hashed
-    /// if it is either [`Label::String`] or [`Label::Unhashed`].
-    pub fn parse<'a, S: Into<Utf<'a>>>(text: S, force_hash: bool) -> Self {
+    /// if it is [`Label::String`].
+    pub fn parse<S: Into<Utf<'buf>>>(text: S, force_hash: bool) -> Self {
         let text = text.into();
         if text.len() == 10 && text.as_bytes()[0] == b'<' {
             if let Ok(n) = u32::from_str_radix(&text[1..=8], 16) {
@@ -42,7 +39,7 @@ impl Label {
         if force_hash {
             Label::Hash(crate::hash::murmur3_str(&text))
         } else {
-            Label::String(text.into_owned())
+            Label::String(text)
         }
     }
 
@@ -53,7 +50,7 @@ impl Label {
         }
         match self {
             l @ Self::Hash(_) => l,
-            Self::String(s) | Self::Unhashed(s) => Self::Hash(crate::hash::murmur3_str(&s)),
+            Self::String(s) => Self::Hash(crate::hash::murmur3_str(&s)),
         }
     }
 
@@ -86,46 +83,82 @@ impl Label {
     /// already a string.
     pub fn to_string_convert(&self) -> Utf {
         match self {
-            Self::String(s) | Self::Unhashed(s) => Cow::Borrowed(s.as_str()),
+            Self::String(s) => Cow::Borrowed(s.as_ref()),
             _ => Cow::Owned(self.to_string()),
         }
     }
 
-    fn as_str(&self) -> &str {
+    /// Clones the string value to give it a `'static` lifetime, if the label is a string.
+    pub fn into_owned(self) -> Label<'static> {
+        match self {
+            Label::Hash(h) => Label::Hash(h),
+            Label::String(s) => Label::String(s.to_string().into()),
+        }
+    }
+
+    /// Converts from `&'a Label<'buf>` to `Label<'a>`.
+    ///
+    /// If this is a hashed label, the hash is copied. Otherwise,
+    /// if this is a string label, the string is borrowed.
+    pub fn as_ref(&self) -> Label {
+        match self {
+            Self::Hash(h) => Label::Hash(*h),
+            Self::String(s) => Label::String(s.as_ref().into()),
+        }
+    }
+
+    pub(crate) fn as_str(&self) -> &str {
         self.try_into().expect("label is not a string")
     }
 }
 
-impl From<String> for Label {
+impl<'buf> From<&'buf str> for Label<'buf> {
+    fn from(s: &'buf str) -> Self {
+        Self::String(s.into())
+    }
+}
+
+impl<'buf> From<String> for Label<'buf> {
     fn from(s: String) -> Self {
-        Self::String(s)
+        Self::String(s.into())
     }
 }
 
-impl From<&str> for Label {
-    fn from(s: &str) -> Self {
-        s.to_string().into()
+impl<'buf> From<Utf<'buf>> for Label<'buf> {
+    fn from(value: Utf<'buf>) -> Self {
+        Self::String(value)
     }
 }
 
-impl From<u32> for Label {
+impl<'buf> From<u32> for Label<'buf> {
     fn from(hash: u32) -> Self {
         Self::Hash(hash)
     }
 }
 
-impl<'s> TryFrom<&'s Label> for &'s str {
+impl<'s> TryFrom<Label<'s>> for Utf<'s> {
     type Error = LabelNotStringError;
 
-    fn try_from(value: &'s Label) -> Result<Self, Self::Error> {
+    fn try_from(value: Label<'s>) -> Result<Self, Self::Error> {
         match value {
-            Label::String(s) | Label::Unhashed(s) => Ok(s.as_str()),
+            Label::String(s) => Ok(s),
             _ => Err(LabelNotStringError),
         }
     }
 }
 
-impl Display for Label {
+impl<'s> TryFrom<&'s Label<'s>> for &'s str {
+    type Error = LabelNotStringError;
+
+    fn try_from(value: &'s Label<'s>) -> Result<Self, Self::Error> {
+        match value {
+            Label::String(s) => Ok(s.as_ref()),
+            _ => Err(LabelNotStringError),
+        }
+    }
+}
+
+impl<'buf> Display for Label<'buf> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
             Self::Hash(hash) => {
@@ -135,7 +168,7 @@ impl Display for Label {
                     write!(f, "<{:08X}>", hash)
                 }
             }
-            Self::String(s) | Self::Unhashed(s) => write!(f, "{}", s),
+            Self::String(s) => write!(f, "{}", s),
         }
     }
 }

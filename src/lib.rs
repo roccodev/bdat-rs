@@ -28,7 +28,7 @@
 //!     let mut bdat_file = bdat::modern::from_bytes::<SwitchEndian>(&data)?;
 //!
 //!     let table: &ModernTable = &bdat_file.get_tables()?[0];
-//!     if table.name() == &label_hash!("CHR_PC") {
+//!     if table.name() == label_hash!("CHR_PC") {
 //!         // Found the character table, get Noah's HP at level 99
 //!         let noah = table.row(1);
 //!         // Alternatively, if the `hash-table` feature is enabled (default)
@@ -67,7 +67,7 @@
 //!     )?;
 //!
 //!     let table: &LegacyTable = &bdat_file.get_tables()?[0];
-//!     if table.name().to_string_convert() == "CHR_Dr" {
+//!     if table.name() == "CHR_Dr" {
 //!         // Found the character table, get Rex's HP at level 99
 //!         let rex = table.row(1);
 //!         // We need to distinguish between legacy cell types
@@ -97,7 +97,7 @@
 //!
 //!     // Can no longer assume the format.
 //!     let table: &Table = &bdat_file.get_tables()?[0];
-//!     if table.name() == &label_hash!("CHR_PC") {
+//!     if table.name() == label_hash!("CHR_PC") {
 //!         // Found the character table, get Noah's HP at level 99.
 //!         // No hash lookup for rows!
 //!         let noah = table.row(1);

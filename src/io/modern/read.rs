@@ -227,7 +227,7 @@ impl<'r> TableData<'r> {
     }
 
     /// Returns the table's hashed name, or [`None`] if it could not be found.
-    fn get_name<E>(&self) -> Result<Label>
+    fn get_name<E>(&self) -> Result<Label<'r>>
     where
         E: ByteOrder,
     {
@@ -257,7 +257,7 @@ impl<'r> TableData<'r> {
     }
 
     /// Reads a column label (either a string or a hash) from the string table at the given offset
-    fn get_label<E>(&self, offset: usize) -> Result<Label>
+    fn get_label<E>(&self, offset: usize) -> Result<Label<'r>>
     where
         E: ByteOrder,
     {
@@ -266,9 +266,7 @@ impl<'r> TableData<'r> {
                 (&self.data[self.string_table_offset + offset..]).read_u32::<E>()?,
             ))
         } else {
-            Ok(Label::String(
-                self.get_string(offset, usize::MAX)?.to_string(),
-            ))
+            Ok(Label::String(self.get_string(offset, usize::MAX)?))
         }
     }
 

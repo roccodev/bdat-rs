@@ -19,14 +19,13 @@ pub type RowId = u32;
 /// fn param_1(table: ModernTable) -> u32 {
 ///     let row = table.row(1);
 ///     // Use .get() to access cells
-///     row.get(&"Param1".into()).to_integer()
+///     row.get("Param1").to_integer()
 /// }
 ///
 /// fn param_2_if_present(table: ModernTable) -> Option<u32> {
 ///     let row = table.row(1);
 ///     // Or use .get_if_present() for columns that might be absent
-///     row.get_if_present(&"Param2".into())
-///         .map(|value| value.to_integer())
+///     row.get_if_present("Param2").map(|value| value.to_integer())
 /// }
 /// ```
 #[derive(Clone, Copy, Debug)]
@@ -36,7 +35,7 @@ where
 {
     id: RowId,
     row: R,
-    columns: &'t ColumnMap,
+    columns: &'t ColumnMap<'t>,
 }
 
 pub trait CellAccessor {
@@ -68,8 +67,8 @@ where
     /// Returns a reference to the cell at the given column.
     ///
     /// If there is no column with the given label, this returns [`None`].
-    pub fn get_if_present(self, column: impl Borrow<Label>) -> Option<R::Target> {
-        let index = self.columns.position(column.borrow())?;
+    pub fn get_if_present<'l>(self, column: impl Into<Label<'l>>) -> Option<R::Target> {
+        let index = self.columns.position(column.into())?;
         self.row.access(index)
     }
 
@@ -77,7 +76,7 @@ where
     ///
     /// ## Panics
     /// Panics if there is no column with the given label.
-    pub fn get(self, column: impl Borrow<Label>) -> R::Target {
+    pub fn get<'l>(self, column: impl Into<Label<'l>>) -> R::Target {
         self.get_if_present(column).expect("no such column")
     }
 }

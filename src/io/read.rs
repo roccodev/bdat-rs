@@ -32,17 +32,21 @@ pub trait BdatFile<'b> {
     fn table_count(&self) -> usize;
 
     /// Reads all tables from the BDAT source, then groups them by name.
-    fn get_tables_by_name<'t, 'tb: 't>(&mut self) -> Result<HashMap<Label, Self::TableOut>>
+    fn get_tables_by_name(&mut self) -> Result<HashMap<Label<'b>, Self::TableOut>>
     where
         Self::TableOut: TableName,
     {
-        self.get_tables()
-            .map(|tables| tables.into_iter().map(|t| (t.name().clone(), t)).collect())
+        self.get_tables().map(|tables| {
+            tables
+                .into_iter()
+                .map(|t| (t.name().into_owned(), t)) // TODO
+                .collect()
+        })
     }
 }
 
 pub trait TableName {
-    fn name(&self) -> &Label;
+    fn name(&self) -> Label;
 }
 
 impl<'b, E> BdatSlice<'b, E> {
@@ -66,19 +70,19 @@ impl<R, E> BdatReader<R, E> {
 }
 
 impl<'b> TableName for ModernTable<'b> {
-    fn name(&self) -> &Label {
+    fn name(&self) -> Label {
         self.name()
     }
 }
 
 impl<'b> TableName for LegacyTable<'b> {
-    fn name(&self) -> &Label {
-        self.name()
+    fn name(&self) -> Label {
+        self.name().into()
     }
 }
 
 impl<'b> TableName for Table<'b> {
-    fn name(&self) -> &Label {
+    fn name(&self) -> Label {
         self.name()
     }
 }

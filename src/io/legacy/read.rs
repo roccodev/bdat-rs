@@ -56,7 +56,7 @@ struct RowReader<'a, 't: 'a, E> {
     table: &'a mut TableReader<'t, E>,
     /// The cells for the row currently being read
     cells: Vec<Option<Cell<'t>>>,
-    columns: &'a [ColumnDef],
+    columns: &'a [ColumnDef<'t>],
     row_idx: usize,
 }
 
@@ -341,7 +341,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         let columns = columns_src
             .into_iter()
             .map(|c| ColumnDef {
-                label: Label::String(c.name.to_string()),
+                label: Label::String(c.name),
                 value_type: c.cell.value().value_type,
                 count: match c.cell {
                     ColumnCell::Array(_, c) => c,
@@ -376,14 +376,14 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
             row_reader.next_row()?;
         }
 
-        Ok(LegacyTableBuilder::with_name(Label::String(name))
+        Ok(LegacyTableBuilder::with_name(name)
             .set_base_id(base_id)
             .set_columns(columns)
             .set_rows(rows)
             .build())
     }
 
-    fn discover_columns_from_nodes(&self, info: &ColumnNodeInfo) -> Result<TableColumns> {
+    fn discover_columns_from_nodes(&self, info: &ColumnNodeInfo) -> Result<TableColumns<'t>> {
         let mut seek = info.offset_columns.try_into()?;
         let (flags, columns) = (0..info.column_count)
             .map(|_| {
@@ -403,7 +403,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         })
     }
 
-    fn discover_columns_from_hash(&self) -> Result<TableColumns> {
+    fn discover_columns_from_hash(&self) -> Result<TableColumns<'t>> {
         // In XC1, column nodes are part of the name table, but we can enumerate columns
         // from the hash table, so we get easy access to both info data and name
 
@@ -466,7 +466,7 @@ impl<'a, 't: 'a, E: ByteOrder + 'a> ColumnReader<'a, 't, E> {
         }
     }
 
-    fn read_column_from_node(self) -> Result<ColumnData<'a>> {
+    fn read_column_from_node(self) -> Result<ColumnData<'t>> {
         let mut data = Cursor::new(self.data);
         data.set_position(self.node_offset);
         let info_ptr = data.read_u16::<E>()? as u64;
@@ -484,7 +484,7 @@ impl<'a, 't: 'a, E: ByteOrder + 'a> ColumnReader<'a, 't, E> {
     }
 
     /// Wii only.
-    fn read_column_from_hash_node(self) -> Result<(ColumnData<'a>, usize)> {
+    fn read_column_from_hash_node(self) -> Result<(ColumnData<'t>, usize)> {
         let mut data = Cursor::new(self.data);
         data.set_position(self.node_offset);
         let info_ptr = data.read_u16::<E>()? as u64;
@@ -562,7 +562,7 @@ impl<'a, 't: 'a, E: ByteOrder + 'a> ColumnReader<'a, 't, E> {
 }
 
 impl<'a, 't, E: ByteOrder> RowReader<'a, 't, E> {
-    fn new(table: &'a mut TableReader<'t, E>, columns: &'a [ColumnDef]) -> Self {
+    fn new(table: &'a mut TableReader<'t, E>, columns: &'a [ColumnDef<'t>]) -> Self {
         Self {
             table,
             cells: vec![None; columns.len()],

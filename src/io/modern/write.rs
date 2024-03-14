@@ -1,6 +1,5 @@
 use std::borrow::Borrow;
 use std::{
-    borrow::Cow,
     collections::HashMap,
     io::{Cursor, Seek, SeekFrom, Write},
     marker::PhantomData,
@@ -20,9 +19,9 @@ pub(crate) struct BdatWriter<W, E> {
     _endianness: PhantomData<E>,
 }
 
-struct LabelTable {
-    map: HashMap<Rc<Label>, u32>,
-    pairs: Vec<(Rc<Label>, u32)>,
+struct LabelTable<'buf> {
+    map: HashMap<Rc<Label<'buf>>, u32>,
+    pairs: Vec<(Rc<Label<'buf>>, u32)>,
     offset: u32,
 }
 
@@ -115,7 +114,7 @@ where
         let mut label_table = LabelTable::default();
         let mut primary_col: Option<(Label, usize)> = None;
         // Table name should be the first label in the table
-        label_table.get(Cow::Borrowed(table.name()));
+        label_table.get(table.name());
 
         // List of column definitions
         let column_table: Vec<u8> = {
@@ -126,7 +125,7 @@ where
                     primary_col.get_or_insert_with(|| (col.label.clone(), i));
                 }
                 data.write_u8(col.value_type as u8)?;
-                data.write_u16::<E>(u16::try_from(label_table.get(Cow::Borrowed(&col.label)))?)?;
+                data.write_u16::<E>(u16::try_from(label_table.get(col.label.as_ref()))?)?;
             }
 
             data
@@ -166,7 +165,7 @@ where
             {
                 let &[a, b] = dups else { unreachable!() };
                 return Err(BdatError::DuplicateKey(Box::new((
-                    primary_col.unwrap().0,
+                    primary_col.unwrap().0.into_owned(),
                     Label::Hash(a.0),
                     a.1.try_into()?,
                     b.1.try_into()?,
@@ -218,10 +217,10 @@ where
         Ok(())
     }
 
-    fn write_value(
+    fn write_value<'v>(
         writer: &mut impl Write,
-        value: &Value,
-        string_map: &mut LabelTable,
+        value: &'v Value<'v>,
+        string_map: &mut LabelTable<'v>,
     ) -> std::io::Result<()> {
         match value {
             Value::Unknown => panic!("tried to serialize unknown value"),
@@ -232,8 +231,7 @@ where
             Value::SignedShort(s) => writer.write_i16::<E>(*s),
             Value::SignedInt(i) => writer.write_i32::<E>(*i),
             Value::String(s) | Value::DebugString(s) => {
-                // TODO to_string necessary?
-                writer.write_u32::<E>(string_map.get(Cow::Owned(Label::String(s.to_string()))))
+                writer.write_u32::<E>(string_map.get(s.as_ref().into()))
             }
             // TODO only accept CFloat
             Value::Float(f) => writer.write_f32::<E>((*f).into()),
@@ -246,16 +244,16 @@ where
     }
 }
 
-impl LabelTable {
-    pub fn get(&mut self, label: Cow<Label>) -> u32 {
-        if let Label::String(s) = &*label {
+impl<'buf> LabelTable<'buf> {
+    pub fn get(&mut self, label: Label<'buf>) -> u32 {
+        if let Label::String(s) = &label {
             if s.is_empty() {
                 // The game often uses the 0 at the start of the table for an empty string
                 return 0;
             }
         }
 
-        let existing = self.map.get(label.as_ref());
+        let existing = self.map.get(&label);
         if let Some(existing) = existing {
             return *existing;
         }
@@ -268,12 +266,12 @@ impl LabelTable {
             self.offset += 4;
         }
 
-        let label = Rc::new(label.into_owned());
+        let label = Rc::new(label);
         let offset = self.offset;
         self.map.insert(label.clone(), offset);
         self.pairs.push((label.clone(), offset));
         self.offset += match &*label {
-            Label::String(s) | Label::Unhashed(s) => u32::try_from(s.len()).unwrap() + 1,
+            Label::String(s) => u32::try_from(s.len()).unwrap() + 1,
             _ => 4,
         };
 
@@ -295,7 +293,7 @@ impl LabelTable {
             }
 
             match &*label {
-                Label::String(s) | Label::Unhashed(s) => {
+                Label::String(s) => {
                     cursor.write_all(s.as_bytes())?;
                     cursor.write_u8(0)?;
                     written += 1 + s.len() as u32;
@@ -311,7 +309,7 @@ impl LabelTable {
     }
 }
 
-impl Default for LabelTable {
+impl<'a> Default for LabelTable<'a> {
     fn default() -> Self {
         Self {
             map: Default::default(),

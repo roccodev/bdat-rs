@@ -144,7 +144,7 @@ impl<W: Write + Seek, E: ByteOrder + 'static> FileWriter<W, E> {
         let tables = tables.into_iter().by_ref().collect::<Vec<_>>();
         let mut tables = tables.iter().map(|t| t.borrow()).collect::<Vec<_>>();
         // Tables must be ordered by name
-        tables.sort_unstable_by_key(|t| t.name.to_string_convert());
+        tables.sort_unstable_by_key(|t| &t.name);
 
         let (table_bytes, table_offsets, total_len, table_count) = tables
             .into_iter()
@@ -294,7 +294,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
 
     fn init_names(&mut self) {
         // Table name is the first name
-        let table_name = &self.table.name().to_string_convert();
+        let table_name = &self.table.name;
         self.names.make_space(table_name);
         self.names.insert(table_name);
         for col in self.table.columns() {

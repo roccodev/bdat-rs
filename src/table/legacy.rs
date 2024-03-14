@@ -1,5 +1,6 @@
 use crate::{
-    Cell, CellAccessor, ColumnDef, ColumnMap, CompatTableBuilder, Label, ModernTable, RowRef, Table,
+    Cell, CellAccessor, ColumnDef, ColumnMap, CompatTableBuilder, Label, ModernTable, RowRef,
+    Table, Utf,
 };
 
 use super::{builder::LegacyTableBuilder, util::EnumId, FormatConvertError, TableInner};
@@ -31,9 +32,9 @@ use super::{builder::LegacyTableBuilder, util::EnumId, FormatConvertError, Table
 /// ```
 #[derive(Debug, Clone, PartialEq)]
 pub struct LegacyTable<'b> {
-    pub(crate) name: Label,
+    pub(crate) name: Utf<'b>,
     pub(crate) base_id: u16,
-    pub(crate) columns: ColumnMap,
+    pub(crate) columns: ColumnMap<'b>,
     pub(crate) rows: Vec<LegacyRow<'b>>,
 }
 
@@ -52,11 +53,11 @@ impl<'b> LegacyTable<'b> {
         }
     }
 
-    pub fn name(&self) -> &Label {
+    pub fn name(&self) -> &str {
         &self.name
     }
 
-    pub fn set_name(&mut self, name: Label) {
+    pub fn set_name(&mut self, name: Utf<'b>) {
         self.name = name;
     }
 
@@ -128,9 +129,6 @@ impl<'b> LegacyTable<'b> {
     ///
     /// The iterator does not allow structural modifications to the table. To add, remove, or
     /// reorder rows, convert the table to a new builder first. (`TableBuilder::from(table)`)
-    ///
-    /// Additionally, if the iterator is used to replace rows, proper care must be taken to
-    /// ensure the new rows have the same IDs, as to preserve the original table's row order.
     pub fn rows_mut(&mut self) -> impl Iterator<Item = RowRef<&mut LegacyRow<'b>>> {
         self.rows
             .iter_mut()
@@ -156,12 +154,12 @@ impl<'b> LegacyTable<'b> {
 
     /// Gets an iterator over mutable references to this table's
     /// column definitions.
-    pub fn columns_mut(&mut self) -> impl Iterator<Item = &mut ColumnDef> {
+    pub fn columns_mut(&mut self) -> impl Iterator<Item = &mut ColumnDef<'b>> {
         self.columns.as_mut_slice().iter_mut()
     }
 
     /// Gets an owning iterator over this table's column definitions
-    pub fn into_columns(self) -> impl Iterator<Item = ColumnDef> {
+    pub fn into_columns(self) -> impl Iterator<Item = ColumnDef<'b>> {
         self.columns.into_raw().into_iter()
     }
 

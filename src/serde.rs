@@ -25,7 +25,7 @@ pub struct ValueWithType<'b> {
 
 /// Wraps a cell with its column to allow for custom serialization.
 pub struct SerializeCell<'a, 'b, 't> {
-    column: &'a ColumnDef,
+    column: &'a ColumnDef<'t>,
     cell: Cow<'b, Cell<'t>>,
 }
 
@@ -37,21 +37,21 @@ enum ValueTypeFields {
 struct HexVisitor;
 
 /// An implementation of [`DeserializeSeed`] for [`Cell`]s.
-pub struct CellSeed<'a>(&'a ColumnDef);
+pub struct CellSeed<'a>(&'a ColumnDef<'a>);
 
-impl ColumnDef {
+impl<'t> ColumnDef<'t> {
     pub fn as_cell_seed(&self) -> CellSeed {
         CellSeed(self)
     }
 
-    pub fn cell_serializer<'a, 'b, 't>(&'a self, cell: &'b Cell<'t>) -> SerializeCell<'a, 'b, 't> {
+    pub fn cell_serializer<'a, 'b>(&'a self, cell: &'b Cell<'t>) -> SerializeCell<'a, 'b, 't> {
         SerializeCell {
             column: self,
             cell: Cow::Borrowed(cell),
         }
     }
 
-    pub fn owned_cell_serializer<'a, 't>(&'a self, cell: Cell<'t>) -> SerializeCell<'a, '_, 't> {
+    pub fn owned_cell_serializer<'a>(&'a self, cell: Cell<'t>) -> SerializeCell<'a, '_, 't> {
         SerializeCell {
             column: self,
             cell: Cow::Owned(cell),
@@ -313,7 +313,7 @@ impl<'a, 'de> DeserializeSeed<'de> for CellSeed<'a> {
     where
         D: serde::Deserializer<'de>,
     {
-        struct CellVisitor<'a>(&'a ColumnDef);
+        struct CellVisitor<'a>(&'a ColumnDef<'a>);
 
         impl<'a, 'de> Visitor<'de> for CellVisitor<'a> {
             type Value = Cell<'de>;

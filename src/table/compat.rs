@@ -151,12 +151,20 @@ impl<'b> Table<'b> {
         }
     }
 
-    pub fn name(&self) -> &Label {
-        versioned!(&self.inner, name)
+    pub fn name(&self) -> Label {
+        match &self.inner {
+            TableInner::Modern(m) => m.name(),
+            TableInner::Legacy(l) => l.name().into(),
+        }
     }
 
-    pub fn set_name(&mut self, name: Label) {
-        versioned!(&mut self.inner, set_name(name))
+    pub fn set_name(&mut self, name: Label<'b>) {
+        match &mut self.inner {
+            TableInner::Modern(m) => m.set_name(name),
+            TableInner::Legacy(l) => {
+                l.set_name(name.try_into().expect("hashed labels are not supported"))
+            }
+        }
     }
 
     /// Gets the minimum row ID in the table.
@@ -241,7 +249,7 @@ impl<'b> Table<'b> {
     }
 
     /// Gets an owning iterator over this table's column definitions
-    pub fn into_columns(self) -> impl Iterator<Item = ColumnDef> {
+    pub fn into_columns(self) -> impl Iterator<Item = ColumnDef<'b>> {
         versioned_iter!(self.inner, into_columns())
     }
 

@@ -2,19 +2,19 @@ use crate::{Label, ValueType};
 
 /// A column definition from a Bdat table
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ColumnDef {
+pub struct ColumnDef<'tb> {
     pub(crate) value_type: ValueType,
-    pub(crate) label: Label,
+    pub(crate) label: Label<'tb>,
     pub(crate) count: usize,
     pub(crate) flags: Vec<FlagDef>,
 }
 
 /// A builder interface for [`ColumnDef`].
-pub struct ColumnBuilder(ColumnDef);
+pub struct ColumnBuilder<'tb>(ColumnDef<'tb>);
 
 #[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct ColumnMap {
-    pub columns: Vec<ColumnDef>,
+pub(crate) struct ColumnMap<'tb> {
+    pub columns: Vec<ColumnDef<'tb>>,
 }
 
 /// A sub-definition for flag data that is associated to a column
@@ -31,14 +31,14 @@ pub struct FlagDef {
     pub(crate) flag_index: usize,
 }
 
-impl ColumnDef {
+impl<'tb> ColumnDef<'tb> {
     /// Creates a new [`ColumnDef`]. For more advanced settings, such as item count or flag
     /// data, use [`ColumnBuilder`].
-    pub fn new(ty: ValueType, label: Label) -> Self {
+    pub fn new(ty: ValueType, label: Label<'tb>) -> Self {
         Self::with_flags(ty, label, Vec::new())
     }
 
-    fn with_flags(ty: ValueType, label: Label, flags: Vec<FlagDef>) -> Self {
+    fn with_flags(ty: ValueType, label: Label<'tb>, flags: Vec<FlagDef>) -> Self {
         Self {
             value_type: ty,
             label,
@@ -58,7 +58,7 @@ impl ColumnDef {
     }
 
     /// Returns a mutable reference to this column's name.
-    pub fn label_mut(&mut self) -> &mut Label {
+    pub fn label_mut(&mut self) -> &mut Label<'tb> {
         &mut self.label
     }
 
@@ -121,8 +121,8 @@ impl FlagDef {
     }
 }
 
-impl ColumnBuilder {
-    pub fn new(value_type: ValueType, label: Label) -> Self {
+impl<'tb> ColumnBuilder<'tb> {
+    pub fn new(value_type: ValueType, label: Label<'tb>) -> Self {
         Self(ColumnDef::new(value_type, label))
     }
 
@@ -139,17 +139,17 @@ impl ColumnBuilder {
         self
     }
 
-    pub fn build(self) -> ColumnDef {
+    pub fn build(self) -> ColumnDef<'tb> {
         self.0
     }
 }
 
-impl ColumnMap {
-    pub fn position(&self, label: &Label) -> Option<usize> {
-        self.columns.iter().position(|c| &c.label == label)
+impl<'tb> ColumnMap<'tb> {
+    pub fn position(&self, label: Label) -> Option<usize> {
+        self.columns.iter().position(|c| c.label == label)
     }
 
-    pub fn push(&mut self, column: ColumnDef) {
+    pub fn push(&mut self, column: ColumnDef<'tb>) {
         self.columns.push(column);
     }
 
@@ -157,11 +157,11 @@ impl ColumnMap {
         &self.columns
     }
 
-    pub fn as_mut_slice(&mut self) -> &mut [ColumnDef] {
+    pub fn as_mut_slice(&mut self) -> &mut [ColumnDef<'tb>] {
         &mut self.columns
     }
 
-    pub fn into_raw(self) -> Vec<ColumnDef> {
+    pub fn into_raw(self) -> Vec<ColumnDef<'tb>> {
         self.columns
     }
 
@@ -170,9 +170,9 @@ impl ColumnMap {
     }
 }
 
-impl<T> From<T> for ColumnMap
+impl<'tb, T> From<T> for ColumnMap<'tb>
 where
-    T: IntoIterator<Item = ColumnDef>,
+    T: IntoIterator<Item = ColumnDef<'tb>>,
 {
     fn from(value: T) -> Self {
         Self {

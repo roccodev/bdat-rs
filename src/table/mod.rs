@@ -36,14 +36,14 @@ pub use modern::{ModernRow, ModernTable};
 ///
 /// ## Adding/deleting rows
 /// The table's mutable iterator does not allow structural modifications to the table. To add or
-/// delete rows, re-build the table. (`TableBuilder::from(table)`)
+/// delete rows, re-build the table. (`CompatTableBuilder::from(table)`)
 ///
 /// ## Examples
 ///
 /// ```
-/// use bdat::{Table, TableBuilder, Cell, ColumnDef, Value, ValueType, Label, BdatVersion};
+/// use bdat::{Table, CompatTableBuilder, Cell, ColumnDef, Value, ValueType, Label, BdatVersion};
 ///
-/// let table: Table = TableBuilder::with_name(Label::Hash(0xDEADBEEF))
+/// let table: Table = CompatTableBuilder::with_name(Label::Hash(0xDEADBEEF))
 ///     .set_base_id(1) // default, if you want 0 it must be set manually
 ///     .add_column(ColumnDef::new(ValueType::UnsignedInt, Label::Hash(0xCAFEBABE)))
 ///     .add_row(vec![Cell::Single(Value::UnsignedInt(10))].into())
@@ -92,4 +92,7 @@ pub enum FormatConvertError {
     /// row ID boundaries.
     #[error("unsupported row ID {0}")]
     UnsupportedRowId(RowId),
+    /// The destination format does not support hashed labels.
+    #[error("unsupported label type")]
+    UnsupportedLabelType,
 }

@@ -2,7 +2,7 @@
 
 use bdat::legacy::{LegacyHashTable, LegacyWriteOptions};
 use bdat::{
-    BdatVersion, ColumnBuilder, ColumnDef, FlagDef, LegacyTable, SwitchEndian, LegacyTableBuilder,
+    BdatVersion, ColumnBuilder, ColumnDef, FlagDef, LegacyTable, LegacyTableBuilder, SwitchEndian,
     ValueType, WiiEndian,
 };
 use byteorder::ByteOrder;
@@ -27,7 +27,7 @@ fn hash_table_xcx() {
 // when reading
 
 fn create_table<'b>() -> LegacyTable<'b> {
-    LegacyTableBuilder::with_name("Table1".to_string().into())
+    LegacyTableBuilder::with_name("Table1")
         .add_column(ColumnDef::new(
             ValueType::SignedByte,
             "ColumnXX1".to_string().into(),

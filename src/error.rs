@@ -34,7 +34,7 @@ pub enum BdatError {
         "Duplicate hash key ({}: {}) in rows {} and {}. Duplicate keys are not allowed in the primary key table.",
         _0.0, _0.1, _0.2, _0.3
     )]
-    DuplicateKey(Box<(Label, Label, usize, usize)>),
+    DuplicateKey(Box<(Label<'static>, Label<'static>, usize, usize)>),
 }
 
 #[derive(Debug)]
