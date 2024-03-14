@@ -1,5 +1,6 @@
 use crate::{
-    Cell, CellAccessor, ColumnDef, ColumnMap, CompatTableBuilder, ModernTable, RowRef, Table, Utf,
+    Cell, CellAccessor, ColumnDef, ColumnMap, CompatTableBuilder, Label, ModernTable, RowRef,
+    Table, Utf,
 };
 
 use super::{builder::LegacyTableBuilder, util::EnumId, FormatConvertError, TableInner};
@@ -23,7 +24,7 @@ use super::{builder::LegacyTableBuilder, util::EnumId, FormatConvertError, Table
 /// use bdat::{Label, LegacyTable, label_hash};
 ///
 /// fn get_character_id(table: &LegacyTable, row_id: u16) -> u32 {
-///     let cell = table.row(row_id).get(Label::from("CharacterID"));
+///     let cell = table.row(row_id).get("CharacterID");
 ///     // Unlike modern tables, we can't simply operate on the value.
 ///     // We can `match` on cell types, or simply cast them and handle errors:
 ///     cell.as_single().unwrap().get_as::<u32>()
@@ -187,17 +188,27 @@ impl<'b> LegacyRow<'b> {
 
 impl<'a, 'b> CellAccessor for &'a LegacyRow<'b> {
     type Target = &'a Cell<'b>;
+    type ColName<'l> = Utf<'l>;
 
     fn access(self, pos: usize) -> Option<Self::Target> {
         self.cells.get(pos)
+    }
+
+    fn to_label(name: Self::ColName<'_>) -> Label {
+        name.into()
     }
 }
 
 impl<'a, 'b> CellAccessor for &'a mut LegacyRow<'b> {
     type Target = &'a mut Cell<'b>;
+    type ColName<'l> = Utf<'l>;
 
     fn access(self, pos: usize) -> Option<Self::Target> {
         self.cells.get_mut(pos)
+    }
+
+    fn to_label(name: Self::ColName<'_>) -> Label {
+        name.into()
     }
 }
 

@@ -297,17 +297,27 @@ fn build_id_map_checked(rows: &[ModernRow], base_id: u32) -> PreHashedMap<u32, R
 
 impl<'a, 'b> CellAccessor for &'a ModernRow<'b> {
     type Target = &'a Value<'b>;
+    type ColName<'l> = Label<'l>;
 
     fn access(self, pos: usize) -> Option<Self::Target> {
         self.values.get(pos)
+    }
+
+    fn to_label(name: Self::ColName<'_>) -> Label {
+        name
     }
 }
 
 impl<'a, 'b> CellAccessor for &'a mut ModernRow<'b> {
     type Target = &'a mut Value<'b>;
+    type ColName<'l> = Label<'l>;
 
     fn access(self, pos: usize) -> Option<Self::Target> {
         self.values.get_mut(pos)
+    }
+
+    fn to_label(name: Self::ColName<'_>) -> Label {
+        name
     }
 }
 

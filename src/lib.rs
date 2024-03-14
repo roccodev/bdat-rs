@@ -71,7 +71,7 @@
 //!         // Found the character table, get Rex's HP at level 99
 //!         let rex = table.row(1);
 //!         // We need to distinguish between legacy cell types
-//!         let rex_hp = rex.get(Label::from("HpMaxLv99"))
+//!         let rex_hp = rex.get("HpMaxLv99")
 //!             .as_single()
 //!             .unwrap()
 //!             .get_as::<u32>();

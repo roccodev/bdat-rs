@@ -293,11 +293,16 @@ impl<'t, 'b> CompatRef<'t, 'b> {
 
 impl<'t, 'b> CellAccessor for CompatRef<'t, 'b> {
     type Target = Cell<'b>;
+    type ColName<'l> = Label<'l>;
 
     fn access(self, pos: usize) -> Option<Self::Target> {
         match self {
             CompatRef::Modern(m) => m.values.get(pos).map(|v| Cell::Single(v.clone())),
             CompatRef::Legacy(l) => l.cells.get(pos).cloned(),
         }
+    }
+
+    fn to_label(name: Self::ColName<'_>) -> Label {
+        name
     }
 }

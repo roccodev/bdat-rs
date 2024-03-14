@@ -39,8 +39,11 @@ where
 
 pub trait CellAccessor {
     type Target;
+    type ColName<'n>;
 
     fn access(self, pos: usize) -> Option<Self::Target>;
+
+    fn to_label(name: Self::ColName<'_>) -> Label;
 }
 
 impl<'t, R> RowRef<'t, R>
@@ -66,8 +69,8 @@ where
     /// Returns a reference to the cell at the given column.
     ///
     /// If there is no column with the given label, this returns [`None`].
-    pub fn get_if_present<'l>(self, column: impl Into<Label<'l>>) -> Option<R::Target> {
-        let index = self.columns.position(column.into())?;
+    pub fn get_if_present(self, column: impl Into<R::ColName<'t>>) -> Option<R::Target> {
+        let index = self.columns.position(R::to_label(column.into()))?;
         self.row.access(index)
     }
 
@@ -75,7 +78,7 @@ where
     ///
     /// ## Panics
     /// Panics if there is no column with the given label.
-    pub fn get<'l>(self, column: impl Into<Label<'l>>) -> R::Target {
+    pub fn get(self, column: impl Into<R::ColName<'t>>) -> R::Target {
         self.get_if_present(column).expect("no such column")
     }
 }
