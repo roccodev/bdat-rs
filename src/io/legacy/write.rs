@@ -602,7 +602,7 @@ impl ColumnInfo {
 
     fn new_flag(flag: &FlagDef, parent: usize) -> Self {
         Self {
-            name: Rc::from(flag.label.as_str()),
+            name: Rc::from(flag.label.as_ref()),
             parent: Some(parent),
             cell: CellHeader::Flags {
                 shift: flag.flag_index.try_into().unwrap(),

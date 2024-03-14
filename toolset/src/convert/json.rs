@@ -24,8 +24,8 @@ pub struct JsonOptions {
 }
 
 #[derive(Serialize, Deserialize)]
-struct JsonTable {
-    schema: Option<Vec<ColumnSchema>>,
+struct JsonTable<'b> {
+    schema: Option<Vec<ColumnSchema<'b>>>,
     rows: Vec<TableRow>,
 }
 
@@ -38,12 +38,12 @@ struct TableRow {
 }
 
 #[derive(Deserialize, Serialize)]
-struct ColumnSchema {
+struct ColumnSchema<'b> {
     name: String,
     #[serde(rename = "type")]
     ty: ValueType,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    flags: Vec<FlagDef>,
+    flags: Vec<FlagDef<'b>>,
     #[serde(default, skip_serializing_if = "col_skip_count")]
     count: usize,
 }

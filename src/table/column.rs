@@ -1,4 +1,4 @@
-use crate::{Label, ValueType};
+use crate::{Label, Utf, ValueType};
 
 /// A column definition from a Bdat table
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -6,7 +6,7 @@ pub struct ColumnDef<'tb> {
     pub(crate) value_type: ValueType,
     pub(crate) label: Label<'tb>,
     pub(crate) count: usize,
-    pub(crate) flags: Vec<FlagDef>,
+    pub(crate) flags: Vec<FlagDef<'tb>>,
 }
 
 /// A builder interface for [`ColumnDef`].
@@ -20,10 +20,10 @@ pub(crate) struct ColumnMap<'tb> {
 /// A sub-definition for flag data that is associated to a column
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct FlagDef {
+pub struct FlagDef<'tb> {
     /// The flag's identifier. Because flags are only supported in legacy BDATs, this is
     /// equivalent to a [`Label::String`].
-    pub(crate) label: String,
+    pub(crate) label: Utf<'tb>,
     /// The bits this flag is setting on the parent
     pub(crate) mask: u32,
     /// The index in the parent cell's flag list
@@ -38,7 +38,7 @@ impl<'tb> ColumnDef<'tb> {
         Self::with_flags(ty, label, Vec::new())
     }
 
-    fn with_flags(ty: ValueType, label: Label<'tb>, flags: Vec<FlagDef>) -> Self {
+    fn with_flags(ty: ValueType, label: Label<'tb>, flags: Vec<FlagDef<'tb>>) -> Self {
         Self {
             value_type: ty,
             label,
@@ -74,7 +74,7 @@ impl<'tb> ColumnDef<'tb> {
     }
 
     /// Returns this column's defined set of sub-flags.
-    pub fn flags(&self) -> &[FlagDef] {
+    pub fn flags(&self) -> &[FlagDef<'tb>] {
         &self.flags
     }
 
@@ -84,9 +84,9 @@ impl<'tb> ColumnDef<'tb> {
     }
 }
 
-impl FlagDef {
+impl<'tb> FlagDef<'tb> {
     /// Creates a flag definition with an arbitrary mask and shift amount.
-    pub fn new(label: impl Into<String>, mask: u32, shift_amount: usize) -> Self {
+    pub fn new(label: impl Into<Utf<'tb>>, mask: u32, shift_amount: usize) -> Self {
         Self {
             label: label.into(),
             mask,
@@ -101,7 +101,7 @@ impl FlagDef {
     ///
     /// Note: the bit must not be greater than the parent value's bit count.
     /// For example, a bit of 14 is invalid for an 8-bit value.
-    pub fn new_bit(label: impl Into<String>, bit: u32) -> Self {
+    pub fn new_bit(label: impl Into<Utf<'tb>>, bit: u32) -> Self {
         Self::new(label, 1 << bit, bit as usize)
     }
 
@@ -127,7 +127,7 @@ impl<'tb> ColumnBuilder<'tb> {
     }
 
     /// Sets the column's full flag data.
-    pub fn set_flags(mut self, flags: Vec<FlagDef>) -> Self {
+    pub fn set_flags(mut self, flags: Vec<FlagDef<'tb>>) -> Self {
         self.0.flags = flags;
         self
     }
@@ -165,7 +165,7 @@ impl<'tb> ColumnMap<'tb> {
         self.columns
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &ColumnDef> {
+    pub fn iter(&self) -> impl Iterator<Item = &ColumnDef<'tb>> {
         self.columns.iter()
     }
 }

@@ -38,3 +38,7 @@ harness = false
 
 [workspace]
 members = ["toolset"]
+
+[profile.release]
+lto = true
+strip = true

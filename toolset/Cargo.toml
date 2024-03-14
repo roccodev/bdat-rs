@@ -18,9 +18,3 @@ itertools = "0.10"
 
 serde_json = { version = "1.0", features = ["preserve_order"] }
 csv = "1.1"
-
-[features]
-
-[profile.release]
-lto = true
-strip = true

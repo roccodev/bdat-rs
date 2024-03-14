@@ -148,7 +148,7 @@ impl<'b> LegacyTable<'b> {
 
     /// Gets an iterator that visits this table's column definitions
     pub fn columns(&self) -> impl Iterator<Item = &ColumnDef<'b>> {
-        self.columns.as_slice().iter()
+        self.columns.iter()
     }
 
     /// Gets an iterator over mutable references to this table's

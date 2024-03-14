@@ -332,7 +332,7 @@ impl<'a, 'de> DeserializeSeed<'de> for CellSeed<'a> {
                     .0
                     .flags
                     .iter()
-                    .filter_map(|f| map.get(&f.label))
+                    .filter_map(|f| map.get(f.label.as_ref()))
                     .copied()
                     .collect();
                 Ok(Cell::Flags(values))
@@ -507,17 +507,17 @@ mod tests {
             count: 1,
             flags: vec![
                 FlagDef {
-                    label: "Flag1".to_string(),
+                    label: "Flag1".into(),
                     mask: 1 << 2,
                     flag_index: 0,
                 },
                 FlagDef {
-                    label: "Flag2".to_string(),
+                    label: "Flag2".into(),
                     mask: 1 << 3,
                     flag_index: 1,
                 },
                 FlagDef {
-                    label: "Flag3".to_string(),
+                    label: "Flag3".into(),
                     mask: 1 << 4,
                     flag_index: 2,
                 },

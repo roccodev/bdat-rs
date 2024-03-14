@@ -332,8 +332,8 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         let TableColumns {
             columns: columns_src,
             flags,
-        } = match self.header.columns.as_ref() {
-            Some(info) => self.discover_columns_from_nodes(info),
+        } = match self.header.columns {
+            Some(info) => self.discover_columns_from_nodes(&info),
             None => self.discover_columns_from_hash(),
         }?;
 
@@ -354,7 +354,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
                             unreachable!()
                         };
                         FlagDef {
-                            label: f.name.to_string(),
+                            label: f.name.clone(),
                             flag_index: flag.index,
                             mask: flag.mask,
                         }
@@ -658,7 +658,7 @@ impl<'t> Flags<'t> {
         Self(src)
     }
 
-    fn get_from_parent(&self, parent_info_offset: usize) -> impl Iterator<Item = &ColumnData> {
+    fn get_from_parent(&self, parent_info_offset: usize) -> impl Iterator<Item = &ColumnData<'t>> {
         let upper = self
             .0
             .partition_point(|c| Self::extract(c) == parent_info_offset);
