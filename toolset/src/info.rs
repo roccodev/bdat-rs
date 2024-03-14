@@ -32,7 +32,9 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
             .with_context(|| format!("Could not parse BDAT tables ({})", path.to_string_lossy()))?;
         for table in tables {
             let name = table.name();
-            if !table_filter.contains(&name) {
+            if !table_filter.contains(&name)
+                || !table.columns().any(|c| column_filter.contains(c.label()))
+            {
                 continue;
             }
             println!("Table {}", format_unhashed_label(&name, &hash_table));

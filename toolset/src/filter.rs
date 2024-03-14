@@ -1,5 +1,6 @@
 use bdat::Label;
 
+#[derive(Debug)]
 pub struct Filter {
     hashes: Vec<u32>,
 }
