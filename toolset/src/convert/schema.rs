@@ -10,7 +10,9 @@ use bdat::{BdatVersion, Label, Table, Utf};
 use serde::{Deserialize, Serialize};
 
 /// Incremental format version, used to determine schema compatibility.
-const FORMAT_VERSION: usize = 1;
+const FORMAT_VERSION: usize = 2;
+/// Currently supported format versions (backwards compatibility)
+const SUPPORTED_VERSIONS: &[usize] = &[FORMAT_VERSION, 1];
 
 /// Defines the structure of a BDAT file, so it can
 /// be re-serialized properly.
@@ -39,11 +41,11 @@ impl FileSchema {
 
     pub fn read(reader: impl Read) -> anyhow::Result<Self> {
         let schema: FileSchema = serde_json::from_reader(reader)?;
-        if schema.format_version != FORMAT_VERSION {
-            return Err(Error::from(SchemaError::OutdatedSchema(Box::new((
+        if !SUPPORTED_VERSIONS.contains(&schema.format_version) {
+            return Err(Error::from(SchemaError::UnsupportedSchema(Box::new((
                 schema.file_name,
                 schema.format_version,
-                FORMAT_VERSION,
+                SUPPORTED_VERSIONS,
             ))))
             .into());
         }

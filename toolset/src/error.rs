@@ -28,10 +28,10 @@ pub enum SchemaError {
     #[error("No schema files found, please run 'extract' without '--no-schema'")]
     MissingSchema,
     #[error(
-        "Outdated schema for file '{}', found version {}, expected version {}, \
-        please run 'extract' again without '--no-schema'", _0.0, _0.1, _0.2
+        "Unsupported schema for file '{}', found version {}, expected one of {:?}. \
+        Please update or run 'extract' again without '--no-schema'", _0.0, _0.1, _0.2
     )]
-    OutdatedSchema(Box<(String, usize, usize)>),
+    UnsupportedSchema(Box<(String, usize, &'static [usize])>),
 }
 
 #[derive(Debug, thiserror::Error)]
