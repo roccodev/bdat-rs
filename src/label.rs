@@ -92,7 +92,7 @@ impl<'buf> Label<'buf> {
     pub fn into_owned(self) -> Label<'static> {
         match self {
             Label::Hash(h) => Label::Hash(h),
-            Label::String(s) => Label::String(s.to_string().into()),
+            Label::String(s) => Label::String(s.into_owned().into()),
         }
     }
 
@@ -109,6 +109,12 @@ impl<'buf> Label<'buf> {
 
     pub(crate) fn as_str(&self) -> &str {
         self.try_into().expect("label is not a string")
+    }
+}
+
+impl<'a> From<&'a Label<'_>> for Label<'a> {
+    fn from(value: &'a Label) -> Self {
+        value.as_ref()
     }
 }
 

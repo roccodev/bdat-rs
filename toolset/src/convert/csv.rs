@@ -66,7 +66,7 @@ impl CsvConverter {
 
     fn format_cell<'b, 'a: 'b, 't: 'a>(
         &self,
-        column: &'a ColumnDef,
+        column: &'a ColumnDef<'t>,
         cell: Cell<'t>,
     ) -> ColumnIter<
         SerializeCell<'a, 'b, 't>,

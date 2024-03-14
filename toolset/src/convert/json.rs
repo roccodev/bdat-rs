@@ -42,7 +42,6 @@ struct ColumnSchema {
     name: String,
     #[serde(rename = "type")]
     ty: ValueType,
-    hashed: bool,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     flags: Vec<FlagDef>,
     #[serde(default, skip_serializing_if = "col_skip_count")]
@@ -59,7 +58,7 @@ pub struct JsonConverter {
 }
 
 // For duplicate column mitigation
-type DuplicateColumnKey = (FixedVec<usize, MAX_DUPLICATE_COLUMNS>, ColumnDef);
+type DuplicateColumnKey<'c> = (FixedVec<usize, MAX_DUPLICATE_COLUMNS>, ColumnDef<'c>);
 
 impl JsonConverter {
     pub fn new(args: &ConvertArgs) -> Self {
@@ -78,7 +77,7 @@ impl BdatSerialize for JsonConverter {
                 .map(|c| ColumnSchema {
                     name: c.label().to_string(),
                     ty: c.value_type(),
-                    hashed: matches!(c.label(), Label::Unhashed(_)),
+                    // hashed: matches!(c.label(), Label::Unhashed(_)),
                     flags: c.flags().to_vec(),
                     count: c.count(),
                 })
@@ -124,7 +123,7 @@ impl BdatSerialize for JsonConverter {
 impl BdatDeserialize for JsonConverter {
     fn read_table(
         &self,
-        name: Label,
+        name: Label<'static>,
         file_schema: &FileSchema,
         reader: &mut dyn Read,
     ) -> Result<Table> {
@@ -139,7 +138,8 @@ impl BdatDeserialize for JsonConverter {
             schema.into_iter().try_fold(
                 (Vec::new(), HashMap::default(), 0),
                 |(mut cols, mut map, idx), col| {
-                    let label = Label::parse(col.name.clone(), col.hashed);
+                    let label =
+                        Label::parse(col.name.clone(), file_schema.version.are_labels_hashed());
                     let def = ColumnBuilder::new(col.ty, label.clone())
                         .set_flags(col.flags)
                         .set_count(col.count.max(1))

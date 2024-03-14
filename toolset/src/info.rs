@@ -32,10 +32,10 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
             .with_context(|| format!("Could not parse BDAT tables ({})", path.to_string_lossy()))?;
         for table in tables {
             let name = table.name();
-            if !table_filter.contains(name) {
+            if !table_filter.contains(&name) {
                 continue;
             }
-            println!("Table {}", format_unhashed_label(name, &hash_table));
+            println!("Table {}", format_unhashed_label(&name, &hash_table));
             println!(
                 "  Columns: {} / Rows: {}",
                 table.column_count(),
@@ -87,7 +87,7 @@ fn format_unhashed_label(label: &Label, hash_table: &HashNameTable) -> String {
     };
 
     match (hash_table.convert_label_cow(label).as_ref(), previous_hash) {
-        (l @ Label::Unhashed(_), Some(hash)) => format!("{l} (<{hash:08X}>)"),
+        (l @ Label::String(_), Some(hash)) => format!("{l} (<{hash:08X}>)"),
         (l, _) => l.to_string(),
     }
 }

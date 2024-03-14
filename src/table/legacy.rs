@@ -1,6 +1,5 @@
 use crate::{
-    Cell, CellAccessor, ColumnDef, ColumnMap, CompatTableBuilder, Label, ModernTable, RowRef,
-    Table, Utf,
+    Cell, CellAccessor, ColumnDef, ColumnMap, CompatTableBuilder, ModernTable, RowRef, Table, Utf,
 };
 
 use super::{builder::LegacyTableBuilder, util::EnumId, FormatConvertError, TableInner};
@@ -148,7 +147,7 @@ impl<'b> LegacyTable<'b> {
     }
 
     /// Gets an iterator that visits this table's column definitions
-    pub fn columns(&self) -> impl Iterator<Item = &ColumnDef> {
+    pub fn columns(&self) -> impl Iterator<Item = &ColumnDef<'b>> {
         self.columns.as_slice().iter()
     }
 

@@ -1,5 +1,4 @@
 use std::{
-    borrow::Cow,
     collections::HashMap,
     fs::OpenOptions,
     hash::{BuildHasher, Hasher},
@@ -108,11 +107,11 @@ impl HashNameTable {
         Ok(res)
     }
 
-    pub fn convert_all(&self, table: &mut Table) {
+    pub fn convert_all<'b>(&'b self, table: &mut Table<'b>) {
         if table.is_legacy() || self.inner.is_empty() {
             return;
         }
-        let mut name = table.name().clone();
+        let mut name = table.name().into_owned();
         self.convert_label(&mut name);
         table.set_name(name);
         for col in table.as_modern_mut().columns_mut() {
@@ -122,7 +121,7 @@ impl HashNameTable {
 
     pub fn get_label(&self, hash: u32) -> Label {
         self.unhash(hash)
-            .map(|s| Label::Unhashed(s.to_string()))
+            .map(Into::into)
             .unwrap_or_else(|| Label::Hash(hash))
     }
 
@@ -130,7 +129,7 @@ impl HashNameTable {
         self.inner.get(&hash).map(|s| s.as_str())
     }
 
-    pub fn convert_label(&self, label: &mut Label) {
+    pub fn convert_label<'b>(&'b self, label: &mut Label<'b>) {
         if let Label::Hash(hash) = label {
             *label = self.get_label(*hash);
         }
@@ -144,10 +143,10 @@ impl HashNameTable {
     //              (__)\       )\/\
     //                  ||----w |
     //                  ||     ||
-    pub fn convert_label_cow<'moo>(&self, label: &'moo Label) -> Cow<'moo, Label> {
+    pub fn convert_label_cow<'moo, 'l>(&'l self, label: &'moo Label<'l>) -> Label<'moo> {
         match label {
-            Label::Hash(h) => Cow::Owned(self.get_label(*h)),
-            l => Cow::Borrowed(l),
+            Label::Hash(h) => self.get_label(*h),
+            l => l.as_ref(),
         }
     }
 

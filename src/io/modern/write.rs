@@ -114,7 +114,7 @@ where
         let mut label_table = LabelTable::default();
         let mut primary_col: Option<(Label, usize)> = None;
         // Table name should be the first label in the table
-        label_table.get(table.name());
+        label_table.get(table.name().as_ref());
 
         // List of column definitions
         let column_table: Vec<u8> = {

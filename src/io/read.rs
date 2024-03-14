@@ -71,7 +71,7 @@ impl<R, E> BdatReader<R, E> {
 
 impl<'b> TableName for ModernTable<'b> {
     fn name(&self) -> Label {
-        self.name()
+        self.name().as_ref()
     }
 }
 

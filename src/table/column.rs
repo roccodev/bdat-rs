@@ -53,7 +53,7 @@ impl<'tb> ColumnDef<'tb> {
     }
 
     /// Returns this column's name.
-    pub fn label(&self) -> &Label {
+    pub fn label(&self) -> &Label<'tb> {
         &self.label
     }
 
@@ -153,7 +153,7 @@ impl<'tb> ColumnMap<'tb> {
         self.columns.push(column);
     }
 
-    pub fn as_slice(&self) -> &[ColumnDef] {
+    pub fn as_slice(&self) -> &[ColumnDef<'tb>] {
         &self.columns
     }
 

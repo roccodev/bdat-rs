@@ -1,6 +1,5 @@
 use crate::{ColumnMap, Label};
 
-use std::borrow::Borrow;
 use std::ops::{Deref, DerefMut};
 
 /// Best-fit type for row IDs.

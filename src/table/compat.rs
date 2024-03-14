@@ -153,7 +153,7 @@ impl<'b> Table<'b> {
 
     pub fn name(&self) -> Label {
         match &self.inner {
-            TableInner::Modern(m) => m.name(),
+            TableInner::Modern(m) => m.name().as_ref(),
             TableInner::Legacy(l) => l.name().into(),
         }
     }
@@ -244,7 +244,7 @@ impl<'b> Table<'b> {
     }
 
     /// Gets an iterator that visits this table's column definitions
-    pub fn columns(&self) -> impl Iterator<Item = &ColumnDef> {
+    pub fn columns(&self) -> impl Iterator<Item = &ColumnDef<'b>> {
         versioned_iter!(&self.inner, columns())
     }
 

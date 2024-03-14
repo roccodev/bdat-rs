@@ -97,12 +97,12 @@ impl FileSchema {
     }
 }
 
-impl AsFileName for Label {
+impl<'b> AsFileName for Label<'b> {
     fn as_file_name(&self) -> Utf {
         match self {
             // {:+} displays hashed names without brackets (<>)
             l @ Label::Hash(_) => Cow::Owned(format!("{:+}", l)),
-            Label::String(s) | Label::Unhashed(s) => Cow::Borrowed(s),
+            Label::String(s) => Cow::Borrowed(s),
         }
     }
 }

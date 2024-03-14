@@ -28,7 +28,7 @@
 //!     let mut bdat_file = bdat::modern::from_bytes::<SwitchEndian>(&data)?;
 //!
 //!     let table: &ModernTable = &bdat_file.get_tables()?[0];
-//!     if table.name() == label_hash!("CHR_PC") {
+//!     if table.name() == &label_hash!("CHR_PC") {
 //!         // Found the character table, get Noah's HP at level 99
 //!         let noah = table.row(1);
 //!         // Alternatively, if the `hash-table` feature is enabled (default)

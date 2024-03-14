@@ -51,21 +51,21 @@ struct RowDiff<'t, 'tb> {
     new: &'t Table<'tb>,
 }
 
-struct RowChanges<'t, 'tb> {
+struct RowChanges<'tb> {
     row_id: RowId,
-    old_hash: Option<Label>,
-    new_hash: Option<Label>,
-    changes: Vec<ColumnChange<'t, 'tb>>,
+    old_hash: Option<Label<'tb>>,
+    new_hash: Option<Label<'tb>>,
+    changes: Vec<ColumnChange<'tb>>,
 }
 
-struct ColumnChange<'t, 'tb> {
-    label: &'t Label,
+struct ColumnChange<'tb> {
+    label: Label<'tb>,
     added: bool,
     value: Cell<'tb>,
 }
 
 #[derive(Debug)]
-struct ValueOrderedLabel(Label);
+struct ValueOrderedLabel(Label<'static>);
 
 pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
     let progress = ProgressBar::new(3)
@@ -122,12 +122,12 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
         old_tables
             .into_iter()
             .flatten_ok()
-            .map_ok(|t| (ValueOrderedLabel(t.table.name().clone()), t))
+            .map_ok(|t| (ValueOrderedLabel(t.table.name().into_owned()), t))
             .try_collect()?,
         new_tables
             .into_iter()
             .flatten_ok()
-            .map_ok(|t| (ValueOrderedLabel(t.table.name().clone()), t))
+            .map_ok(|t| (ValueOrderedLabel(t.table.name().into_owned()), t))
             .try_collect()?,
     );
     progress.inc(1);
@@ -217,7 +217,7 @@ impl<'t, 'tb> RowDiff<'t, 'tb> {
         Self { row_id, old, new }
     }
 
-    fn diff(self) -> Option<RowChanges<'t, 'tb>> {
+    fn diff(self) -> Option<RowChanges<'tb>> {
         let (old, new) = (self.old.get_row(self.row_id), self.new.get_row(self.row_id));
 
         let changed_cols: Vec<ColumnChange> = match (old, new) {
@@ -238,21 +238,21 @@ impl<'t, 'tb> RowDiff<'t, 'tb> {
                 let new_cols: MurmurHashSet<_> =
                     new_table.columns().map(|col| col.label()).collect();
 
-                let changed_cols = old_cols.intersection(&new_cols).filter_map(|col| {
-                    let old_value = old_row.get_if_present(*col)?;
-                    let new_value = new_row.get_if_present(*col)?;
+                let changed_cols = old_cols.intersection(&new_cols).filter_map(|&col| {
+                    let old_value = old_row.get_if_present(col)?;
+                    let new_value = new_row.get_if_present(col)?;
                     (old_value != new_value).then_some((col, old_value, new_value))
                 });
 
                 new_cols
                     .difference(&old_cols)
-                    .map(|&label| (label, true, new_row.get(label)).into())
+                    .map(|&label| (label, true, new_row.get(label.as_ref())).into())
                     .chain(
                         old_cols
                             .difference(&new_cols)
-                            .map(|&label| (label, false, old_row.get(label)).into()),
+                            .map(|&label| (label, false, old_row.get(label.as_ref())).into()),
                     )
-                    .chain(changed_cols.flat_map(|(&label, old_val, new_val)| {
+                    .chain(changed_cols.flat_map(|(label, old_val, new_val)| {
                         [
                             (label, false, old_val).into(),
                             (label, true, new_val).into(),
@@ -272,7 +272,7 @@ impl<'t, 'tb> RowDiff<'t, 'tb> {
         })
     }
 
-    fn row_hash(row: RowRef<CompatRef>) -> Option<Label> {
+    fn row_hash(row: RowRef<CompatRef>) -> Option<Label<'tb>> {
         match *row {
             CompatRef::Modern(m) => m.id_hash().map(Label::Hash),
             _ => None,
@@ -280,7 +280,7 @@ impl<'t, 'tb> RowDiff<'t, 'tb> {
     }
 }
 
-impl<'t, 'tb> RowChanges<'t, 'tb> {
+impl<'tb> RowChanges<'tb> {
     fn print(self) {
         let removed = self
             .changes
@@ -367,10 +367,10 @@ impl<'p> PathDiff<'p> {
     }
 }
 
-impl<'t, 'tb> From<(&'t Label, bool, Cell<'tb>)> for ColumnChange<'t, 'tb> {
-    fn from(value: (&'t Label, bool, Cell<'tb>)) -> Self {
+impl<'a, 'tb> From<(&'a Label<'tb>, bool, Cell<'tb>)> for ColumnChange<'tb> {
+    fn from(value: (&'a Label<'tb>, bool, Cell<'tb>)) -> Self {
         Self {
-            label: value.0,
+            label: value.0.clone(),
             added: value.1,
             value: value.2,
         }
@@ -401,7 +401,7 @@ impl Hash for ValueOrderedLabel {
     fn hash<H: Hasher>(&self, state: &mut H) {
         match &self.0 {
             Label::Hash(h) => state.write_u32(*h),
-            Label::String(s) | Label::Unhashed(s) => state.write(s.as_bytes()),
+            Label::String(s) => state.write(s.as_bytes()),
         }
     }
 }

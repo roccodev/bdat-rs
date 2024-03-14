@@ -5,7 +5,7 @@ use bdat::{Label, RowId, ValueType};
 pub const MAX_DUPLICATE_COLUMNS: usize = 4;
 
 #[derive(Debug)]
-pub struct OptLabel(Option<Label>);
+pub struct OptLabel(Option<Label<'static>>);
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -71,11 +71,11 @@ impl Display for OptLabel {
     }
 }
 
-impl<L> From<L> for OptLabel
+impl<'b, L> From<L> for OptLabel
 where
-    L: Into<Option<Label>>,
+    L: Into<Option<Label<'b>>>,
 {
     fn from(label: L) -> Self {
-        Self(label.into())
+        Self(label.into().map(Label::into_owned))
     }
 }

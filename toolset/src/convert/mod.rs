@@ -67,7 +67,12 @@ pub trait BdatSerialize {
 
 pub trait BdatDeserialize {
     /// Reads a BDAT table from a file.
-    fn read_table(&self, name: Label, schema: &FileSchema, reader: &mut dyn Read) -> Result<Table>;
+    fn read_table(
+        &self,
+        name: Label<'static>,
+        schema: &FileSchema,
+        reader: &mut dyn Read,
+    ) -> Result<Table>;
 
     /// Returns the file extension used in converted table files
     fn get_table_extension(&self) -> &'static str;
@@ -159,7 +164,7 @@ pub fn run_serialization(
                 }
 
                 let name = table.name();
-                if !table_filter.contains(name) {
+                if !table_filter.contains(&name) {
                     continue;
                 }
 
@@ -255,7 +260,7 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
 
                     table_bar.inc(1);
                     deserializer.read_table(
-                        label.into_hash(schema_file.version),
+                        label.into_hash(schema_file.version).into_owned(),
                         &schema_file,
                         &mut reader,
                     )
