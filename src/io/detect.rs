@@ -7,7 +7,7 @@ use crate::io::read::{BdatFile, BdatReader, BdatSlice};
 use crate::io::BDAT_MAGIC;
 use crate::legacy::read::{LegacyBytes, LegacyReader};
 use crate::modern::FileReader;
-use crate::{BdatVersion, SwitchEndian, Table, WiiEndian};
+use crate::{BdatVersion, CompatTable, SwitchEndian, WiiEndian};
 
 pub enum VersionReader<R: Read + Seek> {
     LegacyWii(LegacyReader<R, WiiEndian>),
@@ -228,9 +228,9 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
 }
 
 impl<'b, R: Read + Seek> BdatFile<'b> for VersionReader<R> {
-    type TableOut = Table<'b>;
+    type TableOut = CompatTable<'b>;
 
-    fn get_tables(&mut self) -> crate::error::Result<Vec<Table<'b>>> {
+    fn get_tables(&mut self) -> crate::error::Result<Vec<CompatTable<'b>>> {
         match self {
             Self::LegacySwitch(r) => r
                 .get_tables()
@@ -254,9 +254,9 @@ impl<'b, R: Read + Seek> BdatFile<'b> for VersionReader<R> {
 }
 
 impl<'b> BdatFile<'b> for VersionSlice<'b> {
-    type TableOut = Table<'b>;
+    type TableOut = CompatTable<'b>;
 
-    fn get_tables(&mut self) -> crate::error::Result<Vec<Table<'b>>> {
+    fn get_tables(&mut self) -> crate::error::Result<Vec<CompatTable<'b>>> {
         match self {
             Self::LegacySwitch(r) => r
                 .get_tables()

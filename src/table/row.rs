@@ -1,5 +1,4 @@
-use crate::{ColumnMap, Label};
-
+use crate::LabelMap;
 use std::ops::{Deref, DerefMut};
 
 /// Best-fit type for row IDs.
@@ -28,13 +27,10 @@ pub type RowId = u32;
 /// }
 /// ```
 #[derive(Clone, Copy, Debug)]
-pub struct RowRef<'t, R>
-where
-    R: CellAccessor,
-{
+pub struct RowRef<R, L> {
     id: RowId,
     row: R,
-    columns: &'t ColumnMap<'t, R::ColName<'t>>,
+    columns: L,
 }
 
 pub trait CellAccessor {
@@ -42,23 +38,30 @@ pub trait CellAccessor {
     type ColName<'n>: PartialEq;
 
     fn access(self, pos: usize) -> Option<Self::Target>;
-
-    fn to_label(name: Self::ColName<'_>) -> Label;
 }
 
-impl<'t, R> RowRef<'t, R>
+impl<R, L> RowRef<R, L>
 where
     R: CellAccessor,
+    L: LabelMap,
 {
-    pub(crate) fn new(id: RowId, row: R, columns: &'t ColumnMap<R::ColName<'t>>) -> Self {
-        Self { id, row, columns }
+    pub(crate) fn new(id: RowId, row: R, label_map: L) -> Self {
+        Self {
+            id,
+            row,
+            columns: label_map,
+        }
     }
 
-    pub(crate) fn map<O: CellAccessor>(self, mapper: impl FnOnce(R) -> O) -> RowRef<'t, O> {
+    pub(crate) fn map<O: CellAccessor, M: LabelMap>(
+        self,
+        mapper: impl FnOnce(R) -> O,
+        columns: M,
+    ) -> RowRef<O, M> {
         RowRef {
             id: self.id,
             row: mapper(self.row),
-            columns: self.columns,
+            columns,
         }
     }
 
@@ -69,8 +72,8 @@ where
     /// Returns a reference to the cell at the given column.
     ///
     /// If there is no column with the given label, this returns [`None`].
-    pub fn get_if_present(self, column: impl Into<R::ColName<'t>>) -> Option<R::Target> {
-        let index = self.columns.position(column.into())?;
+    pub fn get_if_present(self, column: impl Into<L::Name>) -> Option<R::Target> {
+        let index = self.columns.position(&column.into())?;
         self.row.access(index)
     }
 
@@ -78,12 +81,12 @@ where
     ///
     /// ## Panics
     /// Panics if there is no column with the given label.
-    pub fn get(self, column: impl Into<R::ColName<'t>>) -> R::Target {
+    pub fn get(self, column: impl Into<L::Name>) -> R::Target {
         self.get_if_present(column).expect("no such column")
     }
 }
 
-impl<'t, R: CellAccessor> Deref for RowRef<'t, R> {
+impl<R, L> Deref for RowRef<R, L> {
     type Target = R;
 
     fn deref(&self) -> &Self::Target {
@@ -91,7 +94,7 @@ impl<'t, R: CellAccessor> Deref for RowRef<'t, R> {
     }
 }
 
-impl<'t, R: CellAccessor> DerefMut for RowRef<'t, R> {
+impl<R, L> DerefMut for RowRef<R, L> {
     fn deref_mut(&mut self) -> &mut Self::Target {
         &mut self.row
     }

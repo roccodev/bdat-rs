@@ -1,13 +1,11 @@
 use crate::hash::PreHashedMap;
 use crate::{
-    CellAccessor, Column, ColumnMap, CompatTableBuilder, Label, LegacyTable, ModernTableBuilder,
-    RowId, RowRef, Table, Value,
+    CellAccessor, ColumnMap, CompatInner, CompatTable, CompatTableBuilder, Label, LabelMap,
+    LegacyTable, ModernColumn, ModernTableBuilder, RowId, RowRef, Value,
 };
 
 use super::util::EnumId;
-use super::{FormatConvertError, TableInner};
-
-pub type ModernColumn<'l> = Column<'l, Label<'l>>;
+use super::{FormatConvertError, Table};
 
 /// The BDAT table representation in modern formats, currently used in Xenoblade 3.
 ///
@@ -58,7 +56,7 @@ pub type ModernColumn<'l> = Column<'l, Label<'l>>;
 pub struct ModernTable<'b> {
     pub(crate) name: Label<'b>,
     pub(crate) base_id: u32,
-    pub(crate) columns: ColumnMap<'b, Label<'b>>,
+    pub(crate) columns: ColumnMap<ModernColumn<'b>, Label<'b>>,
     pub(crate) rows: Vec<ModernRow<'b>>,
     #[cfg(feature = "hash-table")]
     row_hash_table: PreHashedMap<u32, RowId>,
@@ -68,6 +66,10 @@ pub struct ModernTable<'b> {
 pub struct ModernRow<'b> {
     pub(crate) values: Vec<Value<'b>>,
 }
+
+pub type ModernRowRef<'t, 'buf> = RowRef<&'t ModernRow<'buf>, &'t ColumnMap<ModernColumn<'buf>>>;
+pub type ModernRowMut<'t, 'buf> =
+    RowRef<&'t mut ModernRow<'buf>, &'t ColumnMap<ModernColumn<'buf>>>;
 
 impl<'b> ModernTable<'b> {
     pub(crate) fn new(builder: ModernTableBuilder<'b>) -> Self {
@@ -116,7 +118,7 @@ impl<'b> ModernTable<'b> {
     ///     cell.get_as::<u32>()
     /// }
     /// ```
-    pub fn row(&self, id: RowId) -> RowRef<&ModernRow<'b>> {
+    pub fn row(&self, id: RowId) -> ModernRowRef<'_, 'b> {
         self.get_row(id).expect("row not found")
     }
 
@@ -128,7 +130,7 @@ impl<'b> ModernTable<'b> {
     ///
     /// ## Panics
     /// If there is no row for the given ID
-    pub fn row_mut(&mut self, id: RowId) -> RowRef<&mut ModernRow<'b>> {
+    pub fn row_mut(&mut self, id: RowId) -> ModernRowMut<'_, 'b> {
         self.get_row_mut(id).expect("row not found")
     }
 
@@ -138,7 +140,7 @@ impl<'b> ModernTable<'b> {
     /// Note: the ID is the row's numerical ID, which could be different
     /// from the index of the row in the table's row list. That is because
     /// BDAT tables can have arbitrary start IDs.
-    pub fn get_row(&self, id: RowId) -> Option<RowRef<&ModernRow<'b>>> {
+    pub fn get_row(&self, id: RowId) -> Option<ModernRowRef<'_, 'b>> {
         let index = id.checked_sub(self.base_id)?;
         self.rows
             .get(index as usize)
@@ -151,7 +153,7 @@ impl<'b> ModernTable<'b> {
     /// Note: the ID is the row's numerical ID, which could be different
     /// from the index of the row in the table's row list. That is because
     /// BDAT tables can have arbitrary start IDs.
-    pub fn get_row_mut(&mut self, id: RowId) -> Option<RowRef<&mut ModernRow<'b>>> {
+    pub fn get_row_mut(&mut self, id: RowId) -> Option<ModernRowMut<'_, 'b>> {
         let index = id.checked_sub(self.base_id)?;
         self.rows
             .get_mut(index as usize)
@@ -164,7 +166,7 @@ impl<'b> ModernTable<'b> {
     /// This requires the `hash-table` feature flag, which is enabled
     /// by default.
     #[cfg(feature = "hash-table")]
-    pub fn get_row_by_hash(&self, hash_id: u32) -> Option<RowRef<'_, &ModernRow<'b>>> {
+    pub fn get_row_by_hash(&self, hash_id: u32) -> Option<ModernRowRef<'_, 'b>> {
         self.row_hash_table
             .get(&hash_id)
             .and_then(|&id| self.get_row(id))
@@ -178,13 +180,13 @@ impl<'b> ModernTable<'b> {
     /// ## Panics
     /// Panics if there is no row for the given ID.
     #[cfg(feature = "hash-table")]
-    pub fn row_by_hash(&self, hash_id: u32) -> RowRef<'_, &ModernRow<'b>> {
+    pub fn row_by_hash(&self, hash_id: u32) -> ModernRowRef<'_, 'b> {
         self.get_row_by_hash(hash_id)
             .expect("no row with given hash")
     }
 
     /// Gets an iterator that visits this table's rows
-    pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, &ModernRow<'b>>> {
+    pub fn rows(&self) -> impl Iterator<Item = ModernRowRef<'_, 'b>> {
         self.rows
             .iter()
             .enum_id(self.base_id)
@@ -205,7 +207,7 @@ impl<'b> ModernTable<'b> {
     /// [`get_row_by_hash`].
     ///
     /// [`get_row_by_hash`]: ModernTable::get_row_by_hash
-    pub fn rows_mut(&mut self) -> impl Iterator<Item = RowRef<'_, &mut ModernRow<'b>>> {
+    pub fn rows_mut(&mut self) -> impl Iterator<Item = ModernRowMut<'_, 'b>> {
         self.rows
             .iter_mut()
             .enum_id(self.base_id)
@@ -297,16 +299,21 @@ fn build_id_map_checked(rows: &[ModernRow], base_id: u32) -> PreHashedMap<u32, R
     res
 }
 
+impl<'buf> Table<'buf> for ModernTable<'buf> {
+    type Id = u32;
+    type Name = Label<'buf>;
+    type Row = ModernRow<'buf>;
+    type BuilderRow = ModernRow<'buf>;
+    type Column = ModernColumn<'buf>;
+    type BuilderColumn = ModernColumn<'buf>;
+}
+
 impl<'a, 'b> CellAccessor for &'a ModernRow<'b> {
     type Target = &'a Value<'b>;
     type ColName<'l> = Label<'l>;
 
     fn access(self, pos: usize) -> Option<Self::Target> {
         self.values.get(pos)
-    }
-
-    fn to_label(name: Self::ColName<'_>) -> Label {
-        name
     }
 }
 
@@ -316,10 +323,6 @@ impl<'a, 'b> CellAccessor for &'a mut ModernRow<'b> {
 
     fn access(self, pos: usize) -> Option<Self::Target> {
         self.values.get_mut(pos)
-    }
-
-    fn to_label(name: Self::ColName<'_>) -> Label {
-        name
     }
 }
 
@@ -335,11 +338,9 @@ impl<'b> From<ModernTable<'b>> for CompatTableBuilder<'b> {
     }
 }
 
-impl<'b> From<ModernTable<'b>> for Table<'b> {
+impl<'b> From<ModernTable<'b>> for CompatTable<'b> {
     fn from(value: ModernTable<'b>) -> Self {
-        Self {
-            inner: TableInner::Modern(value),
-        }
+        Self::from_inner(CompatInner::Modern(value))
     }
 }
 
@@ -354,17 +355,25 @@ impl<'b> TryFrom<LegacyTable<'b>> for ModernTable<'b> {
     }
 }
 
+impl<'t, 'b> LabelMap for &'t ColumnMap<ModernColumn<'b>, Label<'b>> {
+    type Name = Label<'b>;
+
+    fn position(&self, label: &Self::Name) -> Option<usize> {
+        self.label_map.position(label)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "hash-table")]
     #[test]
     fn test_hash_table() {
-        use crate::{Column, Label, ModernRow, ModernTableBuilder, Value, ValueType};
+        use crate::{Label, ModernColumn, ModernRow, ModernTableBuilder, Value, ValueType};
 
         let table = ModernTableBuilder::with_name(Label::Hash(0xDEADBEEF))
             .set_base_id(1)
-            .add_column(Column::new(ValueType::HashRef, 0.into()))
-            .add_column(Column::new(ValueType::UnsignedInt, 1.into()))
+            .add_column(ModernColumn::new(ValueType::HashRef, 0.into()))
+            .add_column(ModernColumn::new(ValueType::UnsignedInt, 1.into()))
             .add_row(ModernRow::new(vec![
                 Value::HashRef(0xabcdef01),
                 Value::UnsignedInt(256),

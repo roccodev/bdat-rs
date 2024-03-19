@@ -87,7 +87,7 @@
 //! crate root can be used instead.
 //!
 //! ```
-//! use bdat::{BdatResult, SwitchEndian, BdatFile, Table, Label, label_hash};
+//! use bdat::{BdatResult, SwitchEndian, BdatFile, CompatTable, Label, label_hash};
 //!
 //! fn read_detect() -> BdatResult<()> {
 //!     // Mutable access is required, as this might be a legacy table.
@@ -96,7 +96,7 @@
 //!     let mut bdat_file = bdat::from_bytes(&mut data)?;
 //!
 //!     // Can no longer assume the format.
-//!     let table: &Table = &bdat_file.get_tables()?[0];
+//!     let table: &CompatTable = &bdat_file.get_tables()?[0];
 //!     if table.name() == label_hash!("CHR_PC") {
 //!         // Found the character table, get Noah's HP at level 99.
 //!         // No hash lookup for rows!
@@ -170,6 +170,6 @@ pub use table::column::*;
 pub use table::compat::*;
 pub use table::row::*;
 pub use table::{
-    CompatTableBuilder, LegacyColumn, LegacyRow, LegacyTable, LegacyTableBuilder, ModernColumn,
-    ModernRow, ModernTable, ModernTableBuilder, Table,
+    CompatTable, CompatTableBuilder, LegacyColumn, LegacyRow, LegacyTable, LegacyTableBuilder,
+    ModernColumn, ModernRow, ModernTable, ModernTableBuilder,
 };

@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use bdat::serde::SerializeCell;
-use bdat::{Cell, Column, Table, Value};
+use bdat::{Cell, CompatColumnRef, CompatTable, Label, Value};
 use clap::Args;
 use csv::WriterBuilder;
 use std::io::Write;
@@ -39,7 +39,10 @@ impl CsvConverter {
         }
     }
 
-    fn format_column<'a>(&'a self, column: &'a Column) -> impl Iterator<Item = String> + 'a {
+    fn format_column<'a>(
+        &'a self,
+        column: CompatColumnRef<'_, 'a>,
+    ) -> impl Iterator<Item = String> + 'a {
         let iter = {
             if !column.flags().is_empty() {
                 ColumnIter::Flags(
@@ -66,12 +69,12 @@ impl CsvConverter {
 
     fn format_cell<'b, 'a: 'b, 't: 'a>(
         &self,
-        column: &'a Column<'t>,
+        column: CompatColumnRef<'_, 't>,
         cell: Cell<'t>,
     ) -> ColumnIter<
-        SerializeCell<'a, 'b, 't>,
-        impl Iterator<Item = SerializeCell<'a, 'b, 't>>,
-        impl Iterator<Item = SerializeCell<'a, 'b, 't>>,
+        SerializeCell<'a, 'b, 't, Label<'t>>,
+        impl Iterator<Item = SerializeCell<'a, 'b, 't, Label<'t>>>,
+        impl Iterator<Item = SerializeCell<'a, 'b, 't, Label<'t>>>,
     > {
         match cell {
             // Single values: serialize normally
@@ -101,7 +104,7 @@ impl CsvConverter {
 }
 
 impl BdatSerialize for CsvConverter {
-    fn write_table(&self, table: Table, writer: &mut dyn Write) -> Result<()> {
+    fn write_table(&self, table: CompatTable, writer: &mut dyn Write) -> Result<()> {
         let mut writer = WriterBuilder::new()
             .delimiter(self.separator_ch as u8)
             .from_writer(writer);

@@ -6,7 +6,7 @@ use std::{
 };
 
 use crate::error::{Error, SchemaError};
-use bdat::{BdatVersion, Label, Table, Utf};
+use bdat::{BdatVersion, CompatTable, Label, Utf};
 use serde::{Deserialize, Serialize};
 
 /// Incremental format version, used to determine schema compatibility.
@@ -53,7 +53,7 @@ impl FileSchema {
     }
 
     /// Registers a table in the file schema
-    pub fn feed_table(&mut self, table: &Table) {
+    pub fn feed_table(&mut self, table: &CompatTable) {
         self.tables.push(table.name().to_string());
     }
 

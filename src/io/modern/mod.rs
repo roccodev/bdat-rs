@@ -114,19 +114,21 @@ pub fn to_vec<'t, E: ByteOrder>(
 mod tests {
     use super::*;
     use crate::{
-        io::SwitchEndian, BdatFile, Column, Label, ModernRow, ModernTableBuilder, Value, ValueType,
+        io::SwitchEndian, BdatFile, Label, ModernColumn, ModernRow, ModernTableBuilder, Value,
+        ValueType,
     };
 
     #[test]
     fn table_write_back() {
         let table = ModernTableBuilder::with_name(Label::Hash(0xca_fe_ba_be))
-            .add_column(Column::new(ValueType::HashRef, Label::Hash(0xde_ad_be_ef)))
-            .add_column(Column {
-                value_type: ValueType::UnsignedInt,
-                label: Label::Hash(0xca_fe_ca_fe),
-                flags: Vec::new(),
-                count: 1,
-            })
+            .add_column(ModernColumn::new(
+                ValueType::HashRef,
+                Label::Hash(0xde_ad_be_ef),
+            ))
+            .add_column(ModernColumn::new(
+                ValueType::UnsignedInt,
+                Label::Hash(0xca_fe_ca_fe),
+            ))
             .add_row(ModernRow::new(vec![
                 Value::HashRef(0x00_00_00_01),
                 Value::UnsignedInt(10),

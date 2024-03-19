@@ -7,7 +7,7 @@ use std::{
 
 use bdat::{
     hash::{murmur3_with_seed, IdentityHasher, PreHashedMap},
-    Label, Table,
+    CompatTable, Label,
 };
 
 #[derive(Clone, Copy, Default)]
@@ -107,7 +107,7 @@ impl HashNameTable {
         Ok(res)
     }
 
-    pub fn convert_all<'b>(&'b self, table: &mut Table<'b>) {
+    pub fn convert_all<'b>(&'b self, table: &mut CompatTable<'b>) {
         if table.is_legacy() || self.inner.is_empty() {
             return;
         }

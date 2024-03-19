@@ -27,7 +27,7 @@ use std::fmt::Display;
 /// ```
 /// use bdat::{Cell, Column};
 ///
-/// fn serialize_cell(column: &Column, cell: &Cell) -> String {
+/// fn serialize_cell<L>(column: &Column<L>, cell: &Cell) -> String {
 ///     serde_json::to_string(&column.cell_serializer(cell)).unwrap()
 /// }
 /// ```
@@ -39,7 +39,7 @@ use std::fmt::Display;
 /// use serde_json::Deserializer;
 /// use serde::de::DeserializeSeed;
 ///
-/// fn deserialize_cell<'s>(column: &Column, json: &'s str) -> Cell<'s> {
+/// fn deserialize_cell<'s, L>(column: &Column<L>, json: &'s str) -> Cell<'s> {
 ///     column.as_cell_seed().deserialize(&mut Deserializer::from_str(json)).unwrap()
 /// }
 /// ```

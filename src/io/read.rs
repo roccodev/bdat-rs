@@ -1,5 +1,5 @@
 use crate::error::Result;
-use crate::{Label, LegacyTable, ModernTable, Table};
+use crate::{CompatTable, Label, LegacyTable, ModernTable};
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::marker::PhantomData;
@@ -82,7 +82,7 @@ impl<'b> TableName<'b> for LegacyTable<'b> {
     }
 }
 
-impl<'b> TableName<'b> for Table<'b> {
+impl<'b> TableName<'b> for CompatTable<'b> {
     fn name(&self) -> Label<'b> {
         self.name_cloned()
     }

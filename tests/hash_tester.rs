@@ -2,8 +2,8 @@
 
 use bdat::legacy::{LegacyHashTable, LegacyWriteOptions};
 use bdat::{
-    BdatVersion, Column, ColumnBuilder, FlagDef, LegacyTable, LegacyTableBuilder, SwitchEndian,
-    ValueType, WiiEndian,
+    BdatVersion, Column, LegacyColumnBuilder, LegacyFlag, LegacyTable, LegacyTableBuilder,
+    SwitchEndian, ValueType, WiiEndian,
 };
 use byteorder::ByteOrder;
 use std::collections::HashSet;
@@ -28,24 +28,24 @@ fn hash_table_xcx() {
 
 fn create_table<'b>() -> LegacyTable<'b> {
     LegacyTableBuilder::with_name("Table1")
-        .add_column(Column::new(
+        .add_column(LegacyColumnBuilder::new(
             ValueType::SignedByte,
             "ColumnXX1".to_string().into(),
         ))
-        .add_column(Column::new(
+        .add_column(LegacyColumnBuilder::new(
             ValueType::SignedByte,
             "ColumnXX2".to_string().into(),
         ))
-        .add_column(Column::new(
+        .add_column(LegacyColumnBuilder::new(
             ValueType::String,
             "TotallyDifferentColumn".to_string().into(),
         ))
         .add_column(
-            ColumnBuilder::new(ValueType::SignedByte, "ColumnXXFlags".to_string().into())
+            LegacyColumnBuilder::new(ValueType::SignedByte, "ColumnXXFlags".to_string().into())
                 .set_flags(vec![
-                    FlagDef::new_bit("Bit1", 0),
-                    FlagDef::new_bit("Bit2", 1),
-                    FlagDef::new_bit("ColumnXX4", 2),
+                    LegacyFlag::new_bit("Bit1", 0),
+                    LegacyFlag::new_bit("Bit2", 1),
+                    LegacyFlag::new_bit("ColumnXX4", 2),
                 ])
                 .build(),
         )
@@ -71,16 +71,12 @@ fn test_table(table: &LegacyTable, version: BdatVersion, slots: usize) {
 
     let table_bytes = &written[12..];
 
-    for col in table
-        .columns()
-        .map(|c| c.label().to_string_convert().to_string())
-        .chain(
-            table
-                .columns()
-                .flat_map(|c| c.flags())
-                .map(|f| f.label().to_string()),
-        )
-    {
+    for col in table.columns().map(|c| c.label().to_string()).chain(
+        table
+            .columns()
+            .flat_map(|c| c.flags())
+            .map(|f| f.label().to_string()),
+    ) {
         assert!(
             match version {
                 BdatVersion::LegacySwitch =>

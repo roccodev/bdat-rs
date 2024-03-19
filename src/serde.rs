@@ -1,7 +1,7 @@
 //! Serde implementations for crate types (requires feature `serde`)
 
 use crate::legacy::float::BdatReal;
-use crate::{Cell, Column, Label, Value, ValueType};
+use crate::{Cell, Column, CompatColumnRef, Label, Value, ValueType};
 use serde::de::value::MapAccessDeserializer;
 use serde::de::MapAccess;
 use serde::ser::SerializeMap;
@@ -24,8 +24,8 @@ pub struct ValueWithType<'b> {
 }
 
 /// Wraps a cell with its column to allow for custom serialization.
-pub struct SerializeCell<'a, 'b, 't, L> {
-    column: &'a Column<'t, L>,
+pub struct SerializeCell<'a, 'b, 't> {
+    column: CompatColumnRef<'a, 't>,
     cell: Cow<'b, Cell<'t>>,
 }
 
@@ -37,29 +37,25 @@ enum ValueTypeFields {
 struct HexVisitor;
 
 /// An implementation of [`DeserializeSeed`] for [`Cell`]s.
-pub struct CellSeed<'a, L>(&'a Column<'a, L>);
+pub struct CellSeed<'a>(CompatColumnRef<'a, 'a>);
 
-impl<'t, L> Column<'t, L> {
-    pub fn as_cell_seed(&self) -> CellSeed<L> {
-        CellSeed(self)
-    }
-
-    pub fn cell_serializer<'a, 'b>(&'a self, cell: &'b Cell<'t>) -> SerializeCell<'a, 'b, 't, L> {
+impl<'a, 'b, 't> SerializeCell<'a, 'b, 't> {
+    pub fn from_ref<C: Into<CompatColumnRef<'t, 't>>>(column: C, cell: &'b Cell<'t>) -> Self {
         SerializeCell {
-            column: self,
+            column: column.into(),
             cell: Cow::Borrowed(cell),
         }
     }
 
-    pub fn owned_cell_serializer<'a>(&'a self, cell: Cell<'t>) -> SerializeCell<'a, '_, 't, L> {
+    pub fn from_owned<C: Into<CompatColumnRef<'a, 't>>>(column: C, cell: Cell<'t>) -> Self {
         SerializeCell {
-            column: self,
+            column: column.into(),
             cell: Cow::Owned(cell),
         }
     }
 }
 
-impl<'a, 'b, 't, L> Serialize for SerializeCell<'a, 'b, 't, L> {
+impl<'a, 'b, 't> Serialize for SerializeCell<'a, 'b, 't> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -306,16 +302,16 @@ impl<'de> DeserializeSeed<'de> for ValueType {
     }
 }
 
-impl<'a, 'de, L> DeserializeSeed<'de> for CellSeed<'a, L> {
+impl<'a, 'de> DeserializeSeed<'de> for CellSeed<'a> {
     type Value = Cell<'de>;
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        struct CellVisitor<'a, L>(&'a Column<'a, L>);
+        struct CellVisitor<'a>(CompatColumnRef<'a, 'a>);
 
-        impl<'a, 'de, L> Visitor<'de> for CellVisitor<'a, L> {
+        impl<'a, 'de> Visitor<'de> for CellVisitor<'a> {
             type Value = Cell<'de>;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -330,7 +326,7 @@ impl<'a, 'de, L> DeserializeSeed<'de> for CellSeed<'a, L> {
                 let map = HashMap::<String, u32>::deserialize(MapAccessDeserializer::new(map))?;
                 let values = self
                     .0
-                    .flags
+                    .flags()
                     .iter()
                     .filter_map(|f| map.get(f.label.as_ref()))
                     .copied()
@@ -344,7 +340,7 @@ impl<'a, 'de, L> DeserializeSeed<'de> for CellSeed<'a, L> {
             {
                 // Cell::List
                 let mut values = Vec::with_capacity(seq.size_hint().unwrap_or_default());
-                while let Some(v) = seq.next_element_seed(self.0.value_type)? {
+                while let Some(v) = seq.next_element_seed(self.0.value_type())? {
                     values.push(v);
                 }
                 Ok(Cell::List(values))
@@ -359,7 +355,7 @@ impl<'a, 'de, L> DeserializeSeed<'de> for CellSeed<'a, L> {
             .or_else(|_| {
                 Ok(Cell::Single(
                     self.0
-                        .value_type
+                        .value_type()
                         .deserialize(value)
                         .map_err(|e| e.into_error())?,
                 ))
@@ -367,14 +363,27 @@ impl<'a, 'de, L> DeserializeSeed<'de> for CellSeed<'a, L> {
     }
 }
 
+impl<'a, 'b: 'a, T> From<T> for CellSeed<'a>
+where
+    T: Into<CompatColumnRef<'a, 'b>>,
+{
+    fn from(value: T) -> Self {
+        Self(value.into())
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use crate::{serde::ValueWithType, Cell, Column, FlagDef, Label, Value, ValueType};
+    use crate::{
+        serde::{CellSeed, SerializeCell, ValueWithType},
+        Cell, LegacyColumn, LegacyFlag, Value, ValueType,
+    };
     use serde::{de::DeserializeSeed, Deserialize};
 
     macro_rules! col {
         ($ty:expr) => {
-            $crate::Column::new($ty, $crate::Label::Hash(0))
+            $crate::CompatColumn::Modern($crate::ModernColumn::new($ty, $crate::Label::Hash(0)))
+                .as_ref()
         };
     }
 
@@ -474,8 +483,7 @@ mod tests {
     #[allow(clippy::approx_constant)]
     fn deser_cell() {
         assert_eq!(
-            col!(ValueType::UnsignedInt)
-                .as_cell_seed()
+            CellSeed::from(col!(ValueType::UnsignedInt))
                 .deserialize(&mut serde_json::Deserializer::from_str(
                     "[1, 2, 3, 4, 5, 6]"
                 ))
@@ -491,8 +499,7 @@ mod tests {
         );
 
         assert_eq!(
-            col!(ValueType::Float)
-                .as_cell_seed()
+            CellSeed::from(col!(ValueType::Float))
                 .deserialize(&mut serde_json::Deserializer::from_str("3.14"))
                 .unwrap(),
             Cell::Single(Value::Float(3.14.into()))
@@ -501,22 +508,22 @@ mod tests {
 
     #[test]
     fn serde_flags() {
-        let column = Column {
-            label: Label::Hash(0),
+        let column = LegacyColumn {
+            label: "".into(),
             value_type: ValueType::UnsignedInt,
             count: 1,
             flags: vec![
-                FlagDef {
+                LegacyFlag {
                     label: "Flag1".into(),
                     mask: 1 << 2,
                     flag_index: 0,
                 },
-                FlagDef {
+                LegacyFlag {
                     label: "Flag2".into(),
                     mask: 1 << 3,
                     flag_index: 1,
                 },
-                FlagDef {
+                LegacyFlag {
                     label: "Flag3".into(),
                     mask: 1 << 4,
                     flag_index: 2,
@@ -526,13 +533,16 @@ mod tests {
 
         assert_eq!(
             r#"{"Flag1":1,"Flag2":3,"Flag3":4}"#,
-            serde_json::to_string(&column.cell_serializer(&Cell::Flags(vec![1, 3, 4]))).unwrap()
+            serde_json::to_string(&SerializeCell::from_ref(
+                &column,
+                &Cell::Flags(vec![1, 3, 4])
+            ))
+            .unwrap()
         );
 
         assert_eq!(
             Cell::Flags(vec![1, 3, 4]),
-            column
-                .as_cell_seed()
+            CellSeed::from(&column)
                 .deserialize(&mut serde_json::Deserializer::from_str(
                     r#"{"Flag1":1,"Flag2":3,"Flag3":4}"#
                 ))

@@ -14,7 +14,7 @@ use indicatif::ProgressBar;
 use itertools::Itertools;
 use rayon::{iter::Either, prelude::*};
 
-use bdat::{BdatFile, Cell, CompatRef, Label, RowId, RowRef, Table};
+use bdat::{BdatFile, Cell, CompatRef, CompatTable, Label, RowId, RowRef};
 
 use crate::{hash::MurmurHashSet, InputData};
 
@@ -35,7 +35,7 @@ pub struct DiffArgs {
 
 #[derive(Debug)]
 struct TableWithSource<'f, 't> {
-    table: Table<'t>,
+    table: CompatTable<'t>,
     source_file: &'f Path,
 }
 
@@ -47,8 +47,8 @@ struct PathDiff<'p> {
 
 struct RowDiff<'t, 'tb> {
     row_id: RowId,
-    old: &'t Table<'tb>,
-    new: &'t Table<'tb>,
+    old: &'t CompatTable<'tb>,
+    new: &'t CompatTable<'tb>,
 }
 
 struct RowChanges<'tb> {
@@ -213,7 +213,7 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
 }
 
 impl<'t, 'tb> RowDiff<'t, 'tb> {
-    fn new(old: &'t Table<'tb>, new: &'t Table<'tb>, row_id: RowId) -> Self {
+    fn new(old: &'t CompatTable<'tb>, new: &'t CompatTable<'tb>, row_id: RowId) -> Self {
         Self { row_id, old, new }
     }
 

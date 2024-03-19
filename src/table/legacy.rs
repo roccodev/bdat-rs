@@ -1,11 +1,9 @@
 use crate::{
-    Cell, CellAccessor, Column, ColumnMap, CompatTableBuilder, Label, ModernTable, RowRef, Table,
-    Utf,
+    Cell, CellAccessor, ColumnMap, CompatInner, CompatTable, CompatTableBuilder, Label, LabelMap,
+    LegacyColumn, ModernTable, RowRef, Utf,
 };
 
-use super::{builder::LegacyTableBuilder, util::EnumId, FormatConvertError, TableInner};
-
-pub type LegacyColumn<'l> = Column<'l, Utf<'l>>;
+use super::{builder::LegacyTableBuilder, util::EnumId, FormatConvertError, Table};
 
 /// The BDAT table representation in legacy formats, used for all games before Xenoblade 3.
 ///
@@ -36,7 +34,9 @@ pub type LegacyColumn<'l> = Column<'l, Utf<'l>>;
 pub struct LegacyTable<'b> {
     pub(crate) name: Utf<'b>,
     pub(crate) base_id: u16,
-    pub(crate) columns: ColumnMap<'b, Utf<'b>>,
+    // Need to make Utf<'b> explicit here, otherwise the type becomes invariant over 'b
+    // (limitation of associated types)
+    pub(crate) columns: ColumnMap<LegacyColumn<'b>, Utf<'b>>,
     pub(crate) rows: Vec<LegacyRow<'b>>,
 }
 
@@ -44,6 +44,10 @@ pub struct LegacyTable<'b> {
 pub struct LegacyRow<'b> {
     pub(crate) cells: Vec<Cell<'b>>,
 }
+
+pub type LegacyRowRef<'t, 'buf> = RowRef<&'t LegacyRow<'buf>, &'t ColumnMap<LegacyColumn<'buf>>>;
+pub type LegacyRowMut<'t, 'buf> =
+    RowRef<&'t mut LegacyRow<'buf>, &'t ColumnMap<LegacyColumn<'buf>>>;
 
 impl<'b> LegacyTable<'b> {
     pub(crate) fn new(builder: LegacyTableBuilder<'b>) -> Self {
@@ -76,7 +80,7 @@ impl<'b> LegacyTable<'b> {
     ///
     /// ## Panics
     /// If there is no row for the given ID.
-    pub fn row(&self, id: u16) -> RowRef<&LegacyRow<'b>> {
+    pub fn row(&self, id: u16) -> LegacyRowRef<'_, 'b> {
         self.get_row(id).expect("row not found")
     }
 
@@ -88,7 +92,7 @@ impl<'b> LegacyTable<'b> {
     ///
     /// ## Panics
     /// If there is no row for the given ID
-    pub fn row_mut(&mut self, id: u16) -> RowRef<&mut LegacyRow<'b>> {
+    pub fn row_mut(&mut self, id: u16) -> LegacyRowMut<'_, 'b> {
         self.get_row_mut(id).expect("row not found")
     }
 
@@ -98,7 +102,7 @@ impl<'b> LegacyTable<'b> {
     /// Note: the ID is the row's numerical ID, which could be different
     /// from the index of the row in the table's row list. That is because
     /// BDAT tables can have arbitrary start IDs.
-    pub fn get_row(&self, id: u16) -> Option<RowRef<&LegacyRow<'b>>> {
+    pub fn get_row(&self, id: u16) -> Option<LegacyRowRef<'_, 'b>> {
         let index = id.checked_sub(self.base_id)?;
         self.rows
             .get(index as usize)
@@ -111,7 +115,7 @@ impl<'b> LegacyTable<'b> {
     /// Note: the ID is the row's numerical ID, which could be different
     /// from the index of the row in the table's row list. That is because
     /// BDAT tables can have arbitrary start IDs.
-    pub fn get_row_mut(&mut self, id: u16) -> Option<RowRef<&mut LegacyRow<'b>>> {
+    pub fn get_row_mut(&mut self, id: u16) -> Option<LegacyRowMut<'_, 'b>> {
         let index = id.checked_sub(self.base_id)?;
         self.rows
             .get_mut(index as usize)
@@ -119,7 +123,7 @@ impl<'b> LegacyTable<'b> {
     }
 
     /// Gets an iterator that visits this table's rows
-    pub fn rows(&self) -> impl Iterator<Item = RowRef<&LegacyRow<'b>>> {
+    pub fn rows(&self) -> impl Iterator<Item = LegacyRowRef<'_, 'b>> {
         self.rows
             .iter()
             .enum_id(self.base_id as u32)
@@ -131,7 +135,7 @@ impl<'b> LegacyTable<'b> {
     ///
     /// The iterator does not allow structural modifications to the table. To add, remove, or
     /// reorder rows, convert the table to a new builder first. (`TableBuilder::from(table)`)
-    pub fn rows_mut(&mut self) -> impl Iterator<Item = RowRef<&mut LegacyRow<'b>>> {
+    pub fn rows_mut(&mut self) -> impl Iterator<Item = LegacyRowMut<'_, 'b>> {
         self.rows
             .iter_mut()
             .enum_id(self.base_id as u32)
@@ -188,16 +192,21 @@ impl<'b> LegacyRow<'b> {
     }
 }
 
+impl<'buf> Table<'buf> for LegacyTable<'buf> {
+    type Id = u16;
+    type Name = Utf<'buf>;
+    type Row = LegacyRow<'buf>;
+    type BuilderRow = LegacyRow<'buf>;
+    type Column = LegacyColumn<'buf>;
+    type BuilderColumn = LegacyColumn<'buf>;
+}
+
 impl<'a, 'b> CellAccessor for &'a LegacyRow<'b> {
     type Target = &'a Cell<'b>;
     type ColName<'l> = Utf<'l>;
 
     fn access(self, pos: usize) -> Option<Self::Target> {
         self.cells.get(pos)
-    }
-
-    fn to_label(name: Self::ColName<'_>) -> Label {
-        name.into()
     }
 }
 
@@ -207,10 +216,6 @@ impl<'a, 'b> CellAccessor for &'a mut LegacyRow<'b> {
 
     fn access(self, pos: usize) -> Option<Self::Target> {
         self.cells.get_mut(pos)
-    }
-
-    fn to_label(name: Self::ColName<'_>) -> Label {
-        name.into()
     }
 }
 
@@ -226,11 +231,9 @@ impl<'b> From<LegacyTable<'b>> for CompatTableBuilder<'b> {
     }
 }
 
-impl<'b> From<LegacyTable<'b>> for Table<'b> {
+impl<'b> From<LegacyTable<'b>> for CompatTable<'b> {
     fn from(value: LegacyTable<'b>) -> Self {
-        Self {
-            inner: TableInner::Legacy(value),
-        }
+        Self::from_inner(CompatInner::Legacy(value))
     }
 }
 
@@ -241,5 +244,13 @@ impl<'b> TryFrom<ModernTable<'b>> for LegacyTable<'b> {
         CompatTableBuilder::from(value)
             .try_into_legacy()?
             .try_build()
+    }
+}
+
+impl<'t, 'b> LabelMap for &'t ColumnMap<LegacyColumn<'b>, Utf<'b>> {
+    type Name = Utf<'b>;
+
+    fn position(&self, label: &Self::Name) -> Option<usize> {
+        self.label_map.position(label)
     }
 }

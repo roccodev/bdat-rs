@@ -11,7 +11,7 @@ use std::{cmp::Ordering, fmt::Display};
 pub struct LabelNotStringError;
 
 /// A name for a BDAT element (table, column, ID, etc.)
-#[derive(PartialEq, Eq, Debug, Clone, Hash)]
+#[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum Label<'buf> {
     /// 32-bit hash, notably used in [`BdatVersion::Modern`] BDATs.

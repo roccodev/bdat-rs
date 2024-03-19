@@ -1,23 +1,23 @@
 use bdat::{
-    Cell, Column, ColumnBuilder, FlagDef, LegacyRow, LegacyTable, LegacyTableBuilder, Value,
-    ValueType,
+    Cell, Column, LegacyColumnBuilder, LegacyFlag, LegacyRow, LegacyTable, LegacyTableBuilder,
+    Value, ValueType,
 };
 
 pub fn duplicate_table_create() -> LegacyTable<'static> {
-    let flag = FlagDef::new_bit("Flag1", 0);
+    let flag = LegacyFlag::new_bit("Flag1", 0);
 
     LegacyTableBuilder::with_name("Test")
         .add_column(
-            ColumnBuilder::new(ValueType::SignedInt, "Label1".to_string().into())
+            LegacyColumnBuilder::new(ValueType::SignedInt, "Label1".to_string().into())
                 .set_flags(vec![flag.clone()])
                 .build(),
         )
         .add_column(
-            ColumnBuilder::new(ValueType::SignedInt, "Label1".to_string().into())
+            LegacyColumnBuilder::new(ValueType::SignedInt, "Label1".to_string().into())
                 .set_flags(vec![flag])
                 .build(),
         )
-        .add_column(Column::new(
+        .add_column(LegacyColumnBuilder::new(
             ValueType::SignedByte,
             "Label2".to_string().into(),
         ))

@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::{Label, Table};
+use bdat::{CompatTable, Label};
 use clap::Args;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::prelude::*;
@@ -59,7 +59,7 @@ pub struct ConvertArgs {
 
 pub trait BdatSerialize {
     /// Writes a converted BDAT table to a [`Write`] implementation.
-    fn write_table(&self, table: Table, writer: &mut dyn Write) -> Result<()>;
+    fn write_table(&self, table: CompatTable, writer: &mut dyn Write) -> Result<()>;
 
     /// Formats the file name for a converted BDAT table.
     fn get_file_name(&self, table_name: &str) -> String;
@@ -72,7 +72,7 @@ pub trait BdatDeserialize {
         name: Label<'static>,
         schema: &FileSchema,
         reader: &mut dyn Read,
-    ) -> Result<Table>;
+    ) -> Result<CompatTable>;
 
     /// Returns the file extension used in converted table files
     fn get_table_extension(&self) -> &'static str;

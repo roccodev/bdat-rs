@@ -1,26 +1,57 @@
-use crate::{Utf, ValueType};
+use crate::{CompatColumn, Label, Utf, ValueType};
 
-/// A column definition from a Bdat table
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct Column<'tb, L> {
-    pub(crate) value_type: ValueType,
-    pub(crate) label: L,
-    pub(crate) count: usize,
-    pub(crate) flags: Vec<FlagDef<'tb>>,
+pub trait Column {
+    type Name: Clone + Ord + PartialEq;
+
+    /// Returns this column's name.
+    fn label(&self) -> &Self::Name;
+
+    /// Returns this column's type.
+    fn value_type(&self) -> ValueType;
 }
 
-/// A builder interface for [`Column`].
-pub struct ColumnBuilder<'tb, L>(Column<'tb, L>);
+/// A column definition from a modern BDAT table
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModernColumn<'buf> {
+    pub(crate) value_type: ValueType,
+    pub(crate) label: Label<'buf>,
+}
+
+/// A column definition from a legacy BDAT table
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyColumn<'buf> {
+    pub(crate) value_type: ValueType,
+    pub(crate) label: Utf<'buf>,
+    pub(crate) count: usize,
+    pub(crate) flags: Vec<LegacyFlag<'buf>>,
+}
+
+/// A column definition from a Bdat table
+
+/// A builder interface for [`LegacyColumn`].
+pub struct LegacyColumnBuilder<'tb>(LegacyColumn<'tb>);
 
 #[derive(Debug, Clone, PartialEq)]
-pub(crate) struct ColumnMap<'tb, L> {
-    pub columns: Vec<Column<'tb, L>>,
+pub struct ColumnMap<C: Column, L = <C as Column>::Name> {
+    columns: Vec<C>,
+    pub(crate) label_map: NameMap<L>,
+}
+
+pub trait LabelMap {
+    type Name;
+
+    fn position(&self, label: &Self::Name) -> Option<usize>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct NameMap<L> {
+    positions: Vec<(L, usize)>,
 }
 
 /// A sub-definition for flag data that is associated to a column
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
-pub struct FlagDef<'tb> {
+pub struct LegacyFlag<'tb> {
     /// The flag's identifier. Because flags are only supported in legacy BDATs, this is
     /// equivalent to a [`Label::String`].
     pub(crate) label: Utf<'tb>,
@@ -31,14 +62,37 @@ pub struct FlagDef<'tb> {
     pub(crate) flag_index: usize,
 }
 
-impl<'tb, L> Column<'tb, L> {
+impl<'tb> ModernColumn<'tb> {
+    pub fn new(ty: ValueType, label: Label<'tb>) -> Self {
+        Self {
+            value_type: ty,
+            label,
+        }
+    }
+    /// Returns this column's type.
+    pub fn value_type(&self) -> ValueType {
+        self.value_type
+    }
+
+    /// Returns this column's name.
+    pub fn label(&self) -> &Label<'tb> {
+        &self.label
+    }
+
+    /// Returns the total space occupied by a cell of this column.
+    pub fn data_size(&self) -> usize {
+        self.value_type.data_len()
+    }
+}
+
+impl<'tb> LegacyColumn<'tb> {
     /// Creates a new [`Column`]. For more advanced settings, such as item count or flag
     /// data, use [`ColumnBuilder`].
-    pub fn new(ty: ValueType, label: L) -> Self {
+    pub fn new(ty: ValueType, label: Utf<'tb>) -> Self {
         Self::with_flags(ty, label, Vec::new())
     }
 
-    fn with_flags(ty: ValueType, label: L, flags: Vec<FlagDef<'tb>>) -> Self {
+    fn with_flags(ty: ValueType, label: Utf<'tb>, flags: Vec<LegacyFlag<'tb>>) -> Self {
         Self {
             value_type: ty,
             label,
@@ -53,12 +107,12 @@ impl<'tb, L> Column<'tb, L> {
     }
 
     /// Returns this column's name.
-    pub fn label(&self) -> &L {
-        &self.label
+    pub fn label(&self) -> &str {
+        self.label.as_ref()
     }
 
     /// Returns a mutable reference to this column's name.
-    pub fn label_mut(&mut self) -> &mut L {
+    pub fn label_mut(&mut self) -> &mut Utf<'tb> {
         &mut self.label
     }
 
@@ -74,7 +128,7 @@ impl<'tb, L> Column<'tb, L> {
     }
 
     /// Returns this column's defined set of sub-flags.
-    pub fn flags(&self) -> &[FlagDef<'tb>] {
+    pub fn flags(&self) -> &[LegacyFlag<'tb>] {
         &self.flags
     }
 
@@ -82,18 +136,9 @@ impl<'tb, L> Column<'tb, L> {
     pub fn data_size(&self) -> usize {
         self.value_type.data_len() * self.count
     }
-
-    pub(crate) fn map_label<M>(self, map_fn: impl Fn(L) -> M) -> Column<'tb, M> {
-        Column {
-            label: map_fn(self.label),
-            value_type: self.value_type,
-            count: self.count,
-            flags: self.flags,
-        }
-    }
 }
 
-impl<'tb> FlagDef<'tb> {
+impl<'tb> LegacyFlag<'tb> {
     /// Creates a flag definition with an arbitrary mask and shift amount.
     pub fn new(label: impl Into<Utf<'tb>>, mask: u32, shift_amount: usize) -> Self {
         Self {
@@ -130,13 +175,13 @@ impl<'tb> FlagDef<'tb> {
     }
 }
 
-impl<'tb, L> ColumnBuilder<'tb, L> {
-    pub fn new(value_type: ValueType, label: L) -> Self {
-        Self(Column::new(value_type, label))
+impl<'tb> LegacyColumnBuilder<'tb> {
+    pub fn new(value_type: ValueType, label: Utf<'tb>) -> Self {
+        Self(LegacyColumn::new(value_type, label))
     }
 
     /// Sets the column's full flag data.
-    pub fn set_flags(mut self, flags: Vec<FlagDef<'tb>>) -> Self {
+    pub fn set_flags(mut self, flags: Vec<LegacyFlag<'tb>>) -> Self {
         self.0.flags = flags;
         self
     }
@@ -148,67 +193,145 @@ impl<'tb, L> ColumnBuilder<'tb, L> {
         self
     }
 
-    pub fn build(self) -> Column<'tb, L> {
+    pub fn build(self) -> LegacyColumn<'tb> {
         self.0
     }
 }
 
-impl<'tb, L> ColumnMap<'tb, L> {
-    pub fn position(&self, label: L) -> Option<usize>
-    where
-        L: PartialEq,
-    {
-        self.columns.iter().position(|c| c.label == label)
-    }
-
-    pub fn push(&mut self, column: Column<'tb, L>) {
+impl<C: Column> ColumnMap<C, C::Name> {
+    pub fn push(&mut self, column: C) {
+        self.label_map.push(column.label().clone());
         self.columns.push(column);
     }
 
-    pub fn as_slice(&self) -> &[Column<'tb, L>] {
+    pub fn as_slice(&self) -> &[C] {
         &self.columns
     }
 
-    pub fn as_mut_slice(&mut self) -> &mut [Column<'tb, L>] {
+    pub fn as_mut_slice(&mut self) -> &mut [C] {
         &mut self.columns
     }
 
-    pub fn into_raw(self) -> Vec<Column<'tb, L>> {
+    pub fn into_raw(self) -> Vec<C> {
         self.columns
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &Column<'tb, L>> {
+    pub fn iter(&self) -> impl Iterator<Item = &C> {
         self.columns.iter()
     }
 }
 
-impl<'tb, L> IntoIterator for ColumnMap<'tb, L> {
-    type Item = Column<'tb, L>;
-    type IntoIter = std::vec::IntoIter<Column<'tb, L>>;
+impl<L> NameMap<L>
+where
+    L: PartialEq + Ord,
+{
+    pub fn position(&self, label: &L) -> Option<usize> {
+        self.positions
+            .binary_search_by_key(&label, |(l, _)| l)
+            .ok()
+            .map(|i| self.positions[i].1)
+    }
+
+    pub fn push(&mut self, label: L) {
+        if let Err(idx) = self.positions.binary_search_by_key(&&label, |(l, _)| l) {
+            self.positions.insert(idx, (label, self.positions.len()));
+        }
+    }
+}
+
+impl<'buf> Column for ModernColumn<'buf> {
+    type Name = Label<'buf>;
+
+    fn value_type(&self) -> ValueType {
+        self.value_type
+    }
+
+    fn label(&self) -> &Self::Name {
+        &self.label
+    }
+}
+
+impl<'buf> Column for LegacyColumn<'buf> {
+    type Name = Utf<'buf>;
+
+    fn value_type(&self) -> ValueType {
+        self.value_type
+    }
+
+    fn label(&self) -> &Self::Name {
+        &self.label
+    }
+}
+
+impl<'buf> Column for CompatColumn<'buf> {
+    type Name = Label<'buf>;
+
+    fn value_type(&self) -> ValueType {
+        todo!()
+    }
+
+    fn label(&self) -> &Self::Name {
+        todo!()
+    }
+}
+
+impl<C: Column, L> IntoIterator for ColumnMap<C, L> {
+    type Item = C;
+    type IntoIter = std::vec::IntoIter<C>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.columns.into_iter()
     }
 }
 
-impl<'tb, L> FromIterator<Column<'tb, L>> for ColumnMap<'tb, L> {
-    fn from_iter<T: IntoIterator<Item = Column<'tb, L>>>(iter: T) -> Self {
+impl<L> FromIterator<L> for NameMap<L>
+where
+    L: Ord,
+{
+    fn from_iter<T: IntoIterator<Item = L>>(iter: T) -> Self {
+        let mut map = NameMap::default();
+        for label in iter {
+            map.push(label);
+        }
+        map
+    }
+}
+
+impl<C: Column> FromIterator<C> for ColumnMap<C, C::Name> {
+    fn from_iter<T: IntoIterator<Item = C>>(iter: T) -> Self {
+        let columns: Vec<_> = iter.into_iter().collect();
         Self {
-            columns: iter.into_iter().collect(),
+            label_map: columns.iter().map(C::label).cloned().collect(),
+            columns,
         }
     }
 }
 
-impl<'tb, L> From<Column<'tb, L>> for ColumnBuilder<'tb, L> {
-    fn from(value: Column<'tb, L>) -> Self {
+impl<'tb> From<LegacyColumn<'tb>> for LegacyColumnBuilder<'tb> {
+    fn from(value: LegacyColumn<'tb>) -> Self {
         Self(value)
     }
 }
 
-impl<'a, L> Default for ColumnMap<'a, L> {
+impl<'tb> From<LegacyColumnBuilder<'tb>> for LegacyColumn<'tb> {
+    fn from(value: LegacyColumnBuilder<'tb>) -> Self {
+        value.build()
+    }
+}
+
+impl<L> Default for NameMap<L> {
+    fn default() -> Self {
+        Self {
+            positions: Default::default(),
+        }
+    }
+}
+
+impl<'buf, C: Column, L> Default for ColumnMap<C, L> {
     fn default() -> Self {
         Self {
             columns: Default::default(),
+            label_map: Default::default(),
         }
     }
 }

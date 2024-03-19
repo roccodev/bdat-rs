@@ -30,7 +30,7 @@ fn basic_read() {
 
     let flags_col = table
         .columns()
-        .find(|c| c.label().to_string_convert() == "value_flags")
+        .find(|c| c.label() == "value_flags")
         .unwrap();
     assert_eq!(3, flags_col.flags().len());
 

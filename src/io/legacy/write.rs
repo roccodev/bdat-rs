@@ -16,8 +16,8 @@ use crate::legacy::{
     LegacyWriteOptions, COLUMN_NODE_SIZE, COLUMN_NODE_SIZE_WII, HEADER_SIZE, HEADER_SIZE_WII,
 };
 use crate::{
-    BdatError, BdatVersion, Cell, FlagDef, LegacyColumn, LegacyRow, LegacyTable, Value, ValueType,
-    WiiEndian,
+    BdatError, BdatVersion, Cell, LegacyColumn, LegacyFlag, LegacyRow, LegacyTable, Value,
+    ValueType, WiiEndian,
 };
 
 /// Writes a full BDAT file to a writer.
@@ -593,13 +593,13 @@ impl ColumnInfo {
             }
         };
         Self {
-            name: Rc::from(col.label),
+            name: Rc::from(col.label.as_ref()),
             parent: None,
             cell,
         }
     }
 
-    fn new_flag(flag: &FlagDef, parent: usize) -> Self {
+    fn new_flag(flag: &LegacyFlag, parent: usize) -> Self {
         Self {
             name: Rc::from(flag.label.as_ref()),
             parent: Some(parent),

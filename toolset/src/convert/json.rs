@@ -4,8 +4,8 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::{Cell, Column, CompatTableBuilder, Label, RowId, Table, ValueType};
-use bdat::{ColumnBuilder, FlagDef};
+use bdat::{Cell, Column, CompatColumn, CompatTable, CompatTableBuilder, Label, RowId, ValueType};
+use bdat::{LegacyColumnBuilder, LegacyFlag};
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
 use serde_json::Map;
@@ -43,7 +43,7 @@ struct ColumnSchema<'b> {
     #[serde(rename = "type")]
     ty: ValueType,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    flags: Vec<FlagDef<'b>>,
+    flags: Vec<LegacyFlag<'b>>,
     #[serde(default, skip_serializing_if = "col_skip_count")]
     count: usize,
 }
@@ -58,7 +58,7 @@ pub struct JsonConverter {
 }
 
 // For duplicate column mitigation
-type DuplicateColumnKey<'c> = (FixedVec<usize, MAX_DUPLICATE_COLUMNS>, Column<'c>);
+type DuplicateColumnKey<'c> = (FixedVec<usize, MAX_DUPLICATE_COLUMNS>, CompatColumn<'c>);
 
 impl JsonConverter {
     pub fn new(args: &ConvertArgs) -> Self {
@@ -70,7 +70,7 @@ impl JsonConverter {
 }
 
 impl BdatSerialize for JsonConverter {
-    fn write_table(&self, table: Table, writer: &mut dyn Write) -> Result<()> {
+    fn write_table(&self, table: CompatTable, writer: &mut dyn Write) -> Result<()> {
         let schema = (!self.untyped).then(|| {
             table
                 .columns()
@@ -126,7 +126,7 @@ impl BdatDeserialize for JsonConverter {
         name: Label<'static>,
         file_schema: &FileSchema,
         reader: &mut dyn Read,
-    ) -> Result<Table> {
+    ) -> Result<CompatTable> {
         let table: JsonTable =
             serde_json::from_reader(reader).context("failed to read JSON table")?;
 
@@ -140,7 +140,7 @@ impl BdatDeserialize for JsonConverter {
                 |(mut cols, mut map, idx), col| {
                     let label =
                         Label::parse(col.name.clone(), file_schema.version.are_labels_hashed());
-                    let def = ColumnBuilder::new(col.ty, label.clone())
+                    let def = LegacyColumnBuilder::new(col.ty, label.clone())
                         .set_flags(col.flags)
                         .set_count(col.count.max(1))
                         .build();
