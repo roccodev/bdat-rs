@@ -16,7 +16,7 @@ use crate::legacy::{
     LegacyWriteOptions, COLUMN_NODE_SIZE, COLUMN_NODE_SIZE_WII, HEADER_SIZE, HEADER_SIZE_WII,
 };
 use crate::{
-    BdatError, BdatVersion, Cell, ColumnDef, FlagDef, LegacyRow, LegacyTable, Value, ValueType,
+    BdatError, BdatVersion, Cell, FlagDef, LegacyColumn, LegacyRow, LegacyTable, Value, ValueType,
     WiiEndian,
 };
 
@@ -298,8 +298,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
         self.names.make_space(table_name);
         self.names.insert(table_name);
         for col in self.table.columns() {
-            self.names
-                .make_space_names(&col.label.to_string_convert(), self.version);
+            self.names.make_space_names(&col.label, self.version);
         }
         for flag in self.table.columns().flat_map(|c| c.flags().iter()) {
             self.names.make_space_names(&flag.label, self.version);
@@ -390,7 +389,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
 
 impl<'a> ColumnTableBuilder<'a> {
     fn from_columns(
-        cols: &[ColumnDef],
+        cols: &[LegacyColumn],
         name_table: &'a mut StringTable,
         hash_slots: u32,
         info_offset: usize,
@@ -580,7 +579,7 @@ impl<'a, 'b, 't, E: ByteOrder> RowWriter<'a, 'b, 't, E> {
 }
 
 impl ColumnInfo {
-    fn new(col: &ColumnDef, offset: usize) -> Self {
+    fn new(col: &LegacyColumn, offset: usize) -> Self {
         let cell = if col.count > 1 {
             CellHeader::List {
                 ty: col.value_type,
@@ -594,7 +593,7 @@ impl ColumnInfo {
             }
         };
         Self {
-            name: Rc::from(col.label.to_string_convert()),
+            name: Rc::from(col.label),
             parent: None,
             cell,
         }

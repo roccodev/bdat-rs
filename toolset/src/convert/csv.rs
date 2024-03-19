@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use bdat::serde::SerializeCell;
-use bdat::{Cell, ColumnDef, Table, Value};
+use bdat::{Cell, Column, Table, Value};
 use clap::Args;
 use csv::WriterBuilder;
 use std::io::Write;
@@ -39,7 +39,7 @@ impl CsvConverter {
         }
     }
 
-    fn format_column<'a>(&'a self, column: &'a ColumnDef) -> impl Iterator<Item = String> + 'a {
+    fn format_column<'a>(&'a self, column: &'a Column) -> impl Iterator<Item = String> + 'a {
         let iter = {
             if !column.flags().is_empty() {
                 ColumnIter::Flags(
@@ -66,7 +66,7 @@ impl CsvConverter {
 
     fn format_cell<'b, 'a: 'b, 't: 'a>(
         &self,
-        column: &'a ColumnDef<'t>,
+        column: &'a Column<'t>,
         cell: Cell<'t>,
     ) -> ColumnIter<
         SerializeCell<'a, 'b, 't>,

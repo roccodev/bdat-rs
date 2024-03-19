@@ -14,8 +14,8 @@ mod modern;
 mod util;
 
 pub use builder::{CompatTableBuilder, LegacyTableBuilder, ModernTableBuilder};
-pub use legacy::{LegacyRow, LegacyTable};
-pub use modern::{ModernRow, ModernTable};
+pub use legacy::{LegacyColumn, LegacyRow, LegacyTable};
+pub use modern::{ModernColumn, ModernRow, ModernTable};
 
 /// A BDAT table. Depending on how they were read, BDAT tables can either own their data source
 /// or borrow from it.
@@ -41,11 +41,11 @@ pub use modern::{ModernRow, ModernTable};
 /// ## Examples
 ///
 /// ```
-/// use bdat::{Table, CompatTableBuilder, Cell, ColumnDef, Value, ValueType, Label, BdatVersion};
+/// use bdat::{Table, CompatTableBuilder, Cell, Column, Value, ValueType, Label, BdatVersion};
 ///
 /// let table: Table = CompatTableBuilder::with_name(Label::Hash(0xDEADBEEF))
 ///     .set_base_id(1) // default, if you want 0 it must be set manually
-///     .add_column(ColumnDef::new(ValueType::UnsignedInt, Label::Hash(0xCAFEBABE)))
+///     .add_column(Column::new(ValueType::UnsignedInt, Label::Hash(0xCAFEBABE)))
 ///     .add_row(vec![Cell::Single(Value::UnsignedInt(10))].into())
 ///     .build(BdatVersion::Modern);
 ///

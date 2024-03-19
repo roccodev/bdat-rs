@@ -4,7 +4,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::{Cell, ColumnDef, CompatTableBuilder, Label, RowId, Table, ValueType};
+use bdat::{Cell, Column, CompatTableBuilder, Label, RowId, Table, ValueType};
 use bdat::{ColumnBuilder, FlagDef};
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
@@ -58,7 +58,7 @@ pub struct JsonConverter {
 }
 
 // For duplicate column mitigation
-type DuplicateColumnKey<'c> = (FixedVec<usize, MAX_DUPLICATE_COLUMNS>, ColumnDef<'c>);
+type DuplicateColumnKey<'c> = (FixedVec<usize, MAX_DUPLICATE_COLUMNS>, Column<'c>);
 
 impl JsonConverter {
     pub fn new(args: &ConvertArgs) -> Self {
@@ -134,7 +134,7 @@ impl BdatDeserialize for JsonConverter {
             .schema
             .ok_or_else(|| FormatError::MissingTypeInfo.with_context(name.clone()))?;
 
-        let (columns, column_map, _): (Vec<ColumnDef>, HashMap<String, DuplicateColumnKey>, _) =
+        let (columns, column_map, _): (Vec<Column>, HashMap<String, DuplicateColumnKey>, _) =
             schema.into_iter().try_fold(
                 (Vec::new(), HashMap::default(), 0),
                 |(mut cols, mut map, idx), col| {

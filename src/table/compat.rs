@@ -1,13 +1,14 @@
 //! Adapters for legacy<->modern BDAT compatibility.
 
-use super::legacy::LegacyRow;
-use super::modern::ModernRow;
-use super::util::{self, VersionedIter};
+use super::legacy::{LegacyColumn, LegacyRow};
+use super::modern::{ModernColumn, ModernRow};
+use super::util::CompatIter;
 use super::TableInner;
 use crate::{
-    BdatResult, Cell, CellAccessor, ColumnDef, Label, LegacyTable, ModernTable, RowId, RowRef,
-    Table,
+    BdatResult, Cell, CellAccessor, Column, Label, LegacyTable, ModernTable, RowId, RowRef, Table,
 };
+
+pub type CompatColumn<'l> = Column<'l, Label<'l>>;
 
 pub enum CompatRow<'buf> {
     Modern(ModernRow<'buf>),
@@ -18,6 +19,12 @@ pub enum CompatRow<'buf> {
 pub enum CompatRef<'t, 'buf> {
     Modern(&'t ModernRow<'buf>),
     Legacy(&'t LegacyRow<'buf>),
+}
+
+#[derive(Clone, Copy)]
+pub enum CompatColumnRef<'t, 'buf> {
+    Modern(&'t ModernColumn<'buf>),
+    Legacy(&'t LegacyColumn<'buf>),
 }
 
 macro_rules! versioned {
@@ -31,15 +38,6 @@ macro_rules! versioned {
         match $var {
             TableInner::Modern(m) => m . $name ( $($par, )* ),
             TableInner::Legacy(l) => l . $name ( $($par, )* ),
-        }
-    };
-}
-
-macro_rules! versioned_iter {
-    ($var:expr, $name:ident($($par:expr ) *)) => {
-        match $var {
-            TableInner::Modern(m) => util::VersionedIter::Modern(m . $name ( $($par, )* )),
-            TableInner::Legacy(l) => util::VersionedIter::Legacy(l . $name ( $($par, )* )),
         }
     };
 }
@@ -158,6 +156,13 @@ impl<'b> Table<'b> {
         }
     }
 
+    pub(crate) fn name_cloned(&self) -> Label<'b> {
+        match &self.inner {
+            TableInner::Modern(m) => m.name.clone(),
+            TableInner::Legacy(l) => l.name.clone().into(),
+        }
+    }
+
     pub fn set_name(&mut self, name: Label<'b>) {
         match &mut self.inner {
             TableInner::Modern(m) => m.set_name(name),
@@ -212,20 +217,16 @@ impl<'b> Table<'b> {
     /// Gets an iterator that visits this table's rows
     pub fn rows(&self) -> impl Iterator<Item = RowRef<'_, CompatRef<'_, 'b>>> {
         match &self.inner {
-            TableInner::Modern(m) => {
-                VersionedIter::Modern(m.rows().map(|r| r.map(CompatRef::Modern)))
-            }
-            TableInner::Legacy(l) => {
-                VersionedIter::Legacy(l.rows().map(|r| r.map(CompatRef::Legacy)))
-            }
+            TableInner::Modern(m) => CompatIter::Modern(m.rows().map(|r| r.map(CompatRef::Modern))),
+            TableInner::Legacy(l) => CompatIter::Legacy(l.rows().map(|r| r.map(CompatRef::Legacy))),
         }
     }
 
     /// Gets an owning iterator over this table's rows
     pub fn into_rows(self) -> impl Iterator<Item = CompatRow<'b>> {
         match self.inner {
-            TableInner::Modern(m) => VersionedIter::Modern(m.into_rows().map(CompatRow::Modern)),
-            TableInner::Legacy(l) => VersionedIter::Legacy(l.into_rows().map(CompatRow::Legacy)),
+            TableInner::Modern(m) => CompatIter::Modern(m.into_rows().map(CompatRow::Modern)),
+            TableInner::Legacy(l) => CompatIter::Legacy(l.into_rows().map(CompatRow::Legacy)),
         }
     }
 
@@ -234,9 +235,9 @@ impl<'b> Table<'b> {
     pub fn into_rows_id(self) -> impl Iterator<Item = (u32, CompatRow<'b>)> {
         match self.inner {
             TableInner::Modern(m) => {
-                VersionedIter::Modern(m.into_rows_id().map(|(id, r)| (id, CompatRow::Modern(r))))
+                CompatIter::Modern(m.into_rows_id().map(|(id, r)| (id, CompatRow::Modern(r))))
             }
-            TableInner::Legacy(l) => VersionedIter::Legacy(
+            TableInner::Legacy(l) => CompatIter::Legacy(
                 l.into_rows_id()
                     .map(|(id, r)| (id as u32, CompatRow::Legacy(r))),
             ),
@@ -244,13 +245,24 @@ impl<'b> Table<'b> {
     }
 
     /// Gets an iterator that visits this table's column definitions
-    pub fn columns(&self) -> impl Iterator<Item = &ColumnDef<'b>> {
-        versioned_iter!(&self.inner, columns())
+    pub fn columns(&self) -> impl Iterator<Item = CompatColumnRef<'_, 'b>> {
+        match &self.inner {
+            TableInner::Modern(m) => CompatIter::Modern(m.columns().map(CompatColumnRef::Modern)),
+            TableInner::Legacy(l) => CompatIter::Legacy(l.columns().map(CompatColumnRef::Legacy)),
+        }
     }
 
-    /// Gets an owning iterator over this table's column definitions
-    pub fn into_columns(self) -> impl Iterator<Item = ColumnDef<'b>> {
-        versioned_iter!(self.inner, into_columns())
+    /// Gets an owning iterator over this table's column definitions.
+    ///
+    /// Columns from modern tables will be returned as-is. In the case of legacy
+    /// tables, column names are wrapped into the [`Label`] type.
+    pub fn into_columns(self) -> impl Iterator<Item = CompatColumn<'b>> {
+        match self.inner {
+            TableInner::Modern(m) => CompatIter::Modern(m.into_columns()),
+            TableInner::Legacy(l) => {
+                CompatIter::Legacy(l.into_columns().map(|c| c.map_label(Label::String)))
+            }
+        }
     }
 
     pub fn row_count(&self) -> usize {
@@ -266,16 +278,16 @@ impl<'b> CompatRow<'b> {
     pub fn cells(&self) -> impl Iterator<Item = Cell<'b>> + '_ {
         match self {
             CompatRow::Modern(m) => {
-                VersionedIter::Modern(m.values.iter().map(|v| Cell::Single(v.clone())))
+                CompatIter::Modern(m.values.iter().map(|v| Cell::Single(v.clone())))
             }
-            CompatRow::Legacy(l) => VersionedIter::Legacy(l.cells.iter().cloned()),
+            CompatRow::Legacy(l) => CompatIter::Legacy(l.cells.iter().cloned()),
         }
     }
 
     pub fn into_cells(self) -> impl Iterator<Item = Cell<'b>> {
         match self {
-            CompatRow::Modern(m) => VersionedIter::Modern(m.into_values().map(Cell::Single)),
-            CompatRow::Legacy(l) => VersionedIter::Legacy(l.into_cells()),
+            CompatRow::Modern(m) => CompatIter::Modern(m.into_values().map(Cell::Single)),
+            CompatRow::Legacy(l) => CompatIter::Legacy(l.into_cells()),
         }
     }
 }
@@ -284,9 +296,9 @@ impl<'t, 'b> CompatRef<'t, 'b> {
     pub fn cells(&self) -> impl Iterator<Item = Cell<'b>> + '_ {
         match self {
             CompatRef::Modern(m) => {
-                VersionedIter::Modern(m.values.iter().map(|v| Cell::Single(v.clone())))
+                CompatIter::Modern(m.values.iter().map(|v| Cell::Single(v.clone())))
             }
-            CompatRef::Legacy(l) => VersionedIter::Legacy(l.cells.iter().cloned()),
+            CompatRef::Legacy(l) => CompatIter::Legacy(l.cells.iter().cloned()),
         }
     }
 }

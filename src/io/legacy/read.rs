@@ -12,7 +12,7 @@ use crate::legacy::float::BdatReal;
 use crate::legacy::scramble::{calc_checksum, scramble, unscramble, ScrambleType};
 use crate::legacy::{ColumnNodeInfo, COLUMN_NODE_SIZE};
 use crate::{
-    BdatError, BdatFile, BdatVersion, Cell, ColumnDef, FlagDef, Label, LegacyRow, LegacyTable,
+    BdatError, BdatFile, BdatVersion, Cell, FlagDef, Label, LegacyColumn, LegacyRow, LegacyTable,
     LegacyTableBuilder, Utf, Value, ValueType,
 };
 
@@ -56,7 +56,7 @@ struct RowReader<'a, 't: 'a, E> {
     table: &'a mut TableReader<'t, E>,
     /// The cells for the row currently being read
     cells: Vec<Option<Cell<'t>>>,
-    columns: &'a [ColumnDef<'t>],
+    columns: &'a [LegacyColumn<'t>],
     row_idx: usize,
 }
 
@@ -340,8 +340,8 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         // De-flag-ify
         let columns = columns_src
             .into_iter()
-            .map(|c| ColumnDef {
-                label: Label::String(c.name),
+            .map(|c| LegacyColumn {
+                label: c.name,
                 value_type: c.cell.value().value_type,
                 count: match c.cell {
                     ColumnCell::Array(_, c) => c,
@@ -562,7 +562,7 @@ impl<'a, 't: 'a, E: ByteOrder + 'a> ColumnReader<'a, 't, E> {
 }
 
 impl<'a, 't, E: ByteOrder> RowReader<'a, 't, E> {
-    fn new(table: &'a mut TableReader<'t, E>, columns: &'a [ColumnDef<'t>]) -> Self {
+    fn new(table: &'a mut TableReader<'t, E>, columns: &'a [LegacyColumn<'t>]) -> Self {
         Self {
             table,
             cells: vec![None; columns.len()],

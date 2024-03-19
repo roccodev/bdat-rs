@@ -1,5 +1,5 @@
 use bdat::{
-    Cell, ColumnBuilder, ColumnDef, FlagDef, LegacyRow, LegacyTable, LegacyTableBuilder, Value,
+    Cell, Column, ColumnBuilder, FlagDef, LegacyRow, LegacyTable, LegacyTableBuilder, Value,
     ValueType,
 };
 
@@ -17,7 +17,7 @@ pub fn duplicate_table_create() -> LegacyTable<'static> {
                 .set_flags(vec![flag])
                 .build(),
         )
-        .add_column(ColumnDef::new(
+        .add_column(Column::new(
             ValueType::SignedByte,
             "Label2".to_string().into(),
         ))

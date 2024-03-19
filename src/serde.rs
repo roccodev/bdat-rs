@@ -1,7 +1,7 @@
 //! Serde implementations for crate types (requires feature `serde`)
 
 use crate::legacy::float::BdatReal;
-use crate::{Cell, ColumnDef, Label, Value, ValueType};
+use crate::{Cell, Column, Label, Value, ValueType};
 use serde::de::value::MapAccessDeserializer;
 use serde::de::MapAccess;
 use serde::ser::SerializeMap;
@@ -24,8 +24,8 @@ pub struct ValueWithType<'b> {
 }
 
 /// Wraps a cell with its column to allow for custom serialization.
-pub struct SerializeCell<'a, 'b, 't> {
-    column: &'a ColumnDef<'t>,
+pub struct SerializeCell<'a, 'b, 't, L> {
+    column: &'a Column<'t, L>,
     cell: Cow<'b, Cell<'t>>,
 }
 
@@ -37,21 +37,21 @@ enum ValueTypeFields {
 struct HexVisitor;
 
 /// An implementation of [`DeserializeSeed`] for [`Cell`]s.
-pub struct CellSeed<'a>(&'a ColumnDef<'a>);
+pub struct CellSeed<'a, L>(&'a Column<'a, L>);
 
-impl<'t> ColumnDef<'t> {
-    pub fn as_cell_seed(&self) -> CellSeed {
+impl<'t, L> Column<'t, L> {
+    pub fn as_cell_seed(&self) -> CellSeed<L> {
         CellSeed(self)
     }
 
-    pub fn cell_serializer<'a, 'b>(&'a self, cell: &'b Cell<'t>) -> SerializeCell<'a, 'b, 't> {
+    pub fn cell_serializer<'a, 'b>(&'a self, cell: &'b Cell<'t>) -> SerializeCell<'a, 'b, 't, L> {
         SerializeCell {
             column: self,
             cell: Cow::Borrowed(cell),
         }
     }
 
-    pub fn owned_cell_serializer<'a>(&'a self, cell: Cell<'t>) -> SerializeCell<'a, '_, 't> {
+    pub fn owned_cell_serializer<'a>(&'a self, cell: Cell<'t>) -> SerializeCell<'a, '_, 't, L> {
         SerializeCell {
             column: self,
             cell: Cow::Owned(cell),
@@ -59,7 +59,7 @@ impl<'t> ColumnDef<'t> {
     }
 }
 
-impl<'a, 'b, 't> Serialize for SerializeCell<'a, 'b, 't> {
+impl<'a, 'b, 't, L> Serialize for SerializeCell<'a, 'b, 't, L> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -306,16 +306,16 @@ impl<'de> DeserializeSeed<'de> for ValueType {
     }
 }
 
-impl<'a, 'de> DeserializeSeed<'de> for CellSeed<'a> {
+impl<'a, 'de, L> DeserializeSeed<'de> for CellSeed<'a, L> {
     type Value = Cell<'de>;
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        struct CellVisitor<'a>(&'a ColumnDef<'a>);
+        struct CellVisitor<'a, L>(&'a Column<'a, L>);
 
-        impl<'a, 'de> Visitor<'de> for CellVisitor<'a> {
+        impl<'a, 'de, L> Visitor<'de> for CellVisitor<'a, L> {
             type Value = Cell<'de>;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -369,12 +369,12 @@ impl<'a, 'de> DeserializeSeed<'de> for CellSeed<'a> {
 
 #[cfg(test)]
 mod tests {
-    use crate::{serde::ValueWithType, Cell, ColumnDef, FlagDef, Label, Value, ValueType};
+    use crate::{serde::ValueWithType, Cell, Column, FlagDef, Label, Value, ValueType};
     use serde::{de::DeserializeSeed, Deserialize};
 
     macro_rules! col {
         ($ty:expr) => {
-            $crate::ColumnDef::new($ty, $crate::Label::Hash(0))
+            $crate::Column::new($ty, $crate::Label::Hash(0))
         };
     }
 
@@ -501,7 +501,7 @@ mod tests {
 
     #[test]
     fn serde_flags() {
-        let column = ColumnDef {
+        let column = Column {
             label: Label::Hash(0),
             value_type: ValueType::UnsignedInt,
             count: 1,

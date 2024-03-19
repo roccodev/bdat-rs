@@ -34,19 +34,20 @@ pub trait BdatFile<'b> {
     /// Reads all tables from the BDAT source, then groups them by name.
     fn get_tables_by_name(&mut self) -> Result<HashMap<Label<'b>, Self::TableOut>>
     where
-        Self::TableOut: TableName,
+        Self::TableOut: TableName<'b>,
+        Self: 'b,
     {
         self.get_tables().map(|tables| {
             tables
                 .into_iter()
-                .map(|t| (t.name().into_owned(), t)) // TODO
+                .map(|t| (t.name(), t)) // TODO
                 .collect()
         })
     }
 }
 
-pub trait TableName {
-    fn name(&self) -> Label;
+pub trait TableName<'b> {
+    fn name(&self) -> Label<'b>;
 }
 
 impl<'b, E> BdatSlice<'b, E> {
@@ -69,20 +70,20 @@ impl<R, E> BdatReader<R, E> {
     }
 }
 
-impl<'b> TableName for ModernTable<'b> {
-    fn name(&self) -> Label {
-        self.name().as_ref()
+impl<'b> TableName<'b> for ModernTable<'b> {
+    fn name(&self) -> Label<'b> {
+        self.name.clone()
     }
 }
 
-impl<'b> TableName for LegacyTable<'b> {
-    fn name(&self) -> Label {
-        self.name().into()
+impl<'b> TableName<'b> for LegacyTable<'b> {
+    fn name(&self) -> Label<'b> {
+        self.name.clone().into()
     }
 }
 
-impl<'b> TableName for Table<'b> {
-    fn name(&self) -> Label {
-        self.name()
+impl<'b> TableName<'b> for Table<'b> {
+    fn name(&self) -> Label<'b> {
+        self.name_cloned()
     }
 }

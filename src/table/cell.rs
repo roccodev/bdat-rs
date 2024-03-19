@@ -23,29 +23,29 @@ use std::fmt::Display;
 /// Cells don't store metadata about their type or the type of the values they contain.
 /// Instead, they rely on columns to carry that data for them.
 ///
-/// To serialize a `Cell` given its parent column, you can use [`ColumnDef::cell_serializer`].
+/// To serialize a `Cell` given its parent column, you can use [`Column::cell_serializer`].
 /// ```
-/// use bdat::{Cell, ColumnDef};
+/// use bdat::{Cell, Column};
 ///
-/// fn serialize_cell(column: &ColumnDef, cell: &Cell) -> String {
+/// fn serialize_cell(column: &Column, cell: &Cell) -> String {
 ///     serde_json::to_string(&column.cell_serializer(cell)).unwrap()
 /// }
 /// ```
 ///
 /// To deserialize a `Cell` that was serialized into the previous format, you can use
-/// [`ColumnDef::as_cell_seed`], along with `DeserializeSeed` from Serde.
+/// [`Column::as_cell_seed`], along with `DeserializeSeed` from Serde.
 /// ```
-/// use bdat::{Cell, ColumnDef};
+/// use bdat::{Cell, Column};
 /// use serde_json::Deserializer;
 /// use serde::de::DeserializeSeed;
 ///
-/// fn deserialize_cell<'s>(column: &ColumnDef, json: &'s str) -> Cell<'s> {
+/// fn deserialize_cell<'s>(column: &Column, json: &'s str) -> Cell<'s> {
 ///     column.as_cell_seed().deserialize(&mut Deserializer::from_str(json)).unwrap()
 /// }
 /// ```
 ///
-/// [`ColumnDef::cell_serializer`]: crate::ColumnDef::cell_serializer
-/// [`ColumnDef::as_cell_seed`]: crate::ColumnDef::as_cell_seed
+/// [`Column::cell_serializer`]: crate::Column::cell_serializer
+/// [`Column::as_cell_seed`]: crate::Column::as_cell_seed
 #[derive(Debug, Clone, PartialEq)]
 pub enum Cell<'b> {
     /// The cell only contains a single [`Value`]. This is the only supported type

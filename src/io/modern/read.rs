@@ -12,7 +12,7 @@ use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
 use crate::{
     error::{BdatError, Result, Scope},
-    BdatFile, ColumnDef, Label, ModernRow, ModernTable, ModernTableBuilder, Utf, Value, ValueType,
+    BdatFile, Column, Label, ModernRow, ModernTable, ModernTableBuilder, Utf, Value, ValueType,
 };
 
 use super::FileHeader;
@@ -164,7 +164,7 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
             let name_offset = (&col[1..]).read_u16::<E>()?;
             let label = table_data.get_label::<E>(name_offset as usize)?;
 
-            col_data.push(ColumnDef {
+            col_data.push(Column {
                 value_type: ty,
                 label,
                 flags: Vec::new(),

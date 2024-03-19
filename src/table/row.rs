@@ -34,12 +34,12 @@ where
 {
     id: RowId,
     row: R,
-    columns: &'t ColumnMap<'t>,
+    columns: &'t ColumnMap<'t, R::ColName<'t>>,
 }
 
 pub trait CellAccessor {
     type Target;
-    type ColName<'n>;
+    type ColName<'n>: PartialEq;
 
     fn access(self, pos: usize) -> Option<Self::Target>;
 
@@ -50,7 +50,7 @@ impl<'t, R> RowRef<'t, R>
 where
     R: CellAccessor,
 {
-    pub(crate) fn new(id: RowId, row: R, columns: &'t ColumnMap) -> Self {
+    pub(crate) fn new(id: RowId, row: R, columns: &'t ColumnMap<R::ColName<'t>>) -> Self {
         Self { id, row, columns }
     }
 
@@ -70,7 +70,7 @@ where
     ///
     /// If there is no column with the given label, this returns [`None`].
     pub fn get_if_present(self, column: impl Into<R::ColName<'t>>) -> Option<R::Target> {
-        let index = self.columns.position(R::to_label(column.into()))?;
+        let index = self.columns.position(column.into())?;
         self.row.access(index)
     }
 

@@ -1,20 +1,20 @@
-use crate::{Label, Utf, ValueType};
+use crate::{Utf, ValueType};
 
 /// A column definition from a Bdat table
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ColumnDef<'tb> {
+pub struct Column<'tb, L> {
     pub(crate) value_type: ValueType,
-    pub(crate) label: Label<'tb>,
+    pub(crate) label: L,
     pub(crate) count: usize,
     pub(crate) flags: Vec<FlagDef<'tb>>,
 }
 
-/// A builder interface for [`ColumnDef`].
-pub struct ColumnBuilder<'tb>(ColumnDef<'tb>);
+/// A builder interface for [`Column`].
+pub struct ColumnBuilder<'tb, L>(Column<'tb, L>);
 
-#[derive(Debug, Clone, PartialEq, Default)]
-pub(crate) struct ColumnMap<'tb> {
-    pub columns: Vec<ColumnDef<'tb>>,
+#[derive(Debug, Clone, PartialEq)]
+pub(crate) struct ColumnMap<'tb, L> {
+    pub columns: Vec<Column<'tb, L>>,
 }
 
 /// A sub-definition for flag data that is associated to a column
@@ -31,14 +31,14 @@ pub struct FlagDef<'tb> {
     pub(crate) flag_index: usize,
 }
 
-impl<'tb> ColumnDef<'tb> {
-    /// Creates a new [`ColumnDef`]. For more advanced settings, such as item count or flag
+impl<'tb, L> Column<'tb, L> {
+    /// Creates a new [`Column`]. For more advanced settings, such as item count or flag
     /// data, use [`ColumnBuilder`].
-    pub fn new(ty: ValueType, label: Label<'tb>) -> Self {
+    pub fn new(ty: ValueType, label: L) -> Self {
         Self::with_flags(ty, label, Vec::new())
     }
 
-    fn with_flags(ty: ValueType, label: Label<'tb>, flags: Vec<FlagDef<'tb>>) -> Self {
+    fn with_flags(ty: ValueType, label: L, flags: Vec<FlagDef<'tb>>) -> Self {
         Self {
             value_type: ty,
             label,
@@ -53,12 +53,12 @@ impl<'tb> ColumnDef<'tb> {
     }
 
     /// Returns this column's name.
-    pub fn label(&self) -> &Label<'tb> {
+    pub fn label(&self) -> &L {
         &self.label
     }
 
     /// Returns a mutable reference to this column's name.
-    pub fn label_mut(&mut self) -> &mut Label<'tb> {
+    pub fn label_mut(&mut self) -> &mut L {
         &mut self.label
     }
 
@@ -81,6 +81,15 @@ impl<'tb> ColumnDef<'tb> {
     /// Returns the total space occupied by a cell of this column.
     pub fn data_size(&self) -> usize {
         self.value_type.data_len() * self.count
+    }
+
+    pub(crate) fn map_label<M>(self, map_fn: impl Fn(L) -> M) -> Column<'tb, M> {
+        Column {
+            label: map_fn(self.label),
+            value_type: self.value_type,
+            count: self.count,
+            flags: self.flags,
+        }
     }
 }
 
@@ -121,9 +130,9 @@ impl<'tb> FlagDef<'tb> {
     }
 }
 
-impl<'tb> ColumnBuilder<'tb> {
-    pub fn new(value_type: ValueType, label: Label<'tb>) -> Self {
-        Self(ColumnDef::new(value_type, label))
+impl<'tb, L> ColumnBuilder<'tb, L> {
+    pub fn new(value_type: ValueType, label: L) -> Self {
+        Self(Column::new(value_type, label))
     }
 
     /// Sets the column's full flag data.
@@ -139,44 +148,67 @@ impl<'tb> ColumnBuilder<'tb> {
         self
     }
 
-    pub fn build(self) -> ColumnDef<'tb> {
+    pub fn build(self) -> Column<'tb, L> {
         self.0
     }
 }
 
-impl<'tb> ColumnMap<'tb> {
-    pub fn position(&self, label: Label) -> Option<usize> {
+impl<'tb, L> ColumnMap<'tb, L> {
+    pub fn position(&self, label: L) -> Option<usize>
+    where
+        L: PartialEq,
+    {
         self.columns.iter().position(|c| c.label == label)
     }
 
-    pub fn push(&mut self, column: ColumnDef<'tb>) {
+    pub fn push(&mut self, column: Column<'tb, L>) {
         self.columns.push(column);
     }
 
-    pub fn as_slice(&self) -> &[ColumnDef<'tb>] {
+    pub fn as_slice(&self) -> &[Column<'tb, L>] {
         &self.columns
     }
 
-    pub fn as_mut_slice(&mut self) -> &mut [ColumnDef<'tb>] {
+    pub fn as_mut_slice(&mut self) -> &mut [Column<'tb, L>] {
         &mut self.columns
     }
 
-    pub fn into_raw(self) -> Vec<ColumnDef<'tb>> {
+    pub fn into_raw(self) -> Vec<Column<'tb, L>> {
         self.columns
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &ColumnDef<'tb>> {
+    pub fn iter(&self) -> impl Iterator<Item = &Column<'tb, L>> {
         self.columns.iter()
     }
 }
 
-impl<'tb, T> From<T> for ColumnMap<'tb>
-where
-    T: IntoIterator<Item = ColumnDef<'tb>>,
-{
-    fn from(value: T) -> Self {
+impl<'tb, L> IntoIterator for ColumnMap<'tb, L> {
+    type Item = Column<'tb, L>;
+    type IntoIter = std::vec::IntoIter<Column<'tb, L>>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.columns.into_iter()
+    }
+}
+
+impl<'tb, L> FromIterator<Column<'tb, L>> for ColumnMap<'tb, L> {
+    fn from_iter<T: IntoIterator<Item = Column<'tb, L>>>(iter: T) -> Self {
         Self {
-            columns: value.into_iter().collect(),
+            columns: iter.into_iter().collect(),
+        }
+    }
+}
+
+impl<'tb, L> From<Column<'tb, L>> for ColumnBuilder<'tb, L> {
+    fn from(value: Column<'tb, L>) -> Self {
+        Self(value)
+    }
+}
+
+impl<'a, L> Default for ColumnMap<'a, L> {
+    fn default() -> Self {
+        Self {
+            columns: Default::default(),
         }
     }
 }

@@ -1,5 +1,5 @@
 use crate::{
-    BdatVersion, Cell, ColumnDef, ColumnMap, Label, LegacyTable, ModernTable, RowId, Table, Utf,
+    BdatVersion, Cell, Column, ColumnMap, Label, LegacyTable, ModernTable, RowId, Table, Utf,
 };
 
 use super::{legacy::LegacyRow, modern::ModernRow, FormatConvertError};
@@ -11,7 +11,7 @@ pub type LegacyTableBuilder<'b> = TableBuilderImpl<'b, LegacyRow<'b>, u16, Utf<'
 /// A builder interface for [`Table`].
 pub struct TableBuilderImpl<'b, R: 'b, N, L> {
     pub(crate) name: L,
-    pub(crate) columns: ColumnMap<'b>,
+    pub(crate) columns: ColumnMap<'b, L>,
     pub(crate) base_id: N,
     pub(crate) rows: Vec<R>,
 }
@@ -31,7 +31,7 @@ where
         }
     }
 
-    pub(crate) fn from_table(name: L, base_id: N, columns: ColumnMap<'b>, rows: Vec<R>) -> Self {
+    pub(crate) fn from_table(name: L, base_id: N, columns: ColumnMap<'b, L>, rows: Vec<R>) -> Self {
         Self {
             name,
             columns,
@@ -40,7 +40,7 @@ where
         }
     }
 
-    pub fn add_column(mut self, column: ColumnDef<'b>) -> Self {
+    pub fn add_column(mut self, column: Column<'b, L>) -> Self {
         self.columns.push(column);
         self
     }
@@ -57,8 +57,8 @@ where
         self
     }
 
-    pub fn set_columns(mut self, columns: Vec<ColumnDef<'b>>) -> Self {
-        self.columns = ColumnMap::from(columns);
+    pub fn set_columns(mut self, columns: impl IntoIterator<Item = Column<'b, L>>) -> Self {
+        self.columns = columns.into_iter().collect();
         self
     }
 
@@ -127,7 +127,18 @@ impl<'b> LegacyTableBuilder<'b> {
             .name
             .try_into()
             .map_err(|_| FormatConvertError::UnsupportedLabelType)?;
-        Ok(Self::from_table(name, base_id, builder.columns, rows?))
+        let columns: Result<ColumnMap<'_, _>, FormatConvertError> = builder
+            .columns
+            .into_iter()
+            .map(|c| {
+                let label = match c.label {
+                    Label::String(s) => s,
+                    _ => return Err(FormatConvertError::UnsupportedLabelType),
+                };
+                Ok(c.map_label(|l| label))
+            })
+            .collect();
+        Ok(Self::from_table(name, base_id, columns?, rows?))
     }
 
     pub fn try_build(self) -> Result<LegacyTable<'b>, FormatConvertError> {
@@ -205,7 +216,11 @@ impl<'b> From<LegacyTableBuilder<'b>> for CompatTableBuilder<'b> {
         Self::from_table(
             builder.name.into(),
             builder.base_id.into(),
-            builder.columns,
+            builder
+                .columns
+                .into_iter()
+                .map(|c| c.map_label(Label::String))
+                .collect(),
             builder
                 .rows
                 .into_iter()

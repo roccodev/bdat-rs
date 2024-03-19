@@ -170,6 +170,6 @@ pub use table::column::*;
 pub use table::compat::*;
 pub use table::row::*;
 pub use table::{
-    CompatTableBuilder, LegacyRow, LegacyTable, LegacyTableBuilder, ModernRow, ModernTable,
-    ModernTableBuilder, Table,
+    CompatTableBuilder, LegacyColumn, LegacyRow, LegacyTable, LegacyTableBuilder, ModernColumn,
+    ModernRow, ModernTable, ModernTableBuilder, Table,
 };

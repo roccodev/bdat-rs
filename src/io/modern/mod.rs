@@ -114,34 +114,27 @@ pub fn to_vec<'t, E: ByteOrder>(
 mod tests {
     use super::*;
     use crate::{
-        io::SwitchEndian, BdatFile, ColumnDef, Label, ModernRow, ModernTableBuilder, Value, ValueType,
+        io::SwitchEndian, BdatFile, Column, Label, ModernRow, ModernTableBuilder, Value, ValueType,
     };
 
     #[test]
     fn table_write_back() {
         let table = ModernTableBuilder::with_name(Label::Hash(0xca_fe_ba_be))
-            .add_column(ColumnDef::new(
-                ValueType::HashRef,
-                Label::Hash(0xde_ad_be_ef),
-            ))
-            .add_column(ColumnDef {
+            .add_column(Column::new(ValueType::HashRef, Label::Hash(0xde_ad_be_ef)))
+            .add_column(Column {
                 value_type: ValueType::UnsignedInt,
                 label: Label::Hash(0xca_fe_ca_fe),
                 flags: Vec::new(),
                 count: 1,
             })
-            .add_row(ModernRow::new(
-                vec![
-                    Value::HashRef(0x00_00_00_01),
-                    Value::UnsignedInt(10),
-                ],
-            ))
-            .add_row(ModernRow::new(
-                vec![
-                    Value::HashRef(0x01_00_00_01),
-                    Value::UnsignedInt(100),
-                ],
-            ))
+            .add_row(ModernRow::new(vec![
+                Value::HashRef(0x00_00_00_01),
+                Value::UnsignedInt(10),
+            ]))
+            .add_row(ModernRow::new(vec![
+                Value::HashRef(0x01_00_00_01),
+                Value::UnsignedInt(100),
+            ]))
             .build();
 
         let written = to_vec::<SwitchEndian>([&table]).unwrap();

@@ -1,11 +1,13 @@
 use crate::hash::PreHashedMap;
 use crate::{
-    CellAccessor, ColumnDef, ColumnMap, CompatTableBuilder, Label, LegacyTable, ModernTableBuilder,
+    CellAccessor, Column, ColumnMap, CompatTableBuilder, Label, LegacyTable, ModernTableBuilder,
     RowId, RowRef, Table, Value,
 };
 
 use super::util::EnumId;
 use super::{FormatConvertError, TableInner};
+
+pub type ModernColumn<'l> = Column<'l, Label<'l>>;
 
 /// The BDAT table representation in modern formats, currently used in Xenoblade 3.
 ///
@@ -56,7 +58,7 @@ use super::{FormatConvertError, TableInner};
 pub struct ModernTable<'b> {
     pub(crate) name: Label<'b>,
     pub(crate) base_id: u32,
-    pub(crate) columns: ColumnMap<'b>,
+    pub(crate) columns: ColumnMap<'b, Label<'b>>,
     pub(crate) rows: Vec<ModernRow<'b>>,
     #[cfg(feature = "hash-table")]
     row_hash_table: PreHashedMap<u32, RowId>,
@@ -222,18 +224,18 @@ impl<'b> ModernTable<'b> {
     }
 
     /// Gets an iterator that visits this table's column definitions
-    pub fn columns(&self) -> impl Iterator<Item = &ColumnDef<'b>> {
+    pub fn columns(&self) -> impl Iterator<Item = &ModernColumn<'b>> {
         self.columns.iter()
     }
 
     /// Gets an iterator over mutable references to this table's
     /// column definitions.
-    pub fn columns_mut(&mut self) -> impl Iterator<Item = &mut ColumnDef<'b>> {
+    pub fn columns_mut(&mut self) -> impl Iterator<Item = &mut ModernColumn<'b>> {
         self.columns.as_mut_slice().iter_mut()
     }
 
     /// Gets an owning iterator over this table's column definitions
-    pub fn into_columns(self) -> impl Iterator<Item = ColumnDef<'b>> {
+    pub fn into_columns(self) -> impl Iterator<Item = ModernColumn<'b>> {
         self.columns.into_raw().into_iter()
     }
 
@@ -357,12 +359,12 @@ mod tests {
     #[cfg(feature = "hash-table")]
     #[test]
     fn test_hash_table() {
-        use crate::{ColumnDef, Label, ModernRow, ModernTableBuilder, Value, ValueType};
+        use crate::{Column, Label, ModernRow, ModernTableBuilder, Value, ValueType};
 
         let table = ModernTableBuilder::with_name(Label::Hash(0xDEADBEEF))
             .set_base_id(1)
-            .add_column(ColumnDef::new(ValueType::HashRef, 0.into()))
-            .add_column(ColumnDef::new(ValueType::UnsignedInt, 1.into()))
+            .add_column(Column::new(ValueType::HashRef, 0.into()))
+            .add_column(Column::new(ValueType::UnsignedInt, 1.into()))
             .add_row(ModernRow::new(vec![
                 Value::HashRef(0xabcdef01),
                 Value::UnsignedInt(256),
