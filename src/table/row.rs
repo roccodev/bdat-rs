@@ -12,7 +12,7 @@ pub type RowId = u32;
 /// Accessing cells from a `RowRef` is very easy:
 ///
 /// ```
-/// use bdat::{RowRef, ModernTable};
+/// use bdat::ModernTable;
 ///
 /// fn param_1(table: ModernTable) -> u32 {
 ///     let row = table.row(1);
@@ -35,7 +35,6 @@ pub struct RowRef<R, L> {
 
 pub trait CellAccessor {
     type Target;
-    type ColName<'n>: PartialEq;
 
     fn access(self, pos: usize) -> Option<Self::Target>;
 }

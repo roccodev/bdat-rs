@@ -23,7 +23,9 @@ use std::fmt::Display;
 /// Cells don't store metadata about their type or the type of the values they contain.
 /// Instead, they rely on columns to carry that data for them.
 ///
-/// To serialize a `Cell` given its parent column, you can use [`Column::cell_serializer`].
+/// To serialize a `Cell` given its parent column, you can use [`SerializeCell::from_ref`] or
+/// [`SerializeCell::from_owned`].
+///
 /// ```
 /// use bdat::{Cell, ModernColumn};
 /// use bdat::serde::SerializeCell;
@@ -34,7 +36,7 @@ use std::fmt::Display;
 /// ```
 ///
 /// To deserialize a `Cell` that was serialized into the previous format, you can use
-/// [`Column::as_cell_seed`], along with `DeserializeSeed` from Serde.
+/// [`CellSeed::from`], along with `DeserializeSeed` from Serde.
 /// ```
 /// use bdat::{Cell, ModernColumn};
 /// use bdat::serde::CellSeed;
@@ -46,8 +48,9 @@ use std::fmt::Display;
 /// }
 /// ```
 ///
-/// [`Column::cell_serializer`]: crate::Column::cell_serializer
-/// [`Column::as_cell_seed`]: crate::Column::as_cell_seed
+/// [`CellSeed::from`]: crate::serde::CellSeed::from
+/// [`SerializeCell::from_ref`]: crate::serde::SerializeCell::from_ref
+/// [`SerializeCell::from_owned`]: crate::serde::SerializeCell::from_owned
 #[derive(Debug, Clone, PartialEq)]
 pub enum Cell<'b> {
     /// The cell only contains a single [`Value`]. This is the only supported type

@@ -1,6 +1,7 @@
 //! Adapters for legacy<->modern BDAT compatibility.
 
-use super::builder::{CompatBuilderRow, CompatColumnBuilder};
+use std::convert::Infallible;
+
 use super::legacy::LegacyRow;
 use super::modern::ModernRow;
 use super::private::{ColumnSerialize, Table};
@@ -10,54 +11,42 @@ use crate::{
     LegacyTable, ModernColumn, ModernTable, RowId, RowRef, Utf, ValueType,
 };
 
-/// A BDAT table. Depending on how they were read, BDAT tables can either own their data source
-/// or borrow from it.
+/// A BDAT table view with version metadata.
 ///
-/// ## Accessing cells
-/// The [`Table::row`] function provides an easy interface to access cells.
+/// This compatibility wrapper allows users to query table information independent of its version,
+/// and also perform basic queries on rows.
 ///
-/// See also: [`RowRef`]
+/// This, however, introduces several limitations. For instance, some operations may fail or panic
+/// due to being unsupported on either version. Additionally, some operations incur extra overhead
+/// as they need to wrap the result, sometimes cloning to take ownership of it.
 ///
-/// ## Specialized views
-/// If you know what type of BDAT tables you're dealing with (legacy or modern), you can use
-/// [`as_modern`] and [`as_legacy`] to get specialized table views.
+/// Modifications can only be performed on versioned tables. You can `match` on this enum to get
+/// the versioned representation, though methods like [`as_modern_mut`] and [`as_legacy_mut`] are
+/// also provided, if the type is known in advance.
 ///
-/// These views return more ergonomic row accessors that let you quickly extract values, instead
-/// of having to handle cases that are not supported by the known version.
+/// New tables **must** be built as versioned tables. In other words, there is no builder for
+/// this compatibility wrapper, you must use one of [`LegacyTableBuilder`] or [`ModernTableBuilder`].
+/// You may then wrap the build result if you deem it necessary.
 ///
-/// See also: [`ModernTable`], [`LegacyTable`]
-///
-/// ## Adding/deleting rows
-/// The table's mutable iterator does not allow structural modifications to the table. To add or
-/// delete rows, re-build the table. (`CompatTableBuilder::from(table)`)
+/// See also the [module-level documentation](crate::table) for tables.
 ///
 /// ## Examples
 ///
 /// ```
-/// use bdat::{CompatTable, CompatTableBuilder, CompatColumnBuilder, Cell, Value, ValueType, Label, BdatVersion};
-///
-/// let table: CompatTable = CompatTableBuilder::with_name(Label::Hash(0xDEADBEEF))
-///     .set_base_id(1) // default, if you want 0 it must be set manually
-///     .add_column(CompatColumnBuilder::new(ValueType::UnsignedInt, Label::Hash(0xCAFEBABE)))
-///     .add_row(vec![Cell::Single(Value::UnsignedInt(10))])
-///     .build(BdatVersion::Modern);
-///
-/// assert_eq!(table.row_count(), 1);
-/// assert_eq!(
-///     *table.row(1).get(Label::Hash(0xCAFEBABE)).as_single().unwrap(),
-///     Value::UnsignedInt(10)
-/// );
+/// # use bdat::*;
+/// # fn read(bytes: &mut [u8]) -> BdatResult<()> {
+/// let table: &CompatTable = &bdat::from_bytes(bytes)?.get_tables()?[0];
+/// println!("Table {} has {} rows.", table.name(), table.row_count());
+/// # Ok(())
+/// # }
 /// ```
 ///
-/// [`as_legacy`]: CompatTable::as_legacy
-/// [`as_modern`]: CompatTable::as_modern
+/// [`as_modern_mut`]: CompatTable::as_modern_mut
+/// [`as_legacy_mut`]: CompatTable::as_legacy_mut
+/// [`LegacyTableBuilder`]: crate::LegacyTableBuilder
+/// [`ModernTableBuilder`]: crate::ModernTableBuilder
 #[derive(Debug, Clone, PartialEq)]
-pub struct CompatTable<'b> {
-    inner: CompatInner<'b>,
-}
-
-#[derive(Debug, Clone, PartialEq)]
-pub(crate) enum CompatInner<'b> {
+pub enum CompatTable<'b> {
     Modern(ModernTable<'b>),
     Legacy(LegacyTable<'b>),
 }
@@ -73,7 +62,7 @@ pub enum CompatRef<'t, 'buf> {
     Legacy(&'t LegacyRow<'buf>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq, Eq)]
 pub enum CompatColumn<'buf> {
     Modern(ModernColumn<'buf>),
     Legacy(LegacyColumn<'buf>),
@@ -96,30 +85,26 @@ pub type CompatRowRef<'t, 'buf> = RowRef<CompatRef<'t, 'buf>, CompatColumnMap<'t
 macro_rules! versioned {
     ($var:expr, $name:ident) => {
         match $var {
-            CompatInner::Modern(m) => &m.$name,
-            CompatInner::Legacy(l) => &l.$name,
+            Self::Modern(m) => &m.$name,
+            Self::Legacy(l) => &l.$name,
         }
     };
     ($var:expr, $name:ident($($par:expr ) *)) => {
         match $var {
-            CompatInner::Modern(m) => m . $name ( $($par, )* ),
-            CompatInner::Legacy(l) => l . $name ( $($par, )* ),
+            Self::Modern(m) => m . $name ( $($par, )* ),
+            Self::Legacy(l) => l . $name ( $($par, )* ),
         }
     };
 }
 
 impl<'b> CompatTable<'b> {
-    pub(crate) fn from_inner(inner: CompatInner<'b>) -> Self {
-        Self { inner }
-    }
-
     /// If the table is modern, returns a view of the underlying table.
     ///
     /// ## Panics
     /// Panics if the table is not modern.
     pub fn as_modern(&self) -> &ModernTable<'b> {
-        match &self.inner {
-            CompatInner::Modern(m) => m,
+        match self {
+            Self::Modern(m) => m,
             _ => panic!("not modern"),
         }
     }
@@ -129,8 +114,8 @@ impl<'b> CompatTable<'b> {
     /// ## Panics
     /// Panics if the table is not legacy.
     pub fn as_legacy(&self) -> &LegacyTable<'b> {
-        match &self.inner {
-            CompatInner::Legacy(l) => l,
+        match self {
+            Self::Legacy(l) => l,
             _ => panic!("not legacy"),
         }
     }
@@ -140,8 +125,8 @@ impl<'b> CompatTable<'b> {
     /// ## Panics
     /// Panics if the table is not modern.
     pub fn as_modern_mut(&mut self) -> &mut ModernTable<'b> {
-        match &mut self.inner {
-            CompatInner::Modern(m) => m,
+        match self {
+            Self::Modern(m) => m,
             _ => panic!("not modern"),
         }
     }
@@ -151,8 +136,8 @@ impl<'b> CompatTable<'b> {
     /// ## Panics
     /// Panics if the table is not legacy.
     pub fn as_legacy_mut(&mut self) -> &mut LegacyTable<'b> {
-        match &mut self.inner {
-            CompatInner::Legacy(l) => l,
+        match self {
+            Self::Legacy(l) => l,
             _ => panic!("not legacy"),
         }
     }
@@ -161,12 +146,12 @@ impl<'b> CompatTable<'b> {
     ///
     /// ## Panics
     /// Panics if the table is not modern.  
-    /// For a panic-free function that converts instead, use [`to_modern`].
+    /// For a panic-free function that converts instead, use [`try_into_modern`].
     ///
-    /// [`to_modern`]: Table::to_modern
+    /// [`try_into_modern`]: Self::try_into_modern
     pub fn into_modern(self) -> ModernTable<'b> {
-        match self.inner {
-            CompatInner::Modern(m) => m,
+        match self {
+            Self::Modern(m) => m,
             _ => panic!("not modern"),
         }
     }
@@ -175,24 +160,24 @@ impl<'b> CompatTable<'b> {
     ///
     /// ## Panics
     /// Panics if the table is not legacy.  
-    /// For a panic-free function that converts instead, use [`to_legacy`].
+    /// For a panic-free function that converts instead, use [`try_into_legacy`].
     ///
-    /// [`to_legacy`]: Table::to_legacy
+    /// [`try_into_legacy`]: Self::try_into_legacy
     pub fn into_legacy(self) -> LegacyTable<'b> {
-        match self.inner {
-            CompatInner::Legacy(l) => l,
+        match self {
+            Self::Legacy(l) => l,
             _ => panic!("not legacy"),
         }
     }
 
     /// Returns whether the underlying table is modern.
     pub fn is_modern(&self) -> bool {
-        matches!(self.inner, CompatInner::Modern(_))
+        matches!(self, Self::Modern(_))
     }
 
     /// Returns whether the underlying table is legacy.
     pub fn is_legacy(&self) -> bool {
-        matches!(self.inner, CompatInner::Legacy(_))
+        matches!(self, Self::Legacy(_))
     }
 
     /// Returns a modern table as close to the underlying table as possible.
@@ -201,9 +186,9 @@ impl<'b> CompatTable<'b> {
     /// * If the table is legacy, it tries to convert it to the
     /// modern format, and returns the result.
     pub fn try_into_modern(self) -> BdatResult<ModernTable<'b>> {
-        match self.inner {
-            CompatInner::Modern(m) => Ok(m),
-            CompatInner::Legacy(l) => Ok(l.try_into()?),
+        match self {
+            Self::Modern(m) => Ok(m),
+            Self::Legacy(l) => Ok(l.try_into()?),
         }
     }
 
@@ -213,30 +198,30 @@ impl<'b> CompatTable<'b> {
     /// * If the table is modern, it tries to convert it to the
     /// legacy format, and returns the result.
     pub fn try_into_legacy(self) -> BdatResult<LegacyTable<'b>> {
-        match self.inner {
-            CompatInner::Modern(m) => Ok(m.try_into()?),
-            CompatInner::Legacy(l) => Ok(l),
+        match self {
+            Self::Modern(m) => Ok(m.try_into()?),
+            Self::Legacy(l) => Ok(l),
         }
     }
 
     pub fn name(&self) -> Label {
-        match &self.inner {
-            CompatInner::Modern(m) => m.name().as_ref(),
-            CompatInner::Legacy(l) => l.name().into(),
+        match self {
+            Self::Modern(m) => m.name().as_ref(),
+            Self::Legacy(l) => l.name().into(),
         }
     }
 
     pub(crate) fn name_cloned(&self) -> Label<'b> {
-        match &self.inner {
-            CompatInner::Modern(m) => m.name.clone(),
-            CompatInner::Legacy(l) => l.name.clone().into(),
+        match self {
+            Self::Modern(m) => m.name.clone(),
+            Self::Legacy(l) => l.name.clone().into(),
         }
     }
 
     pub fn set_name(&mut self, name: Label<'b>) {
-        match &mut self.inner {
-            CompatInner::Modern(m) => m.set_name(name),
-            CompatInner::Legacy(l) => {
+        match self {
+            Self::Modern(m) => m.set_name(name),
+            Self::Legacy(l) => {
                 l.set_name(name.try_into().expect("hashed labels are not supported"))
             }
         }
@@ -244,9 +229,9 @@ impl<'b> CompatTable<'b> {
 
     /// Gets the minimum row ID in the table.
     pub fn base_id(&self) -> RowId {
-        match &self.inner {
-            CompatInner::Modern(m) => m.base_id(),
-            CompatInner::Legacy(l) => l.base_id() as u32,
+        match self {
+            Self::Modern(m) => m.base_id(),
+            Self::Legacy(l) => l.base_id() as u32,
         }
     }
 
@@ -259,11 +244,11 @@ impl<'b> CompatTable<'b> {
     /// ## Panics
     /// If there is no row for the given ID.
     pub fn row(&self, id: RowId) -> CompatRowRef<'_, 'b> {
-        match &self.inner {
-            CompatInner::Modern(m) => m
+        match self {
+            Self::Modern(m) => m
                 .row(id)
                 .map(CompatRef::Modern, CompatColumnMap::Modern(&m.columns)),
-            CompatInner::Legacy(l) => l
+            Self::Legacy(l) => l
                 .row(id.try_into().expect("invalid id for legacy row"))
                 .map(CompatRef::Legacy, CompatColumnMap::Legacy(&l.columns)),
         }
@@ -276,11 +261,11 @@ impl<'b> CompatTable<'b> {
     /// from the index of the row in the table's row list. That is because
     /// BDAT tables can have arbitrary start IDs.
     pub fn get_row(&self, id: RowId) -> Option<CompatRowRef<'_, 'b>> {
-        match &self.inner {
-            CompatInner::Modern(m) => m
+        match self {
+            Self::Modern(m) => m
                 .get_row(id)
                 .map(|r| r.map(CompatRef::Modern, CompatColumnMap::Modern(&m.columns))),
-            CompatInner::Legacy(l) => id
+            Self::Legacy(l) => id
                 .try_into()
                 .ok()
                 .and_then(|id| l.get_row(id))
@@ -290,12 +275,12 @@ impl<'b> CompatTable<'b> {
 
     /// Gets an iterator that visits this table's rows
     pub fn rows(&self) -> impl Iterator<Item = CompatRowRef<'_, 'b>> {
-        match &self.inner {
-            CompatInner::Modern(m) => CompatIter::Modern(
+        match self {
+            Self::Modern(m) => CompatIter::Modern(
                 m.rows()
                     .map(|r| r.map(CompatRef::Modern, CompatColumnMap::Modern(&m.columns))),
             ),
-            CompatInner::Legacy(l) => CompatIter::Legacy(
+            Self::Legacy(l) => CompatIter::Legacy(
                 l.rows()
                     .map(|r| r.map(CompatRef::Legacy, CompatColumnMap::Legacy(&l.columns))),
             ),
@@ -304,20 +289,20 @@ impl<'b> CompatTable<'b> {
 
     /// Gets an owning iterator over this table's rows
     pub fn into_rows(self) -> impl Iterator<Item = CompatRow<'b>> {
-        match self.inner {
-            CompatInner::Modern(m) => CompatIter::Modern(m.into_rows().map(CompatRow::Modern)),
-            CompatInner::Legacy(l) => CompatIter::Legacy(l.into_rows().map(CompatRow::Legacy)),
+        match self {
+            Self::Modern(m) => CompatIter::Modern(m.into_rows().map(CompatRow::Modern)),
+            Self::Legacy(l) => CompatIter::Legacy(l.into_rows().map(CompatRow::Legacy)),
         }
     }
 
     /// Gets an owning iterator over this table's rows, in pairs of
     /// `(row ID, row)`.
     pub fn into_rows_id(self) -> impl Iterator<Item = (u32, CompatRow<'b>)> {
-        match self.inner {
-            CompatInner::Modern(m) => {
+        match self {
+            Self::Modern(m) => {
                 CompatIter::Modern(m.into_rows_id().map(|(id, r)| (id, CompatRow::Modern(r))))
             }
-            CompatInner::Legacy(l) => CompatIter::Legacy(
+            Self::Legacy(l) => CompatIter::Legacy(
                 l.into_rows_id()
                     .map(|(id, r)| (id as u32, CompatRow::Legacy(r))),
             ),
@@ -326,9 +311,9 @@ impl<'b> CompatTable<'b> {
 
     /// Gets an iterator that visits this table's column definitions
     pub fn columns(&self) -> impl Iterator<Item = CompatColumnRef<'_, 'b>> {
-        match &self.inner {
-            CompatInner::Modern(m) => CompatIter::Modern(m.columns().map(CompatColumnRef::Modern)),
-            CompatInner::Legacy(l) => CompatIter::Legacy(l.columns().map(CompatColumnRef::Legacy)),
+        match self {
+            Self::Modern(m) => CompatIter::Modern(m.columns().map(CompatColumnRef::Modern)),
+            Self::Legacy(l) => CompatIter::Legacy(l.columns().map(CompatColumnRef::Legacy)),
         }
     }
 
@@ -337,22 +322,18 @@ impl<'b> CompatTable<'b> {
     /// Columns from modern tables will be returned as-is. In the case of legacy
     /// tables, column names are wrapped into the [`Label`] type.
     pub fn into_columns(self) -> impl Iterator<Item = CompatColumn<'b>> {
-        match self.inner {
-            CompatInner::Modern(m) => {
-                CompatIter::Modern(m.into_columns().map(CompatColumn::Modern))
-            }
-            CompatInner::Legacy(l) => {
-                CompatIter::Legacy(l.into_columns().map(CompatColumn::Legacy))
-            }
+        match self {
+            Self::Modern(m) => CompatIter::Modern(m.into_columns().map(CompatColumn::Modern)),
+            Self::Legacy(l) => CompatIter::Legacy(l.into_columns().map(CompatColumn::Legacy)),
         }
     }
 
     pub fn row_count(&self) -> usize {
-        versioned!(&self.inner, row_count())
+        versioned!(&self, row_count())
     }
 
     pub fn column_count(&self) -> usize {
-        versioned!(&self.inner, column_count())
+        versioned!(&self, column_count())
     }
 }
 
@@ -459,6 +440,18 @@ impl<'t, 'b> CompatRef<'t, 'b> {
     }
 }
 
+impl<'buf> From<LegacyColumn<'buf>> for CompatColumn<'buf> {
+    fn from(value: LegacyColumn<'buf>) -> Self {
+        Self::Legacy(value)
+    }
+}
+
+impl<'buf> From<ModernColumn<'buf>> for CompatColumn<'buf> {
+    fn from(value: ModernColumn<'buf>) -> Self {
+        Self::Modern(value)
+    }
+}
+
 impl<'t, 'buf> From<&'t LegacyColumn<'buf>> for CompatColumnRef<'t, 'buf> {
     fn from(value: &'t LegacyColumn<'buf>) -> Self {
         Self::Legacy(value)
@@ -475,14 +468,13 @@ impl<'buf> Table<'buf> for CompatTable<'buf> {
     type Id = RowId;
     type Name = Label<'buf>;
     type Row = CompatRow<'buf>;
-    type BuilderRow = CompatBuilderRow<'buf>;
+    type BuilderRow = Infallible; // uninstantiable
     type Column = CompatColumn<'buf>;
-    type BuilderColumn = CompatColumnBuilder<'buf>;
+    type BuilderColumn = CompatColumn<'buf>;
 }
 
 impl<'t, 'b> CellAccessor for CompatRef<'t, 'b> {
     type Target = Cell<'b>;
-    type ColName<'l> = Label<'l>;
 
     fn access(self, pos: usize) -> Option<Self::Target> {
         match self {

@@ -1,12 +1,11 @@
 use crate::hash::PreHashedMap;
 use crate::{
-    CellAccessor, ColumnMap, CompatInner, CompatTable, CompatTableBuilder, Label, LabelMap,
-    LegacyTable, ModernColumn, ModernTableBuilder, RowId, RowRef, Value,
+    CellAccessor, ColumnMap, CompatTable, Label, LabelMap, ModernColumn, ModernTableBuilder, RowId,
+    RowRef, Value,
 };
 
 use super::private::{ColumnSerialize, Table};
 use super::util::EnumId;
-use super::FormatConvertError;
 
 /// The BDAT table representation in modern formats, currently used in Xenoblade 3.
 ///
@@ -311,7 +310,6 @@ impl<'buf> Table<'buf> for ModernTable<'buf> {
 
 impl<'a, 'b> CellAccessor for &'a ModernRow<'b> {
     type Target = &'a Value<'b>;
-    type ColName<'l> = Label<'l>;
 
     fn access(self, pos: usize) -> Option<Self::Target> {
         self.values.get(pos)
@@ -320,7 +318,6 @@ impl<'a, 'b> CellAccessor for &'a ModernRow<'b> {
 
 impl<'a, 'b> CellAccessor for &'a mut ModernRow<'b> {
     type Target = &'a mut Value<'b>;
-    type ColName<'l> = Label<'l>;
 
     fn access(self, pos: usize) -> Option<Self::Target> {
         self.values.get_mut(pos)
@@ -333,26 +330,9 @@ impl<'b> From<ModernTable<'b>> for ModernTableBuilder<'b> {
     }
 }
 
-impl<'b> From<ModernTable<'b>> for CompatTableBuilder<'b> {
-    fn from(value: ModernTable<'b>) -> Self {
-        Self::from(ModernTableBuilder::from(value))
-    }
-}
-
 impl<'b> From<ModernTable<'b>> for CompatTable<'b> {
     fn from(value: ModernTable<'b>) -> Self {
-        Self::from_inner(CompatInner::Modern(value))
-    }
-}
-
-/// Legacy -> Modern conversion
-impl<'b> TryFrom<LegacyTable<'b>> for ModernTable<'b> {
-    type Error = FormatConvertError;
-
-    fn try_from(value: LegacyTable<'b>) -> Result<Self, Self::Error> {
-        CompatTableBuilder::from(value)
-            .try_into_modern()?
-            .try_build()
+        Self::Modern(value)
     }
 }
 

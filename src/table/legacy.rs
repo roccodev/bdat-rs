@@ -1,13 +1,9 @@
-use crate::{
-    Cell, CellAccessor, ColumnMap, CompatInner, CompatTable, CompatTableBuilder, LabelMap,
-    LegacyColumn, ModernTable, RowRef, Utf,
-};
+use crate::{Cell, CellAccessor, ColumnMap, CompatTable, LabelMap, LegacyColumn, RowRef, Utf};
 
 use super::{
     builder::LegacyTableBuilder,
     private::{ColumnSerialize, Table},
     util::EnumId,
-    FormatConvertError,
 };
 
 /// The BDAT table representation in legacy formats, used for all games before Xenoblade 3.
@@ -19,7 +15,7 @@ use super::{
 /// Unlike modern tables, legacy tables can have multiple-value cells, or mask a value's bits
 /// to create flags.
 ///
-/// See also: [`LegacyCell`]
+/// See also: [`LegacyRow`]
 ///
 /// # Examples
 ///
@@ -208,7 +204,6 @@ impl<'buf> Table<'buf> for LegacyTable<'buf> {
 
 impl<'a, 'b> CellAccessor for &'a LegacyRow<'b> {
     type Target = &'a Cell<'b>;
-    type ColName<'l> = Utf<'l>;
 
     fn access(self, pos: usize) -> Option<Self::Target> {
         self.cells.get(pos)
@@ -217,7 +212,6 @@ impl<'a, 'b> CellAccessor for &'a LegacyRow<'b> {
 
 impl<'a, 'b> CellAccessor for &'a mut LegacyRow<'b> {
     type Target = &'a mut Cell<'b>;
-    type ColName<'l> = Utf<'l>;
 
     fn access(self, pos: usize) -> Option<Self::Target> {
         self.cells.get_mut(pos)
@@ -230,25 +224,9 @@ impl<'b> From<LegacyTable<'b>> for LegacyTableBuilder<'b> {
     }
 }
 
-impl<'b> From<LegacyTable<'b>> for CompatTableBuilder<'b> {
-    fn from(value: LegacyTable<'b>) -> Self {
-        Self::from(LegacyTableBuilder::from(value))
-    }
-}
-
 impl<'b> From<LegacyTable<'b>> for CompatTable<'b> {
     fn from(value: LegacyTable<'b>) -> Self {
-        Self::from_inner(CompatInner::Legacy(value))
-    }
-}
-
-impl<'b> TryFrom<ModernTable<'b>> for LegacyTable<'b> {
-    type Error = FormatConvertError;
-
-    fn try_from(value: ModernTable<'b>) -> Result<Self, Self::Error> {
-        CompatTableBuilder::from(value)
-            .try_into_legacy()?
-            .try_build()
+        Self::Legacy(value)
     }
 }
 

@@ -78,8 +78,8 @@ impl<'tb> ModernColumn<'tb> {
 }
 
 impl<'tb> LegacyColumn<'tb> {
-    /// Creates a new [`Column`]. For more advanced settings, such as item count or flag
-    /// data, use [`ColumnBuilder`].
+    /// Creates a new [`LegacyColumn`]. For more advanced settings, such as item count or flag
+    /// data, use [`LegacyColumnBuilder`].
     pub fn new(ty: ValueType, label: Utf<'tb>) -> Self {
         Self::with_flags(ty, label, Vec::new())
     }

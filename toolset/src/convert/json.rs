@@ -3,12 +3,14 @@ use std::{
     io::{Read, Write},
 };
 
-use anyhow::{Context, Result};
-use bdat::LegacyFlag;
+use anyhow::{anyhow, Context, Result};
 use bdat::{
     serde::{CellSeed, SerializeCell},
-    Cell, CompatColumnBuilder, CompatTable, CompatTableBuilder, Label, RowId, ValueType,
+    Cell, CompatTable, Label, LegacyColumn, LegacyColumnBuilder, LegacyRow, LegacyTable,
+    LegacyTableBuilder, ModernColumn, ModernRow, ModernTable, ModernTableBuilder, RowId, Value,
+    ValueType,
 };
+use bdat::{CompatColumn, LegacyFlag};
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
 use serde_json::Map;
@@ -61,10 +63,7 @@ pub struct JsonConverter {
 }
 
 // For duplicate column mitigation
-type DuplicateColumnKey<'c> = (
-    FixedVec<usize, MAX_DUPLICATE_COLUMNS>,
-    CompatColumnBuilder<'c>,
-);
+type DuplicateColumnKey<'c> = (FixedVec<usize, MAX_DUPLICATE_COLUMNS>, CompatColumn<'c>);
 
 impl JsonConverter {
     pub fn new(args: &ConvertArgs) -> Self {
@@ -72,6 +71,124 @@ impl JsonConverter {
             untyped: args.untyped,
             pretty: args.json_opts.pretty,
         }
+    }
+
+    fn read_table_modern<'b>(&self, name: Label<'b>, table: JsonTable) -> Result<ModernTable<'b>> {
+        let schema = table
+            .schema
+            .ok_or_else(|| FormatError::MissingTypeInfo.with_context(name.clone()))?;
+
+        let (columns, column_map, _): (Vec<ModernColumn>, HashMap<String, (usize, ValueType)>, _) =
+            schema.into_iter().try_fold(
+                (Vec::new(), HashMap::default(), 0),
+                |(mut cols, mut unique_names, idx), col| {
+                    let label = Label::parse(col.name.clone(), true);
+                    let def = ModernColumn::new(col.ty, label.clone());
+                    if unique_names
+                        .insert(col.name.clone(), (idx, col.ty))
+                        .is_some()
+                    {
+                        return Err(FormatError::DuplicateColumn(Some(label).into())
+                            .with_context(name.clone()));
+                    }
+                    cols.push(def);
+                    Ok((cols, unique_names, idx + 1))
+                },
+            )?;
+
+        let rows = table
+            .rows
+            .into_iter()
+            .map(|r| {
+                let id = r.id;
+                let mut values = vec![None; columns.len()];
+                for (k, v) in r.cells {
+                    let (index, ty) = column_map[&k];
+                    values[index] = Some(ty.deser_value(v)?);
+                }
+                let old_len = values.len();
+                let values: Vec<Value> = values.into_iter().flatten().collect();
+                if values.len() != old_len {
+                    return Err(FormatError::IncompleteRow(id)
+                        .with_context(name.clone())
+                        .into());
+                }
+                Ok(ModernRow::new(values))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(ModernTableBuilder::with_name(name)
+            .set_columns(columns)
+            .set_rows(rows)
+            .build())
+    }
+
+    fn read_table_legacy<'b>(&self, name: Label<'b>, table: JsonTable) -> Result<LegacyTable<'b>> {
+        let schema = table
+            .schema
+            .ok_or_else(|| FormatError::MissingTypeInfo.with_context(name.clone()))?;
+
+        let Label::String(name_str) = name.clone() else {
+            return Err(anyhow!("unsupported table name"));
+        };
+
+        let (columns, column_map, _): (Vec<LegacyColumn>, HashMap<String, DuplicateColumnKey>, _) =
+            schema.into_iter().try_fold(
+                (Vec::new(), HashMap::default(), 0),
+                |(mut cols, mut map, idx), col| {
+                    let def = LegacyColumnBuilder::new(col.ty, col.name.clone().into()).build();
+                    // Only keep the first occurrence: there's a table in XC2 (likely more) with
+                    // a duplicate column (FLD_RequestItemSet)
+                    let (indices, dup_col) = map
+                        .entry(col.name.clone())
+                        .or_insert_with(|| (FixedVec::default(), CompatColumn::from(def.clone())));
+                    indices.try_push(idx).map_err(|_| {
+                        FormatError::MaxDuplicateColumns(Some(Label::from(col.name.clone())).into())
+                            .with_context(name.clone())
+                    })?;
+                    if dup_col.value_type() != col.ty {
+                        return Err(FormatError::DuplicateMismatch(Box::new((
+                            Some(Label::from(col.name.clone())).into(),
+                            dup_col.value_type(),
+                            col.ty,
+                        )))
+                        .with_context(name.clone()));
+                    }
+                    cols.push(def);
+                    Ok((cols, map, idx + 1))
+                },
+            )?;
+
+        let rows = table
+            .rows
+            .into_iter()
+            .map(|r| {
+                let id = r.id;
+                let mut cells = vec![None; columns.len()];
+                for (k, v) in r.cells {
+                    let (index, column) = &column_map[&k];
+                    let deserialized = Some(CellSeed::from(column).deserialize(v).unwrap());
+                    // Only clone in the worst scenario (duplicate columns)
+                    for idx in index.into_iter().skip(1) {
+                        cells[*idx] = deserialized.clone();
+                    }
+                    cells[index[0]] = deserialized;
+                }
+                let old_len = cells.len();
+                let cells: Vec<Cell> = cells.into_iter().flatten().collect();
+                if cells.len() != old_len {
+                    return Err(FormatError::IncompleteRow(id)
+                        .with_context(name.clone())
+                        .into());
+                }
+                Ok(LegacyRow::new(cells))
+            })
+            .collect::<Result<Vec<_>>>()?;
+
+        Ok(LegacyTableBuilder::with_name(name_str)
+            .set_columns(columns)
+            .set_rows(rows)
+            .build())
     }
 }
 
@@ -138,74 +255,11 @@ impl BdatDeserialize for JsonConverter {
         let table: JsonTable =
             serde_json::from_reader(reader).context("failed to read JSON table")?;
 
-        let schema = table
-            .schema
-            .ok_or_else(|| FormatError::MissingTypeInfo.with_context(name.clone()))?;
-
-        let (columns, column_map, _): (
-            Vec<CompatColumnBuilder>,
-            HashMap<String, DuplicateColumnKey>,
-            _,
-        ) = schema.into_iter().try_fold(
-            (Vec::new(), HashMap::default(), 0),
-            |(mut cols, mut map, idx), col| {
-                let label = Label::parse(col.name.clone(), file_schema.version.are_labels_hashed());
-                let def = CompatColumnBuilder::new(col.ty, label.clone())
-                    .set_flags(col.flags)
-                    .set_count(col.count.max(1))
-                    .build();
-                // Only keep the first occurrence: there's a table in XC2 (likely more) with
-                // a duplicate column (FLD_RequestItemSet)
-                let (indices, dup_col) = map
-                    .entry(col.name)
-                    .or_insert_with(|| (FixedVec::default(), def.clone()));
-                indices.try_push(idx).map_err(|_| {
-                    FormatError::MaxDuplicateColumns(label.clone().into())
-                        .with_context(name.clone())
-                })?;
-                if dup_col.value_type() != col.ty {
-                    return Err(FormatError::DuplicateMismatch(Box::new((
-                        label.into(),
-                        dup_col.value_type(),
-                        col.ty,
-                    )))
-                    .with_context(name.clone()));
-                }
-                cols.push(def);
-                Ok((cols, map, idx + 1))
-            },
-        )?;
-
-        let rows = table
-            .rows
-            .into_iter()
-            .map(|r| {
-                let id = r.id;
-                let mut cells = vec![None; columns.len()];
-                for (k, v) in r.cells {
-                    let (index, column) = &column_map[&k];
-                    let deserialized = Some(CellSeed::from(column).deserialize(v).unwrap());
-                    // Only clone in the worst scenario (duplicate columns)
-                    for idx in index.into_iter().skip(1) {
-                        cells[*idx] = deserialized.clone();
-                    }
-                    cells[index[0]] = deserialized;
-                }
-                let old_len = cells.len();
-                let cells: Vec<Cell> = cells.into_iter().flatten().collect();
-                if cells.len() != old_len {
-                    return Err(FormatError::IncompleteRow(id)
-                        .with_context(name.clone())
-                        .into());
-                }
-                Ok(cells.into())
-            })
-            .collect::<Result<Vec<_>>>()?;
-
-        Ok(CompatTableBuilder::with_name(name)
-            .set_columns(columns)
-            .set_rows(rows)
-            .build(file_schema.version))
+        if file_schema.version.is_legacy() {
+            self.read_table_legacy(name, table).map(CompatTable::from)
+        } else {
+            self.read_table_modern(name, table).map(CompatTable::from)
+        }
     }
 
     fn get_table_extension(&self) -> &'static str {

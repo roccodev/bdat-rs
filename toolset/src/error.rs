@@ -40,6 +40,8 @@ pub enum FormatError {
     MissingTypeInfo,
     #[error("Row {0} does not have entries for all columns")]
     IncompleteRow(RowId),
+    #[error("Column name {0} is already present, and duplicates are not allowed.")]
+    DuplicateColumn(OptLabel),
     #[error(
         "Column name {0} exceeds the maximum duplicate count of \
     {MAX_DUPLICATE_COLUMNS}. Please avoid using multiple columns with the same name."

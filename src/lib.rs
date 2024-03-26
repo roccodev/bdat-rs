@@ -121,7 +121,7 @@
 //! Writing fully requires the user to specify the BDAT version to use, by choosing the
 //! appropriate module implementation.
 //!
-//! [`Table`]s obtained with the auto-detecting functions must be extracted or converted first.
+//! Tables obtained with the auto-detecting functions must be extracted or converted first.
 //!
 //! ```
 //! use bdat::{BdatResult, BdatVersion, SwitchEndian, WiiEndian, ModernTable, LegacyTable};
@@ -170,7 +170,6 @@ pub use table::column::*;
 pub use table::compat::*;
 pub use table::row::*;
 pub use table::{
-    CompatBuilderRow, CompatColumnBuilder, CompatTable, CompatTableBuilder, LegacyColumn,
-    LegacyRow, LegacyTable, LegacyTableBuilder, ModernColumn, ModernRow, ModernTable,
-    ModernTableBuilder,
+    CompatTable, LegacyColumn, LegacyRow, LegacyTable, LegacyTableBuilder, ModernColumn, ModernRow,
+    ModernTable, ModernTableBuilder,
 };
