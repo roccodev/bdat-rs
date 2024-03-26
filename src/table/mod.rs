@@ -24,15 +24,6 @@ pub use compat::{CompatColumn, CompatRef, CompatRow, CompatTable};
 pub use legacy::{LegacyRow, LegacyTable};
 pub use modern::{ModernRow, ModernTable};
 
-pub trait Table<'buf> {
-    type Id: From<u8>;
-    type Name;
-    type Row;
-    type BuilderRow;
-    type Column: crate::Column;
-    type BuilderColumn: crate::Column;
-}
-
 /// Error encountered while converting tables
 /// to a different format.
 #[derive(Error, Debug)]

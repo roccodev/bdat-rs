@@ -1,18 +1,6 @@
 use crate::{CompatColumn, CompatColumnRef, Label, Utf, ValueType};
 
-pub trait Column {
-    type Name: Clone + Ord + PartialEq;
-
-    /// Returns this column's name.
-    fn clone_label(&self) -> Self::Name;
-
-    /// Returns this column's type.
-    fn value_type(&self) -> ValueType;
-
-    fn flags(&self) -> &[LegacyFlag] {
-        &[]
-    }
-}
+use super::private::Column;
 
 /// A column definition from a modern BDAT table
 #[derive(Debug, Clone, PartialEq, Eq)]

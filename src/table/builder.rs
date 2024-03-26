@@ -1,10 +1,13 @@
 use crate::{
-    BdatVersion, Cell, Column, ColumnMap, CompatTable, Label, LegacyColumn, LegacyFlag,
-    LegacyTable, ModernColumn, ModernTable, ValueType,
+    BdatVersion, Cell, ColumnMap, CompatTable, Label, LegacyColumn, LegacyFlag, LegacyTable,
+    ModernColumn, ModernTable, ValueType,
 };
 
 use super::{
-    legacy::LegacyRow, modern::ModernRow, private::ColumnSerialize, FormatConvertError, Table,
+    legacy::LegacyRow,
+    modern::ModernRow,
+    private::{Column, ColumnSerialize, Table},
+    FormatConvertError,
 };
 
 pub type CompatTableBuilder<'b> = TableBuilderImpl<'b, CompatTable<'b>>;
@@ -222,6 +225,14 @@ impl<'tb> CompatColumnBuilder<'tb> {
         assert!(count > 0);
         self.count = count;
         self
+    }
+
+    pub fn label(&self) -> &Label {
+        &self.label
+    }
+
+    pub fn value_type(&self) -> ValueType {
+        self.value_type
     }
 
     pub fn build(self) -> CompatColumnBuilder<'tb> {

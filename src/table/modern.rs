@@ -4,9 +4,9 @@ use crate::{
     LegacyTable, ModernColumn, ModernTableBuilder, RowId, RowRef, Value,
 };
 
-use super::private::ColumnSerialize;
+use super::private::{ColumnSerialize, Table};
 use super::util::EnumId;
-use super::{FormatConvertError, Table};
+use super::FormatConvertError;
 
 /// The BDAT table representation in modern formats, currently used in Xenoblade 3.
 ///

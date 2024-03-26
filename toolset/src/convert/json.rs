@@ -4,12 +4,11 @@ use std::{
 };
 
 use anyhow::{Context, Result};
+use bdat::LegacyFlag;
 use bdat::{
     serde::{CellSeed, SerializeCell},
-    Cell, Column, CompatColumn, CompatColumnBuilder, CompatTable, CompatTableBuilder, Label, RowId,
-    ValueType,
+    Cell, CompatColumnBuilder, CompatTable, CompatTableBuilder, Label, RowId, ValueType,
 };
-use bdat::{LegacyColumnBuilder, LegacyFlag};
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
 use serde_json::Map;
@@ -93,8 +92,8 @@ impl BdatSerialize for JsonConverter {
         let columns = table.columns().collect::<Vec<_>>();
 
         let rows = table
-            .into_rows_id()
-            .map(|(id, row)| {
+            .rows()
+            .map(|row| {
                 let cells = columns
                     .iter()
                     .zip(row.cells())
@@ -106,7 +105,10 @@ impl BdatSerialize for JsonConverter {
                     })
                     .collect();
 
-                TableRow { id, cells }
+                TableRow {
+                    id: row.id(),
+                    cells,
+                }
             })
             .collect::<Vec<_>>();
 

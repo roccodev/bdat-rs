@@ -1,10 +1,13 @@
 use crate::{
-    Cell, CellAccessor, ColumnMap, CompatInner, CompatTable, CompatTableBuilder, Label, LabelMap,
+    Cell, CellAccessor, ColumnMap, CompatInner, CompatTable, CompatTableBuilder, LabelMap,
     LegacyColumn, ModernTable, RowRef, Utf,
 };
 
 use super::{
-    builder::LegacyTableBuilder, private::ColumnSerialize, util::EnumId, FormatConvertError, Table,
+    builder::LegacyTableBuilder,
+    private::{ColumnSerialize, Table},
+    util::EnumId,
+    FormatConvertError,
 };
 
 /// The BDAT table representation in legacy formats, used for all games before Xenoblade 3.

@@ -115,7 +115,9 @@ impl HashNameTable {
         self.convert_label(&mut name);
         table.set_name(name);
         for col in table.as_modern_mut().columns_mut() {
-            *col = ModernColumn::new(col.value_type(), self.convert_label_cow(col.label()));
+            if let Label::Hash(hash) = col.label() {
+                *col = ModernColumn::new(col.value_type(), self.get_label(*hash));
+            }
         }
     }
 

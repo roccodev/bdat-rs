@@ -1,6 +1,6 @@
 use bdat::{
-    Cell, Column, LegacyColumnBuilder, LegacyFlag, LegacyRow, LegacyTable, LegacyTableBuilder,
-    Value, ValueType,
+    Cell, LegacyColumnBuilder, LegacyFlag, LegacyRow, LegacyTable, LegacyTableBuilder, Value,
+    ValueType,
 };
 
 pub fn duplicate_table_create() -> LegacyTable<'static> {

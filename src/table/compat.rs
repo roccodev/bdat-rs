@@ -1,17 +1,13 @@
 //! Adapters for legacy<->modern BDAT compatibility.
 
-use std::borrow::Borrow;
-use std::ops::Deref;
-
 use super::builder::{CompatBuilderRow, CompatColumnBuilder};
 use super::legacy::LegacyRow;
 use super::modern::ModernRow;
-use super::private::ColumnSerialize;
+use super::private::{ColumnSerialize, Table};
 use super::util::CompatIter;
-use super::Table;
 use crate::{
     BdatResult, Cell, CellAccessor, ColumnMap, Label, LabelMap, LegacyColumn, LegacyFlag,
-    LegacyTable, ModernColumn, ModernTable, NameMap, RowId, RowRef, Utf, ValueType,
+    LegacyTable, ModernColumn, ModernTable, RowId, RowRef, Utf, ValueType,
 };
 
 /// A BDAT table. Depending on how they were read, BDAT tables can either own their data source
@@ -89,10 +85,10 @@ pub enum CompatColumnRef<'t, 'buf> {
     Legacy(&'t LegacyColumn<'buf>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 pub enum CompatColumnMap<'t, 'buf> {
-    Modern(&'t ColumnMap<ModernColumn<'buf>>),
-    Legacy(&'t ColumnMap<LegacyColumn<'buf>>),
+    Modern(&'t ColumnMap<ModernColumn<'buf>, Label<'buf>>),
+    Legacy(&'t ColumnMap<LegacyColumn<'buf>, Utf<'buf>>),
 }
 
 pub type CompatRowRef<'t, 'buf> = RowRef<CompatRef<'t, 'buf>, CompatColumnMap<'t, 'buf>>;
@@ -398,7 +394,7 @@ impl<'buf> CompatColumn<'buf> {
 }
 
 impl<'t, 'buf> CompatColumnRef<'t, 'buf> {
-    pub fn label(&self) -> Label {
+    pub fn label(&self) -> Label<'t> {
         match self {
             Self::Modern(m) => m.label().as_ref(),
             Self::Legacy(l) => l.label().into(),

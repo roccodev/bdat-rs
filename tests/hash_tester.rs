@@ -2,8 +2,8 @@
 
 use bdat::legacy::{LegacyHashTable, LegacyWriteOptions};
 use bdat::{
-    BdatVersion, Column, LegacyColumnBuilder, LegacyFlag, LegacyTable, LegacyTableBuilder,
-    SwitchEndian, ValueType, WiiEndian,
+    BdatVersion, LegacyColumnBuilder, LegacyFlag, LegacyTable, LegacyTableBuilder, SwitchEndian,
+    ValueType, WiiEndian,
 };
 use byteorder::ByteOrder;
 use std::collections::HashSet;

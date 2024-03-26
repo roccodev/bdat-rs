@@ -14,7 +14,7 @@ use indicatif::ProgressBar;
 use itertools::Itertools;
 use rayon::{iter::Either, prelude::*};
 
-use bdat::{BdatFile, Cell, CompatRef, CompatRowRef, CompatTable, Label, RowId, RowRef};
+use bdat::{BdatFile, Cell, CompatRef, CompatRowRef, CompatTable, Label, RowId};
 
 use crate::{hash::MurmurHashSet, InputData};
 
@@ -51,15 +51,15 @@ struct RowDiff<'t, 'tb> {
     new: &'t CompatTable<'tb>,
 }
 
-struct RowChanges<'tb> {
+struct RowChanges<'a, 'tb> {
     row_id: RowId,
-    old_hash: Option<Label<'tb>>,
-    new_hash: Option<Label<'tb>>,
-    changes: Vec<ColumnChange<'tb>>,
+    old_hash: Option<Label<'a>>,
+    new_hash: Option<Label<'a>>,
+    changes: Vec<ColumnChange<'a, 'tb>>,
 }
 
-struct ColumnChange<'tb> {
-    label: Label<'tb>,
+struct ColumnChange<'a, 'tb> {
+    label: Label<'a>,
     added: bool,
     value: Cell<'tb>,
 }
@@ -217,52 +217,51 @@ impl<'t, 'tb> RowDiff<'t, 'tb> {
         Self { row_id, old, new }
     }
 
-    fn diff(self) -> Option<RowChanges<'tb>> {
+    fn diff(self) -> Option<RowChanges<'t, 'tb>> {
         let (old, new) = (self.old.get_row(self.row_id), self.new.get_row(self.row_id));
 
-        let changed_cols: Vec<ColumnChange> = match (old, new) {
-            (None, Some(new_row)) => self
-                .new
-                .columns()
-                .map(|col| (col.label(), true, new_row.get(col.label())).into())
-                .collect(),
-            (Some(old_row), None) => self
-                .old
-                .columns()
-                .map(|col| (col.label(), false, old_row.get(col.label())).into())
-                .collect(),
-            (Some(old_row), Some(new_row)) => {
-                let (old_table, new_table) = (self.old, self.new);
-                let old_cols: MurmurHashSet<_> =
-                    old_table.columns().map(|col| col.label()).collect();
-                let new_cols: MurmurHashSet<_> =
-                    new_table.columns().map(|col| col.label()).collect();
+        let changed_cols: Vec<_> =
+            match (old, new) {
+                (None, Some(new_row)) => self
+                    .new
+                    .columns()
+                    .map(|col| (col.label(), true, new_row.get(col.label())).into())
+                    .collect(),
+                (Some(old_row), None) => self
+                    .old
+                    .columns()
+                    .map(|col| (col.label(), false, old_row.get(col.label())).into())
+                    .collect(),
+                (Some(old_row), Some(new_row)) => {
+                    let (old_table, new_table) = (self.old, self.new);
+                    let old_cols: MurmurHashSet<_> =
+                        old_table.columns().map(|col| col.label()).collect();
+                    let new_cols: MurmurHashSet<_> =
+                        new_table.columns().map(|col| col.label()).collect();
 
-                let changed_cols = old_cols.intersection(&new_cols).filter_map(|&col| {
-                    let old_value = old_row.get_if_present(col)?;
-                    let new_value = new_row.get_if_present(col)?;
-                    (old_value != new_value).then_some((col, old_value, new_value))
-                });
+                    let changed_cols = old_cols.intersection(&new_cols).filter_map(|col| {
+                        let old_value = old_row.get_if_present(col)?;
+                        let new_value = new_row.get_if_present(col)?;
+                        (old_value != new_value).then_some((col, old_value, new_value))
+                    });
 
-                new_cols
-                    .difference(&old_cols)
-                    .map(|&label| (label, true, new_row.get(label.as_ref())).into())
-                    .chain(
-                        old_cols
-                            .difference(&new_cols)
-                            .map(|&label| (label, false, old_row.get(label.as_ref())).into()),
-                    )
-                    .chain(changed_cols.flat_map(|(label, old_val, new_val)| {
-                        [
-                            (label, false, old_val).into(),
-                            (label, true, new_val).into(),
-                        ]
-                        .into_iter()
-                    }))
-                    .collect()
-            }
-            _ => unreachable!(),
-        };
+                    new_cols
+                        .difference(&old_cols)
+                        .map(|label| (label.clone(), true, new_row.get(label.as_ref())).into())
+                        .chain(old_cols.difference(&new_cols).map(|label| {
+                            (label.clone(), false, old_row.get(label.as_ref())).into()
+                        }))
+                        .chain(changed_cols.flat_map(|(label, old_val, new_val)| {
+                            [
+                                (label.clone(), false, old_val).into(),
+                                (label.clone(), true, new_val).into(),
+                            ]
+                            .into_iter()
+                        }))
+                        .collect()
+                }
+                _ => unreachable!(),
+            };
 
         (!changed_cols.is_empty()).then_some(RowChanges {
             row_id: self.row_id,
@@ -272,7 +271,7 @@ impl<'t, 'tb> RowDiff<'t, 'tb> {
         })
     }
 
-    fn row_hash(row: CompatRowRef) -> Option<Label<'tb>> {
+    fn row_hash(row: CompatRowRef) -> Option<Label<'static>> {
         match *row {
             CompatRef::Modern(m) => m.id_hash().map(Label::Hash),
             _ => None,
@@ -280,7 +279,7 @@ impl<'t, 'tb> RowDiff<'t, 'tb> {
     }
 }
 
-impl<'tb> RowChanges<'tb> {
+impl<'a, 'tb> RowChanges<'a, 'tb> {
     fn print(self) {
         let removed = self
             .changes
@@ -367,10 +366,10 @@ impl<'p> PathDiff<'p> {
     }
 }
 
-impl<'a, 'tb> From<(Label<'a>, bool, Cell<'tb>)> for ColumnChange<'tb> {
+impl<'a, 'tb> From<(Label<'a>, bool, Cell<'tb>)> for ColumnChange<'a, 'tb> {
     fn from(value: (Label<'a>, bool, Cell<'tb>)) -> Self {
         Self {
-            label: value.0.clone(),
+            label: value.0,
             added: value.1,
             value: value.2,
         }
