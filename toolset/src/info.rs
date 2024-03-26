@@ -33,7 +33,7 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
         for table in tables {
             let name = table.name();
             if !table_filter.contains(&name)
-                || !table.columns().any(|c| column_filter.contains(c.label()))
+                || !table.columns().any(|c| column_filter.contains(&c.label()))
             {
                 continue;
             }
@@ -49,7 +49,7 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
                 let mut offset = 0;
                 for col in table
                     .into_columns()
-                    .filter(|c| column_filter.contains(c.label()))
+                    .filter(|c| column_filter.contains(&c.label()))
                 {
                     let mut extra = Cow::Borrowed("");
                     if col.count() > 1 {
@@ -59,7 +59,7 @@ pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
                     println!(
                         "    - [{}] {}: {:?}{}",
                         offset,
-                        format_unhashed_label(col.label(), &hash_table),
+                        format_unhashed_label(&col.label(), &hash_table),
                         col.value_type(),
                         extra
                     );

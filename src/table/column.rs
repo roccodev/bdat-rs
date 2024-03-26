@@ -1,13 +1,17 @@
-use crate::{CompatColumn, Label, Utf, ValueType};
+use crate::{CompatColumn, CompatColumnRef, Label, Utf, ValueType};
 
 pub trait Column {
     type Name: Clone + Ord + PartialEq;
 
     /// Returns this column's name.
-    fn label(&self) -> &Self::Name;
+    fn clone_label(&self) -> Self::Name;
 
     /// Returns this column's type.
     fn value_type(&self) -> ValueType;
+
+    fn flags(&self) -> &[LegacyFlag] {
+        &[]
+    }
 }
 
 /// A column definition from a modern BDAT table
@@ -200,7 +204,7 @@ impl<'tb> LegacyColumnBuilder<'tb> {
 
 impl<C: Column> ColumnMap<C, C::Name> {
     pub fn push(&mut self, column: C) {
-        self.label_map.push(column.label().clone());
+        self.label_map.push(column.clone_label());
         self.columns.push(column);
     }
 
@@ -246,8 +250,8 @@ impl<'buf> Column for ModernColumn<'buf> {
         self.value_type
     }
 
-    fn label(&self) -> &Self::Name {
-        &self.label
+    fn clone_label(&self) -> Self::Name {
+        self.label.clone()
     }
 }
 
@@ -258,8 +262,8 @@ impl<'buf> Column for LegacyColumn<'buf> {
         self.value_type
     }
 
-    fn label(&self) -> &Self::Name {
-        &self.label
+    fn clone_label(&self) -> Self::Name {
+        self.label.clone()
     }
 }
 
@@ -267,11 +271,29 @@ impl<'buf> Column for CompatColumn<'buf> {
     type Name = Label<'buf>;
 
     fn value_type(&self) -> ValueType {
-        todo!()
+        self.value_type()
     }
 
-    fn label(&self) -> &Self::Name {
-        todo!()
+    fn clone_label(&self) -> Self::Name {
+        match self {
+            Self::Modern(m) => m.label.clone(),
+            Self::Legacy(l) => Label::String(l.label.clone()),
+        }
+    }
+}
+
+impl<'a, 'buf> Column for CompatColumnRef<'a, 'buf> {
+    type Name = Label<'buf>;
+
+    fn value_type(&self) -> ValueType {
+        self.value_type()
+    }
+
+    fn clone_label(&self) -> Self::Name {
+        match self {
+            Self::Modern(m) => m.label.clone(),
+            Self::Legacy(l) => Label::String(l.label.clone()),
+        }
     }
 }
 
@@ -301,7 +323,7 @@ impl<C: Column> FromIterator<C> for ColumnMap<C, C::Name> {
     fn from_iter<T: IntoIterator<Item = C>>(iter: T) -> Self {
         let columns: Vec<_> = iter.into_iter().collect();
         Self {
-            label_map: columns.iter().map(C::label).cloned().collect(),
+            label_map: columns.iter().map(C::clone_label).collect(),
             columns,
         }
     }

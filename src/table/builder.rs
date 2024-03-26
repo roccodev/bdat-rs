@@ -3,7 +3,9 @@ use crate::{
     LegacyTable, ModernColumn, ModernTable, ValueType,
 };
 
-use super::{legacy::LegacyRow, modern::ModernRow, FormatConvertError, Table};
+use super::{
+    legacy::LegacyRow, modern::ModernRow, private::ColumnSerialize, FormatConvertError, Table,
+};
 
 pub type CompatTableBuilder<'b> = TableBuilderImpl<'b, CompatTable<'b>>;
 pub type ModernTableBuilder<'b> = TableBuilderImpl<'b, ModernTable<'b>>;
@@ -19,7 +21,8 @@ pub struct TableBuilderImpl<'buf, T: Table<'buf>> {
 
 pub struct CompatBuilderRow<'b>(Vec<Cell<'b>>);
 
-pub struct CompatBuilderColumn<'buf> {
+#[derive(Clone, Debug, PartialEq)]
+pub struct CompatColumnBuilder<'buf> {
     value_type: ValueType,
     label: Label<'buf>,
     count: usize,
@@ -198,6 +201,34 @@ impl<'b> CompatTableBuilder<'b> {
     }
 }
 
+impl<'tb> CompatColumnBuilder<'tb> {
+    pub fn new(value_type: ValueType, label: Label<'tb>) -> Self {
+        Self {
+            value_type,
+            label,
+            count: 1,
+            flags: Vec::new(),
+        }
+    }
+
+    /// Sets the column's full flag data.
+    pub fn set_flags(mut self, flags: Vec<LegacyFlag<'tb>>) -> Self {
+        self.flags = flags;
+        self
+    }
+
+    /// Sets how many elements the column holds, if cells are of the list type.
+    pub fn set_count(mut self, count: usize) -> Self {
+        assert!(count > 0);
+        self.count = count;
+        self
+    }
+
+    pub fn build(self) -> CompatColumnBuilder<'tb> {
+        self
+    }
+}
+
 impl<'b> From<ModernTableBuilder<'b>> for CompatTableBuilder<'b> {
     fn from(builder: ModernTableBuilder<'b>) -> Self {
         Self::from_table(
@@ -206,7 +237,7 @@ impl<'b> From<ModernTableBuilder<'b>> for CompatTableBuilder<'b> {
             builder
                 .columns
                 .into_iter()
-                .map(CompatBuilderColumn::from)
+                .map(CompatColumnBuilder::from)
                 .collect(),
             builder
                 .rows
@@ -227,7 +258,7 @@ impl<'b> From<LegacyTableBuilder<'b>> for CompatTableBuilder<'b> {
             builder
                 .columns
                 .into_iter()
-                .map(CompatBuilderColumn::from)
+                .map(CompatColumnBuilder::from)
                 .collect(),
             builder
                 .rows
@@ -252,7 +283,7 @@ impl<'b> From<Vec<Cell<'b>>> for CompatBuilderRow<'b> {
     }
 }
 
-impl<'buf> From<LegacyColumn<'buf>> for CompatBuilderColumn<'buf> {
+impl<'buf> From<LegacyColumn<'buf>> for CompatColumnBuilder<'buf> {
     fn from(value: LegacyColumn<'buf>) -> Self {
         Self {
             value_type: value.value_type,
@@ -263,7 +294,7 @@ impl<'buf> From<LegacyColumn<'buf>> for CompatBuilderColumn<'buf> {
     }
 }
 
-impl<'buf> From<ModernColumn<'buf>> for CompatBuilderColumn<'buf> {
+impl<'buf> From<ModernColumn<'buf>> for CompatColumnBuilder<'buf> {
     fn from(value: ModernColumn<'buf>) -> Self {
         Self {
             value_type: value.value_type,
@@ -274,10 +305,10 @@ impl<'buf> From<ModernColumn<'buf>> for CompatBuilderColumn<'buf> {
     }
 }
 
-impl<'buf> TryFrom<CompatBuilderColumn<'buf>> for LegacyColumn<'buf> {
+impl<'buf> TryFrom<CompatColumnBuilder<'buf>> for LegacyColumn<'buf> {
     type Error = FormatConvertError;
 
-    fn try_from(value: CompatBuilderColumn<'buf>) -> Result<Self, Self::Error> {
+    fn try_from(value: CompatColumnBuilder<'buf>) -> Result<Self, Self::Error> {
         Ok(Self {
             value_type: value.value_type,
             label: value
@@ -290,8 +321,8 @@ impl<'buf> TryFrom<CompatBuilderColumn<'buf>> for LegacyColumn<'buf> {
     }
 }
 
-impl<'buf> From<CompatBuilderColumn<'buf>> for ModernColumn<'buf> {
-    fn from(value: CompatBuilderColumn<'buf>) -> Self {
+impl<'buf> From<CompatColumnBuilder<'buf>> for ModernColumn<'buf> {
+    fn from(value: CompatColumnBuilder<'buf>) -> Self {
         Self {
             value_type: value.value_type,
             label: value.label.into(),
@@ -299,14 +330,24 @@ impl<'buf> From<CompatBuilderColumn<'buf>> for ModernColumn<'buf> {
     }
 }
 
-impl<'buf> Column for CompatBuilderColumn<'buf> {
+impl<'buf> Column for CompatColumnBuilder<'buf> {
     type Name = Label<'buf>;
 
-    fn label(&self) -> &Self::Name {
-        &self.label
+    fn clone_label(&self) -> Self::Name {
+        self.label.clone()
     }
 
     fn value_type(&self) -> ValueType {
         self.value_type
+    }
+}
+
+impl<'buf> ColumnSerialize for CompatColumnBuilder<'buf> {
+    fn ser_value_type(&self) -> crate::ValueType {
+        self.value_type
+    }
+
+    fn ser_flags(&self) -> &[crate::LegacyFlag] {
+        &self.flags
     }
 }

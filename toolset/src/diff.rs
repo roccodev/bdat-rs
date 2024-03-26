@@ -14,7 +14,7 @@ use indicatif::ProgressBar;
 use itertools::Itertools;
 use rayon::{iter::Either, prelude::*};
 
-use bdat::{BdatFile, Cell, CompatRef, CompatTable, Label, RowId, RowRef};
+use bdat::{BdatFile, Cell, CompatRef, CompatRowRef, CompatTable, Label, RowId, RowRef};
 
 use crate::{hash::MurmurHashSet, InputData};
 
@@ -272,7 +272,7 @@ impl<'t, 'tb> RowDiff<'t, 'tb> {
         })
     }
 
-    fn row_hash(row: RowRef<CompatRef>) -> Option<Label<'tb>> {
+    fn row_hash(row: CompatRowRef) -> Option<Label<'tb>> {
         match *row {
             CompatRef::Modern(m) => m.id_hash().map(Label::Hash),
             _ => None,
@@ -367,8 +367,8 @@ impl<'p> PathDiff<'p> {
     }
 }
 
-impl<'a, 'tb> From<(&'a Label<'tb>, bool, Cell<'tb>)> for ColumnChange<'tb> {
-    fn from(value: (&'a Label<'tb>, bool, Cell<'tb>)) -> Self {
+impl<'a, 'tb> From<(Label<'a>, bool, Cell<'tb>)> for ColumnChange<'tb> {
+    fn from(value: (Label<'a>, bool, Cell<'tb>)) -> Self {
         Self {
             label: value.0.clone(),
             added: value.1,

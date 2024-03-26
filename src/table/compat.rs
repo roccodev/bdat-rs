@@ -1,10 +1,12 @@
 //! Adapters for legacy<->modern BDAT compatibility.
 
 use std::borrow::Borrow;
+use std::ops::Deref;
 
-use super::builder::{CompatBuilderColumn, CompatBuilderRow};
+use super::builder::{CompatBuilderRow, CompatColumnBuilder};
 use super::legacy::LegacyRow;
 use super::modern::ModernRow;
+use super::private::ColumnSerialize;
 use super::util::CompatIter;
 use super::Table;
 use crate::{
@@ -367,18 +369,67 @@ impl<'b> CompatColumn<'b> {
     }
 }
 
-impl<'t, 'buf> CompatColumnRef<'t, 'buf> {
-    pub fn value_type(&self) -> ValueType {
+impl<'buf> CompatColumn<'buf> {
+    pub fn label(&self) -> Label {
         match self {
-            CompatColumnRef::Modern(m) => m.value_type(),
-            CompatColumnRef::Legacy(l) => l.value_type(),
+            Self::Modern(m) => m.label().as_ref(),
+            Self::Legacy(l) => l.label().into(),
         }
     }
 
-    pub fn flags(&self) -> &[LegacyFlag] {
+    pub fn value_type(&self) -> ValueType {
+        self.as_ref().value_type()
+    }
+
+    pub fn flags(&self) -> &[LegacyFlag<'buf>] {
         match self {
-            CompatColumnRef::Modern(m) => &[],
-            CompatColumnRef::Legacy(l) => l.flags(),
+            Self::Modern(_) => &[],
+            Self::Legacy(l) => l.flags(),
+        }
+    }
+
+    pub fn count(&self) -> usize {
+        self.as_ref().count()
+    }
+
+    pub fn data_size(&self) -> usize {
+        self.as_ref().data_size()
+    }
+}
+
+impl<'t, 'buf> CompatColumnRef<'t, 'buf> {
+    pub fn label(&self) -> Label {
+        match self {
+            Self::Modern(m) => m.label().as_ref(),
+            Self::Legacy(l) => l.label().into(),
+        }
+    }
+
+    pub fn value_type(&self) -> ValueType {
+        match self {
+            Self::Modern(m) => m.value_type(),
+            Self::Legacy(l) => l.value_type(),
+        }
+    }
+
+    pub fn flags(&self) -> &[LegacyFlag<'buf>] {
+        match self {
+            Self::Modern(_) => &[],
+            Self::Legacy(l) => l.flags(),
+        }
+    }
+
+    pub fn count(&self) -> usize {
+        match self {
+            Self::Modern(_) => 1,
+            Self::Legacy(l) => l.count(),
+        }
+    }
+
+    pub fn data_size(&self) -> usize {
+        match self {
+            Self::Modern(m) => m.data_size(),
+            Self::Legacy(l) => l.data_size(),
         }
     }
 }
@@ -430,7 +481,7 @@ impl<'buf> Table<'buf> for CompatTable<'buf> {
     type Row = CompatRow<'buf>;
     type BuilderRow = CompatBuilderRow<'buf>;
     type Column = CompatColumn<'buf>;
-    type BuilderColumn = CompatBuilderColumn<'buf>;
+    type BuilderColumn = CompatColumnBuilder<'buf>;
 }
 
 impl<'t, 'b> CellAccessor for CompatRef<'t, 'b> {
@@ -455,6 +506,32 @@ impl<'t, 'b> LabelMap for CompatColumnMap<'t, 'b> {
                 let Label::String(s) = label else { return None };
                 l.position(s)
             }
+        }
+    }
+}
+
+impl<'buf> ColumnSerialize for CompatColumn<'buf> {
+    fn ser_value_type(&self) -> crate::ValueType {
+        self.value_type()
+    }
+
+    fn ser_flags(&self) -> &[crate::LegacyFlag] {
+        match self {
+            Self::Modern(m) => m.ser_flags(),
+            Self::Legacy(l) => l.ser_flags(),
+        }
+    }
+}
+
+impl<'a, 'buf> ColumnSerialize for CompatColumnRef<'a, 'buf> {
+    fn ser_value_type(&self) -> crate::ValueType {
+        self.value_type()
+    }
+
+    fn ser_flags(&self) -> &[crate::LegacyFlag] {
+        match self {
+            Self::Modern(m) => m.ser_flags(),
+            Self::Legacy(l) => l.ser_flags(),
         }
     }
 }

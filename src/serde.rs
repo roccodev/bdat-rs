@@ -1,7 +1,8 @@
 //! Serde implementations for crate types (requires feature `serde`)
 
 use crate::legacy::float::BdatReal;
-use crate::{Cell, Column, CompatColumnRef, Label, Value, ValueType};
+use crate::table::private::ColumnSerialize;
+use crate::{Cell, CompatColumnRef, Label, Value, ValueType};
 use serde::de::value::MapAccessDeserializer;
 use serde::de::MapAccess;
 use serde::ser::SerializeMap;
@@ -24,8 +25,8 @@ pub struct ValueWithType<'b> {
 }
 
 /// Wraps a cell with its column to allow for custom serialization.
-pub struct SerializeCell<'a, 'b, 't> {
-    column: CompatColumnRef<'a, 't>,
+pub struct SerializeCell<'b, 't, C> {
+    column: C,
     cell: Cow<'b, Cell<'t>>,
 }
 
@@ -37,17 +38,17 @@ enum ValueTypeFields {
 struct HexVisitor;
 
 /// An implementation of [`DeserializeSeed`] for [`Cell`]s.
-pub struct CellSeed<'a>(CompatColumnRef<'a, 'a>);
+pub struct CellSeed<'a, C: ColumnSerialize>(&'a C);
 
-impl<'a, 'b, 't> SerializeCell<'a, 'b, 't> {
-    pub fn from_ref<C: Into<CompatColumnRef<'t, 't>>>(column: C, cell: &'b Cell<'t>) -> Self {
+impl<'b, 't, C: ColumnSerialize> SerializeCell<'b, 't, C> {
+    pub fn from_ref(column: C, cell: &'b Cell<'t>) -> Self {
         SerializeCell {
-            column: column.into(),
+            column: column,
             cell: Cow::Borrowed(cell),
         }
     }
 
-    pub fn from_owned<C: Into<CompatColumnRef<'a, 't>>>(column: C, cell: Cell<'t>) -> Self {
+    pub fn from_owned(column: C, cell: Cell<'t>) -> Self {
         SerializeCell {
             column: column.into(),
             cell: Cow::Owned(cell),
@@ -55,7 +56,7 @@ impl<'a, 'b, 't> SerializeCell<'a, 'b, 't> {
     }
 }
 
-impl<'a, 'b, 't> Serialize for SerializeCell<'a, 'b, 't> {
+impl<'b, 't, C: ColumnSerialize> Serialize for SerializeCell<'b, 't, C> {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
     where
         S: Serializer,
@@ -64,7 +65,7 @@ impl<'a, 'b, 't> Serialize for SerializeCell<'a, 'b, 't> {
             Cell::Single(v) => v.serialize(serializer),
             Cell::List(values) => values.serialize(serializer),
             Cell::Flags(flag_values) => {
-                let keys = self.column.flags();
+                let keys = self.column.ser_flags();
                 let mut map = serializer.serialize_map(Some(flag_values.len()))?;
                 for (i, val) in flag_values.iter().enumerate() {
                     let name = keys.get(i).map(|f| &f.label).ok_or_else(|| {
@@ -302,16 +303,16 @@ impl<'de> DeserializeSeed<'de> for ValueType {
     }
 }
 
-impl<'a, 'de> DeserializeSeed<'de> for CellSeed<'a> {
+impl<'a, 'de, C: ColumnSerialize> DeserializeSeed<'de> for CellSeed<'a, C> {
     type Value = Cell<'de>;
 
     fn deserialize<D>(self, deserializer: D) -> Result<Self::Value, D::Error>
     where
         D: serde::Deserializer<'de>,
     {
-        struct CellVisitor<'a>(CompatColumnRef<'a, 'a>);
+        struct CellVisitor<'a, C: ColumnSerialize>(&'a C);
 
-        impl<'a, 'de> Visitor<'de> for CellVisitor<'a> {
+        impl<'a, 'de, C: ColumnSerialize> Visitor<'de> for CellVisitor<'a, C> {
             type Value = Cell<'de>;
 
             fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
@@ -326,7 +327,7 @@ impl<'a, 'de> DeserializeSeed<'de> for CellSeed<'a> {
                 let map = HashMap::<String, u32>::deserialize(MapAccessDeserializer::new(map))?;
                 let values = self
                     .0
-                    .flags()
+                    .ser_flags()
                     .iter()
                     .filter_map(|f| map.get(f.label.as_ref()))
                     .copied()
@@ -340,7 +341,7 @@ impl<'a, 'de> DeserializeSeed<'de> for CellSeed<'a> {
             {
                 // Cell::List
                 let mut values = Vec::with_capacity(seq.size_hint().unwrap_or_default());
-                while let Some(v) = seq.next_element_seed(self.0.value_type())? {
+                while let Some(v) = seq.next_element_seed(self.0.ser_value_type())? {
                     values.push(v);
                 }
                 Ok(Cell::List(values))
@@ -355,7 +356,7 @@ impl<'a, 'de> DeserializeSeed<'de> for CellSeed<'a> {
             .or_else(|_| {
                 Ok(Cell::Single(
                     self.0
-                        .value_type()
+                        .ser_value_type()
                         .deserialize(value)
                         .map_err(|e| e.into_error())?,
                 ))
@@ -363,11 +364,8 @@ impl<'a, 'de> DeserializeSeed<'de> for CellSeed<'a> {
     }
 }
 
-impl<'a, 'b: 'a, T> From<T> for CellSeed<'a>
-where
-    T: Into<CompatColumnRef<'a, 'b>>,
-{
-    fn from(value: T) -> Self {
+impl<'a, C: ColumnSerialize> From<&'a C> for CellSeed<'a, C> {
+    fn from(value: &'a C) -> Self {
         Self(value.into())
     }
 }
@@ -483,7 +481,7 @@ mod tests {
     #[allow(clippy::approx_constant)]
     fn deser_cell() {
         assert_eq!(
-            CellSeed::from(col!(ValueType::UnsignedInt))
+            CellSeed::from(&col!(ValueType::UnsignedInt))
                 .deserialize(&mut serde_json::Deserializer::from_str(
                     "[1, 2, 3, 4, 5, 6]"
                 ))
@@ -499,7 +497,7 @@ mod tests {
         );
 
         assert_eq!(
-            CellSeed::from(col!(ValueType::Float))
+            CellSeed::from(&col!(ValueType::Float))
                 .deserialize(&mut serde_json::Deserializer::from_str("3.14"))
                 .unwrap(),
             Cell::Single(Value::Float(3.14.into()))
@@ -534,7 +532,7 @@ mod tests {
         assert_eq!(
             r#"{"Flag1":1,"Flag2":3,"Flag3":4}"#,
             serde_json::to_string(&SerializeCell::from_ref(
-                &column,
+                column.clone(),
                 &Cell::Flags(vec![1, 3, 4])
             ))
             .unwrap()

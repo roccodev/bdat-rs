@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use bdat::serde::SerializeCell;
-use bdat::{Cell, CompatColumnRef, CompatTable, Label, Value};
+use bdat::{Cell, CompatColumnRef, CompatTable, Value};
 use clap::Args;
 use csv::WriterBuilder;
 use std::io::Write;
@@ -39,22 +39,20 @@ impl CsvConverter {
         }
     }
 
-    fn format_column<'a>(
-        &'a self,
-        column: CompatColumnRef<'_, 'a>,
-    ) -> impl Iterator<Item = String> + 'a {
+    fn format_column<'b>(&'b self, column: CompatColumnRef<'b, 'b>) -> Vec<String> {
         let iter = {
+            let label = column.label();
             if !column.flags().is_empty() {
                 ColumnIter::Flags(
                     column
                         .flags()
                         .iter()
-                        .map(|flag| format!("{} [{}]", column.label(), flag.label())),
+                        .map(move |flag| format!("{} [{}]", label, flag.label())),
                 )
             } else if column.count() > 1 && self.expand_lists {
-                ColumnIter::Array((0..column.count()).map(|i| format!("{}[{i}]", column.label())))
+                ColumnIter::Array((0..column.count()).map(move |i| format!("{}[{i}]", label)))
             } else {
-                ColumnIter::Single(std::iter::once(column.label().to_string()))
+                ColumnIter::Single(std::iter::once(label.to_string()))
             }
         };
         let value_type = column.value_type() as u8;
@@ -65,40 +63,40 @@ impl CsvConverter {
                 s
             }
         })
+        .collect::<Vec<_>>()
     }
 
     fn format_cell<'b, 'a: 'b, 't: 'a>(
         &self,
-        column: CompatColumnRef<'_, 't>,
+        column: CompatColumnRef<'a, 't>,
         cell: Cell<'t>,
     ) -> ColumnIter<
-        SerializeCell<'a, 'b, 't, Label<'t>>,
-        impl Iterator<Item = SerializeCell<'a, 'b, 't, Label<'t>>>,
-        impl Iterator<Item = SerializeCell<'a, 'b, 't, Label<'t>>>,
+        SerializeCell<'b, 't, CompatColumnRef<'a, 't>>,
+        impl Iterator<Item = SerializeCell<'b, 't, CompatColumnRef<'a, 't>>>,
+        impl Iterator<Item = SerializeCell<'b, 't, CompatColumnRef<'a, 't>>>,
     > {
         match cell {
             // Single values: serialize normally
             c @ Cell::Single(_) => {
-                ColumnIter::Single(std::iter::once(column.owned_cell_serializer(c)))
+                ColumnIter::Single(std::iter::once(SerializeCell::from_owned(column, c)))
             }
             // List values + expand lists: serialize into multiple columns
             Cell::List(values) if self.expand_lists => ColumnIter::Array(
                 values
                     .into_iter()
-                    .map(|v| column.owned_cell_serializer(Cell::Single(v.clone()))),
+                    .map(move |v| SerializeCell::from_owned(column, Cell::Single(v.clone()))),
             ),
             // List values: serialize as JSON
-            Cell::List(values) => {
-                ColumnIter::Single(std::iter::once(column.owned_cell_serializer(Cell::Single(
-                    Value::String(serde_json::to_string(&values).unwrap().into()),
-                ))))
-            }
+            Cell::List(values) => ColumnIter::Single(std::iter::once(SerializeCell::from_owned(
+                column,
+                Cell::Single(Value::String(
+                    serde_json::to_string(&values).unwrap().into(),
+                )),
+            ))),
             // Flags: serialize into multiple columns
-            Cell::Flags(flags) => ColumnIter::Flags(
-                flags
-                    .into_iter()
-                    .map(|i| column.owned_cell_serializer(Cell::Single(Value::UnsignedInt(i)))),
-            ),
+            Cell::Flags(flags) => ColumnIter::Flags(flags.into_iter().map(move |i| {
+                SerializeCell::from_owned(column, Cell::Single(Value::UnsignedInt(i)))
+            })),
         }
     }
 }

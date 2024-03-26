@@ -4,7 +4,11 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::{Cell, Column, CompatColumn, CompatTable, CompatTableBuilder, Label, RowId, ValueType};
+use bdat::{
+    serde::{CellSeed, SerializeCell},
+    Cell, Column, CompatColumn, CompatColumnBuilder, CompatTable, CompatTableBuilder, Label, RowId,
+    ValueType,
+};
 use bdat::{LegacyColumnBuilder, LegacyFlag};
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
@@ -58,7 +62,10 @@ pub struct JsonConverter {
 }
 
 // For duplicate column mitigation
-type DuplicateColumnKey<'c> = (FixedVec<usize, MAX_DUPLICATE_COLUMNS>, CompatColumn<'c>);
+type DuplicateColumnKey<'c> = (
+    FixedVec<usize, MAX_DUPLICATE_COLUMNS>,
+    CompatColumnBuilder<'c>,
+);
 
 impl JsonConverter {
     pub fn new(args: &ConvertArgs) -> Self {
@@ -77,14 +84,13 @@ impl BdatSerialize for JsonConverter {
                 .map(|c| ColumnSchema {
                     name: c.label().to_string(),
                     ty: c.value_type(),
-                    // hashed: matches!(c.label(), Label::Unhashed(_)),
                     flags: c.flags().to_vec(),
                     count: c.count(),
                 })
                 .collect::<Vec<_>>()
         });
 
-        let columns = table.columns().cloned().collect::<Vec<_>>();
+        let columns = table.columns().collect::<Vec<_>>();
 
         let rows = table
             .into_rows_id()
@@ -95,7 +101,7 @@ impl BdatSerialize for JsonConverter {
                     .map(|(col, cell)| {
                         (
                             col.label().to_string(),
-                            serde_json::to_value(col.owned_cell_serializer(cell)).unwrap(),
+                            serde_json::to_value(SerializeCell::from_owned(*col, cell)).unwrap(),
                         )
                     })
                     .collect();
@@ -134,37 +140,39 @@ impl BdatDeserialize for JsonConverter {
             .schema
             .ok_or_else(|| FormatError::MissingTypeInfo.with_context(name.clone()))?;
 
-        let (columns, column_map, _): (Vec<Column>, HashMap<String, DuplicateColumnKey>, _) =
-            schema.into_iter().try_fold(
-                (Vec::new(), HashMap::default(), 0),
-                |(mut cols, mut map, idx), col| {
-                    let label =
-                        Label::parse(col.name.clone(), file_schema.version.are_labels_hashed());
-                    let def = LegacyColumnBuilder::new(col.ty, label.clone())
-                        .set_flags(col.flags)
-                        .set_count(col.count.max(1))
-                        .build();
-                    // Only keep the first occurrence: there's a table in XC2 (likely more) with
-                    // a duplicate column (FLD_RequestItemSet)
-                    let (indices, dup_col) = map
-                        .entry(col.name)
-                        .or_insert_with(|| (FixedVec::default(), def.clone()));
-                    indices.try_push(idx).map_err(|_| {
-                        FormatError::MaxDuplicateColumns(label.clone().into())
-                            .with_context(name.clone())
-                    })?;
-                    if dup_col.value_type() != col.ty {
-                        return Err(FormatError::DuplicateMismatch(Box::new((
-                            label.into(),
-                            dup_col.value_type(),
-                            col.ty,
-                        )))
-                        .with_context(name.clone()));
-                    }
-                    cols.push(def);
-                    Ok((cols, map, idx + 1))
-                },
-            )?;
+        let (columns, column_map, _): (
+            Vec<CompatColumnBuilder>,
+            HashMap<String, DuplicateColumnKey>,
+            _,
+        ) = schema.into_iter().try_fold(
+            (Vec::new(), HashMap::default(), 0),
+            |(mut cols, mut map, idx), col| {
+                let label = Label::parse(col.name.clone(), file_schema.version.are_labels_hashed());
+                let def = CompatColumnBuilder::new(col.ty, label.clone())
+                    .set_flags(col.flags)
+                    .set_count(col.count.max(1))
+                    .build();
+                // Only keep the first occurrence: there's a table in XC2 (likely more) with
+                // a duplicate column (FLD_RequestItemSet)
+                let (indices, dup_col) = map
+                    .entry(col.name)
+                    .or_insert_with(|| (FixedVec::default(), def.clone()));
+                indices.try_push(idx).map_err(|_| {
+                    FormatError::MaxDuplicateColumns(label.clone().into())
+                        .with_context(name.clone())
+                })?;
+                if dup_col.value_type() != col.ty {
+                    return Err(FormatError::DuplicateMismatch(Box::new((
+                        label.into(),
+                        dup_col.value_type(),
+                        col.ty,
+                    )))
+                    .with_context(name.clone()));
+                }
+                cols.push(def);
+                Ok((cols, map, idx + 1))
+            },
+        )?;
 
         let rows = table
             .rows
@@ -174,7 +182,7 @@ impl BdatDeserialize for JsonConverter {
                 let mut cells = vec![None; columns.len()];
                 for (k, v) in r.cells {
                     let (index, column) = &column_map[&k];
-                    let deserialized = Some(column.as_cell_seed().deserialize(v).unwrap());
+                    let deserialized = Some(CellSeed::from(column).deserialize(v).unwrap());
                     // Only clone in the worst scenario (duplicate columns)
                     for idx in index.into_iter().skip(1) {
                         cells[*idx] = deserialized.clone();

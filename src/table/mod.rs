@@ -8,12 +8,17 @@ pub mod column;
 pub mod compat;
 pub mod row;
 
+pub(crate) mod private;
+
 mod builder;
 mod legacy;
 mod modern;
 mod util;
 
-pub use builder::{CompatTableBuilder, LegacyTableBuilder, ModernTableBuilder};
+pub use builder::{
+    CompatBuilderRow, CompatColumnBuilder, CompatTableBuilder, LegacyTableBuilder,
+    ModernTableBuilder,
+};
 pub use column::{LegacyColumn, ModernColumn};
 pub use compat::{CompatColumn, CompatRef, CompatRow, CompatTable};
 pub use legacy::{LegacyRow, LegacyTable};

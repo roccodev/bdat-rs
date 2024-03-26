@@ -4,6 +4,7 @@ use crate::{
     LegacyTable, ModernColumn, ModernTableBuilder, RowId, RowRef, Value,
 };
 
+use super::private::ColumnSerialize;
 use super::util::EnumId;
 use super::{FormatConvertError, Table};
 
@@ -360,6 +361,16 @@ impl<'t, 'b> LabelMap for &'t ColumnMap<ModernColumn<'b>, Label<'b>> {
 
     fn position(&self, label: &Self::Name) -> Option<usize> {
         self.label_map.position(label)
+    }
+}
+
+impl<'buf> ColumnSerialize for ModernColumn<'buf> {
+    fn ser_value_type(&self) -> crate::ValueType {
+        self.value_type()
+    }
+
+    fn ser_flags(&self) -> &[crate::LegacyFlag] {
+        &[]
     }
 }
 

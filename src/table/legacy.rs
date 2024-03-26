@@ -3,7 +3,9 @@ use crate::{
     LegacyColumn, ModernTable, RowRef, Utf,
 };
 
-use super::{builder::LegacyTableBuilder, util::EnumId, FormatConvertError, Table};
+use super::{
+    builder::LegacyTableBuilder, private::ColumnSerialize, util::EnumId, FormatConvertError, Table,
+};
 
 /// The BDAT table representation in legacy formats, used for all games before Xenoblade 3.
 ///
@@ -252,5 +254,15 @@ impl<'t, 'b> LabelMap for &'t ColumnMap<LegacyColumn<'b>, Utf<'b>> {
 
     fn position(&self, label: &Self::Name) -> Option<usize> {
         self.label_map.position(label)
+    }
+}
+
+impl<'buf> ColumnSerialize for LegacyColumn<'buf> {
+    fn ser_value_type(&self) -> crate::ValueType {
+        self.value_type()
+    }
+
+    fn ser_flags(&self) -> &[crate::LegacyFlag] {
+        &self.flags
     }
 }

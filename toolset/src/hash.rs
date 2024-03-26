@@ -7,7 +7,7 @@ use std::{
 
 use bdat::{
     hash::{murmur3_with_seed, IdentityHasher, PreHashedMap},
-    CompatTable, Label,
+    CompatTable, Label, ModernColumn,
 };
 
 #[derive(Clone, Copy, Default)]
@@ -115,7 +115,7 @@ impl HashNameTable {
         self.convert_label(&mut name);
         table.set_name(name);
         for col in table.as_modern_mut().columns_mut() {
-            self.convert_label(col.label_mut());
+            *col = ModernColumn::new(col.value_type(), self.convert_label_cow(col.label()));
         }
     }
 
