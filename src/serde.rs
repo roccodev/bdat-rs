@@ -2,7 +2,7 @@
 
 use crate::legacy::float::BdatReal;
 use crate::table::private::ColumnSerialize;
-use crate::{Cell, CompatColumnRef, Label, Value, ValueType};
+use crate::{Cell, Label, Value, ValueType};
 use serde::de::value::MapAccessDeserializer;
 use serde::de::MapAccess;
 use serde::ser::SerializeMap;
@@ -43,14 +43,14 @@ pub struct CellSeed<'a, C: ColumnSerialize>(&'a C);
 impl<'b, 't, C: ColumnSerialize> SerializeCell<'b, 't, C> {
     pub fn from_ref(column: C, cell: &'b Cell<'t>) -> Self {
         SerializeCell {
-            column: column,
+            column,
             cell: Cow::Borrowed(cell),
         }
     }
 
     pub fn from_owned(column: C, cell: Cell<'t>) -> Self {
         SerializeCell {
-            column: column.into(),
+            column,
             cell: Cow::Owned(cell),
         }
     }
@@ -366,7 +366,7 @@ impl<'a, 'de, C: ColumnSerialize> DeserializeSeed<'de> for CellSeed<'a, C> {
 
 impl<'a, C: ColumnSerialize> From<&'a C> for CellSeed<'a, C> {
     fn from(value: &'a C) -> Self {
-        Self(value.into())
+        Self(value)
     }
 }
 

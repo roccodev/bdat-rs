@@ -337,7 +337,7 @@ impl<L> Default for NameMap<L> {
     }
 }
 
-impl<'buf, C: Column, L> Default for ColumnMap<C, L> {
+impl<C: Column, L> Default for ColumnMap<C, L> {
     fn default() -> Self {
         Self {
             columns: Default::default(),

@@ -309,7 +309,7 @@ impl<'buf> From<ModernColumn<'buf>> for CompatColumnBuilder<'buf> {
     fn from(value: ModernColumn<'buf>) -> Self {
         Self {
             value_type: value.value_type,
-            label: value.label.into(),
+            label: value.label,
             count: 1,
             flags: Vec::new(),
         }
@@ -336,7 +336,7 @@ impl<'buf> From<CompatColumnBuilder<'buf>> for ModernColumn<'buf> {
     fn from(value: CompatColumnBuilder<'buf>) -> Self {
         Self {
             value_type: value.value_type,
-            label: value.label.into(),
+            label: value.label,
         }
     }
 }

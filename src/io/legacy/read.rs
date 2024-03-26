@@ -12,8 +12,8 @@ use crate::legacy::float::BdatReal;
 use crate::legacy::scramble::{calc_checksum, scramble, unscramble, ScrambleType};
 use crate::legacy::{ColumnNodeInfo, COLUMN_NODE_SIZE};
 use crate::{
-    BdatError, BdatFile, BdatVersion, Cell, Label, LegacyColumn, LegacyFlag, LegacyRow,
-    LegacyTable, LegacyTableBuilder, Utf, Value, ValueType,
+    BdatError, BdatFile, BdatVersion, Cell, LegacyColumn, LegacyFlag, LegacyRow, LegacyTable,
+    LegacyTableBuilder, Utf, Value, ValueType,
 };
 
 use super::{FileHeader, TableHeader};

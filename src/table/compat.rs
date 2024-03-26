@@ -34,12 +34,12 @@ use crate::{
 /// ## Examples
 ///
 /// ```
-/// use bdat::{CompatTable, CompatTableBuilder, Cell, Column, Value, ValueType, Label, BdatVersion};
+/// use bdat::{CompatTable, CompatTableBuilder, CompatColumnBuilder, Cell, Value, ValueType, Label, BdatVersion};
 ///
 /// let table: CompatTable = CompatTableBuilder::with_name(Label::Hash(0xDEADBEEF))
 ///     .set_base_id(1) // default, if you want 0 it must be set manually
-///     .add_column(Column::new(ValueType::UnsignedInt, Label::Hash(0xCAFEBABE)))
-///     .add_row(vec![Cell::Single(Value::UnsignedInt(10))].into())
+///     .add_column(CompatColumnBuilder::new(ValueType::UnsignedInt, Label::Hash(0xCAFEBABE)))
+///     .add_row(vec![Cell::Single(Value::UnsignedInt(10))])
 ///     .build(BdatVersion::Modern);
 ///
 /// assert_eq!(table.row_count(), 1);
@@ -49,8 +49,8 @@ use crate::{
 /// );
 /// ```
 ///
-/// [`as_legacy`]: Table::as_legacy
-/// [`as_modern`]: Table::as_modern
+/// [`as_legacy`]: CompatTable::as_legacy
+/// [`as_modern`]: CompatTable::as_modern
 #[derive(Debug, Clone, PartialEq)]
 pub struct CompatTable<'b> {
     inner: CompatInner<'b>,

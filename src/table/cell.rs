@@ -25,22 +25,24 @@ use std::fmt::Display;
 ///
 /// To serialize a `Cell` given its parent column, you can use [`Column::cell_serializer`].
 /// ```
-/// use bdat::{Cell, Column};
+/// use bdat::{Cell, ModernColumn};
+/// use bdat::serde::SerializeCell;
 ///
-/// fn serialize_cell<L>(column: &Column<L>, cell: &Cell) -> String {
-///     serde_json::to_string(&column.cell_serializer(cell)).unwrap()
+/// fn serialize_cell(column: ModernColumn, cell: &Cell) -> String {
+///     serde_json::to_string(&SerializeCell::from_ref(column, cell)).unwrap()
 /// }
 /// ```
 ///
 /// To deserialize a `Cell` that was serialized into the previous format, you can use
 /// [`Column::as_cell_seed`], along with `DeserializeSeed` from Serde.
 /// ```
-/// use bdat::{Cell, Column};
+/// use bdat::{Cell, ModernColumn};
+/// use bdat::serde::CellSeed;
 /// use serde_json::Deserializer;
 /// use serde::de::DeserializeSeed;
 ///
-/// fn deserialize_cell<'s, L>(column: &Column<L>, json: &'s str) -> Cell<'s> {
-///     column.as_cell_seed().deserialize(&mut Deserializer::from_str(json)).unwrap()
+/// fn deserialize_cell<'s>(column: &ModernColumn, json: &'s str) -> Cell<'s> {
+///     CellSeed::from(column).deserialize(&mut Deserializer::from_str(json)).unwrap()
 /// }
 /// ```
 ///
