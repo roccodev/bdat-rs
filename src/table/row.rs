@@ -1,5 +1,8 @@
-use crate::LabelMap;
+//! Row accessors for BDAT tables
+
 use std::ops::{Deref, DerefMut};
+
+use super::private::LabelMap;
 
 /// Best-fit type for row IDs.
 /// In legacy BDATs, row identifiers are 16-bit.

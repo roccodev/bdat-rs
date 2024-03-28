@@ -233,7 +233,6 @@ where
             Value::String(s) | Value::DebugString(s) => {
                 writer.write_u32::<E>(string_map.get(s.as_ref().into()))
             }
-            // TODO only accept CFloat
             Value::Float(f) => writer.write_f32::<E>((*f).into()),
         }
     }

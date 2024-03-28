@@ -1,10 +1,12 @@
+//! Modern (XC3) format types
+
 use crate::hash::PreHashedMap;
 use crate::{
-    CellAccessor, ColumnMap, CompatTable, Label, LabelMap, ModernColumn, ModernTableBuilder, RowId,
-    RowRef, Value,
+    CellAccessor, ColumnMap, CompatTable, Label, ModernColumn, ModernTableBuilder, RowId, RowRef,
+    Value,
 };
 
-use super::private::{ColumnSerialize, Table};
+use super::private::{ColumnSerialize, LabelMap, Table};
 use super::util::EnumId;
 
 /// The BDAT table representation in modern formats, currently used in Xenoblade 3.
@@ -62,6 +64,10 @@ pub struct ModernTable<'b> {
     row_hash_table: PreHashedMap<u32, RowId>,
 }
 
+/// A row from a modern (XC3) table.
+///
+/// Unlike legacy tables, modern tables only support single-value cells.
+/// For this reason, this type is merely a vector of [`Value`]s.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModernRow<'b> {
     pub(crate) values: Vec<Value<'b>>,

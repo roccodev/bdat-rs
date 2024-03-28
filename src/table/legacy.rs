@@ -1,8 +1,10 @@
-use crate::{Cell, CellAccessor, ColumnMap, CompatTable, LabelMap, LegacyColumn, RowRef, Utf};
+//! Legacy (XC1 up to DE) format types
+
+use crate::{Cell, CellAccessor, ColumnMap, CompatTable, LegacyColumn, RowRef, Utf};
 
 use super::{
     builder::LegacyTableBuilder,
-    private::{ColumnSerialize, Table},
+    private::{ColumnSerialize, LabelMap, Table},
     util::EnumId,
 };
 
@@ -41,6 +43,7 @@ pub struct LegacyTable<'b> {
     pub(crate) rows: Vec<LegacyRow<'b>>,
 }
 
+/// A row from a legacy BDAT table.
 #[derive(Debug, Clone, PartialEq)]
 pub struct LegacyRow<'b> {
     pub(crate) cells: Vec<Cell<'b>>,

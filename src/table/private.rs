@@ -22,6 +22,12 @@ pub trait Column {
     fn value_type(&self) -> ValueType;
 }
 
+pub trait LabelMap {
+    type Name;
+
+    fn position(&self, label: &Self::Name) -> Option<usize>;
+}
+
 pub trait ColumnSerialize {
     fn ser_value_type(&self) -> ValueType;
     fn ser_flags(&self) -> &[LegacyFlag];

@@ -18,21 +18,15 @@ pub struct LegacyColumn<'buf> {
     pub(crate) flags: Vec<LegacyFlag<'buf>>,
 }
 
-/// A column definition from a Bdat table
-
 /// A builder interface for [`LegacyColumn`].
 pub struct LegacyColumnBuilder<'tb>(LegacyColumn<'tb>);
 
+/// Hosts both the table's column definitions and an index
+/// table to look up cells by column name.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ColumnMap<C: Column, L = <C as Column>::Name> {
     columns: Vec<C>,
     pub(crate) label_map: NameMap<L>,
-}
-
-pub trait LabelMap {
-    type Name;
-
-    fn position(&self, label: &Self::Name) -> Option<usize>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -40,7 +34,7 @@ pub(crate) struct NameMap<L> {
     positions: Vec<(L, usize)>,
 }
 
-/// A sub-definition for flag data that is associated to a column
+/// A sub-definition for flag data that is associated to a column in legacy formats.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct LegacyFlag<'tb> {
@@ -101,11 +95,6 @@ impl<'tb> LegacyColumn<'tb> {
     /// Returns this column's name.
     pub fn label(&self) -> &str {
         self.label.as_ref()
-    }
-
-    /// Returns a mutable reference to this column's name.
-    pub fn label_mut(&mut self) -> &mut Utf<'tb> {
-        &mut self.label
     }
 
     /// Returns the number of values in this column's cells.
@@ -191,24 +180,24 @@ impl<'tb> LegacyColumnBuilder<'tb> {
 }
 
 impl<C: Column> ColumnMap<C, C::Name> {
-    pub fn push(&mut self, column: C) {
+    pub(crate) fn push(&mut self, column: C) {
         self.label_map.push(column.clone_label());
         self.columns.push(column);
     }
 
-    pub fn as_slice(&self) -> &[C] {
+    pub(crate) fn as_slice(&self) -> &[C] {
         &self.columns
     }
 
-    pub fn as_mut_slice(&mut self) -> &mut [C] {
+    pub(crate) fn as_mut_slice(&mut self) -> &mut [C] {
         &mut self.columns
     }
 
-    pub fn into_raw(self) -> Vec<C> {
+    pub(crate) fn into_raw(self) -> Vec<C> {
         self.columns
     }
 
-    pub fn iter(&self) -> impl Iterator<Item = &C> {
+    pub(crate) fn iter(&self) -> impl Iterator<Item = &C> {
         self.columns.iter()
     }
 }

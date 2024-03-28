@@ -1,7 +1,5 @@
-use std::hash::{Hash, Hasher};
 use std::{
     borrow::Cow,
-    cmp::Ordering,
     collections::BTreeMap,
     fs::File,
     io::BufReader,
@@ -64,9 +62,6 @@ struct ColumnChange<'a, 'tb> {
     value: Cell<'tb>,
 }
 
-#[derive(Debug)]
-struct ValueOrderedLabel(Label<'static>);
-
 pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
     let progress = ProgressBar::new(3)
         .with_style(crate::convert::build_progress_style("Diff", true))
@@ -116,18 +111,18 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
             },
         );
     let (old_tables, new_tables): (
-        BTreeMap<ValueOrderedLabel, TableWithSource>,
-        BTreeMap<ValueOrderedLabel, TableWithSource>,
+        BTreeMap<Label<'static>, TableWithSource>,
+        BTreeMap<Label<'static>, TableWithSource>,
     ) = (
         old_tables
             .into_iter()
             .flatten_ok()
-            .map_ok(|t| (ValueOrderedLabel(t.table.name().into_owned()), t))
+            .map_ok(|t| (t.table.name().into_owned(), t))
             .try_collect()?,
         new_tables
             .into_iter()
             .flatten_ok()
-            .map_ok(|t| (ValueOrderedLabel(t.table.name().into_owned()), t))
+            .map_ok(|t| (t.table.name().into_owned(), t))
             .try_collect()?,
     );
     progress.inc(1);
@@ -177,8 +172,8 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
     });
 
     println!("\n--------------\nChanged Tables\n--------------");
-    for (ref l @ ValueOrderedLabel(ref name), table) in old_tables.into_iter() {
-        let new_table = match new_tables.get(l) {
+    for (ref name, table) in old_tables.into_iter() {
+        let new_table = match new_tables.get(name) {
             Some(table) => table,
             None => continue,
         };
@@ -372,35 +367,6 @@ impl<'a, 'tb> From<(Label<'a>, bool, Cell<'tb>)> for ColumnChange<'a, 'tb> {
             label: value.0,
             added: value.1,
             value: value.2,
-        }
-    }
-}
-
-impl PartialOrd for ValueOrderedLabel {
-    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
-        Some(Ord::cmp(self, other))
-    }
-}
-
-impl Ord for ValueOrderedLabel {
-    fn cmp(&self, other: &Self) -> Ordering {
-        self.0.cmp_value(&other.0)
-    }
-}
-
-impl PartialEq for ValueOrderedLabel {
-    fn eq(&self, other: &Self) -> bool {
-        self.cmp(other) == Ordering::Equal
-    }
-}
-
-impl Eq for ValueOrderedLabel {}
-
-impl Hash for ValueOrderedLabel {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        match &self.0 {
-            Label::Hash(h) => state.write_u32(*h),
-            Label::String(s) => state.write(s.as_bytes()),
         }
     }
 }

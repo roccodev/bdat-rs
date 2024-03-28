@@ -1,14 +1,20 @@
-//! Adapters for legacy<->modern BDAT compatibility.
+//! Adapters for version-agnostic BDAT tables.
+//!
+//! If a file or table's version is known in advance, the
+//! versioned modules [`modern`] and [`legacy`] should be preferred.
+//!
+//! [`modern`]: crate::modern
+//! [`legacy`]: crate::legacy
 
 use std::convert::Infallible;
 
 use super::legacy::LegacyRow;
 use super::modern::ModernRow;
-use super::private::{ColumnSerialize, Table};
+use super::private::{ColumnSerialize, LabelMap, Table};
 use super::util::CompatIter;
 use crate::{
-    BdatResult, Cell, CellAccessor, ColumnMap, Label, LabelMap, LegacyColumn, LegacyFlag,
-    LegacyTable, ModernColumn, ModernTable, RowId, RowRef, Utf, ValueType,
+    BdatResult, Cell, CellAccessor, ColumnMap, Label, LegacyColumn, LegacyFlag, LegacyTable,
+    ModernColumn, ModernTable, RowId, RowRef, Utf, ValueType,
 };
 
 /// A BDAT table view with version metadata.
@@ -204,6 +210,8 @@ impl<'b> CompatTable<'b> {
         }
     }
 
+    /// Returns the table's name. For legacy tables, this is wrapped
+    /// into a [`Label::String`].
     pub fn name(&self) -> Label {
         match self {
             Self::Modern(m) => m.name().as_ref(),
@@ -218,6 +226,11 @@ impl<'b> CompatTable<'b> {
         }
     }
 
+    /// Changes the table's name.
+    ///
+    /// ## Panics
+    /// Panics if `name` is a label that is unsupported by the destination
+    /// format, e.g. hashed labels in legacy tables.
     pub fn set_name(&mut self, name: Label<'b>) {
         match self {
             Self::Modern(m) => m.set_name(name),
@@ -347,6 +360,8 @@ impl<'b> CompatColumn<'b> {
 }
 
 impl<'buf> CompatColumn<'buf> {
+    /// Returns the column's label. For legacy tables,
+    /// this is wrapped into a [`Label::String`].
     pub fn label(&self) -> Label {
         match self {
             Self::Modern(m) => m.label().as_ref(),
@@ -358,6 +373,9 @@ impl<'buf> CompatColumn<'buf> {
         self.as_ref().value_type()
     }
 
+    /// Returns the column's list of defined flags.
+    ///
+    /// For modern tables this always returns `&[]`.
     pub fn flags(&self) -> &[LegacyFlag<'buf>] {
         match self {
             Self::Modern(_) => &[],
@@ -365,16 +383,25 @@ impl<'buf> CompatColumn<'buf> {
         }
     }
 
+    /// Returns the number of values in a cell of this column.
+    ///
+    /// For modern tables and non-array cells, this returns 1.
     pub fn count(&self) -> usize {
         self.as_ref().count()
     }
 
+    /// Returns the total data size that a single cell of this column
+    /// holds.
+    ///
+    /// For modern tables, this is always the size of the value type.
     pub fn data_size(&self) -> usize {
         self.as_ref().data_size()
     }
 }
 
 impl<'t, 'buf> CompatColumnRef<'t, 'buf> {
+    /// Returns the column's label. For legacy tables,
+    /// this is wrapped into a [`Label::String`].
     pub fn label(&self) -> Label<'t> {
         match self {
             Self::Modern(m) => m.label().as_ref(),
@@ -389,6 +416,9 @@ impl<'t, 'buf> CompatColumnRef<'t, 'buf> {
         }
     }
 
+    /// Returns the column's list of defined flags.
+    ///
+    /// For modern tables this always returns `&[]`.
     pub fn flags(&self) -> &[LegacyFlag<'buf>] {
         match self {
             Self::Modern(_) => &[],
@@ -396,6 +426,9 @@ impl<'t, 'buf> CompatColumnRef<'t, 'buf> {
         }
     }
 
+    /// Returns the number of values in a cell of this column.
+    ///
+    /// For modern tables and non-array cells, this returns 1.
     pub fn count(&self) -> usize {
         match self {
             Self::Modern(_) => 1,
@@ -403,6 +436,10 @@ impl<'t, 'buf> CompatColumnRef<'t, 'buf> {
         }
     }
 
+    /// Returns the total data size that a single cell of this column
+    /// holds.
+    ///
+    /// For modern tables, this is always the size of the value type.
     pub fn data_size(&self) -> usize {
         match self {
             Self::Modern(m) => m.data_size(),

@@ -3,12 +3,7 @@
 use crate::io::BdatVersion;
 use crate::Utf;
 use std::borrow::Cow;
-use std::{cmp::Ordering, fmt::Display};
-
-/// The label is hashed and an operation on a plain string (e.g. comparison) was requested.
-#[derive(thiserror::Error, Debug)]
-#[error("label is not a string")]
-pub struct LabelNotStringError;
+use std::fmt::Display;
 
 /// A name for a BDAT element (table, column, ID, etc.)
 #[derive(PartialEq, Eq, PartialOrd, Ord, Debug, Clone, Hash)]
@@ -19,6 +14,11 @@ pub enum Label<'buf> {
     /// Plain-text string, used in older BDAT formats.
     String(Utf<'buf>),
 }
+
+/// The label is hashed and an operation on a plain string (e.g. comparison) was requested.
+#[derive(thiserror::Error, Debug)]
+#[error("label is not a string")]
+pub struct LabelNotStringError;
 
 impl<'buf> Label<'buf> {
     /// Extracts a [`Label`] from a [`String`].
@@ -54,31 +54,6 @@ impl<'buf> Label<'buf> {
         }
     }
 
-    /// Comparison function for the underlying values.
-    ///
-    /// Unlike a typical [`Ord`] implementation for enums, this only takes values into consideration
-    /// (though hashed labels are still considered separately), meaning the following holds:
-    ///
-    /// ```rs
-    /// use bdat::Label;
-    /// use std::cmp::Ordering;
-    ///
-    /// assert_eq!(Label::Hash(0x0).cmp_value(&Label::Hash(0x0)), Ordering::Equal);
-    /// assert_eq!(Label::String("Test".to_string()).cmp_value(&Label::String("Test".to_string())), Ordering::Equal);
-    /// // and...
-    /// assert_eq!(Label::String("Test".to_string()).cmp_value(&Label::Unhashed("Test".to_string())), Ordering::Equal);
-    /// // ...but not
-    /// assert_ne!(Label::String(String::new()).cmp_value(&Label::Hash(0x0)), Ordering::Equal);
-    /// ```
-    pub fn cmp_value(&self, other: &Self) -> Ordering {
-        match (self, other) {
-            (Self::Hash(slf), Self::Hash(oth)) => slf.cmp(oth),
-            (_, Self::Hash(_)) => Ordering::Less, // hashed IDs always come last
-            (Self::Hash(_), _) => Ordering::Greater,
-            (a, b) => a.as_str().cmp(b.as_str()),
-        }
-    }
-
     /// An alternative to [`ToString::to_string`] that returns a reference to the label if it's
     /// already a string.
     pub fn to_string_convert(&self) -> Utf {
@@ -105,10 +80,6 @@ impl<'buf> Label<'buf> {
             Self::Hash(h) => Label::Hash(*h),
             Self::String(s) => Label::String(s.as_ref().into()),
         }
-    }
-
-    pub(crate) fn as_str(&self) -> &str {
-        self.try_into().expect("label is not a string")
     }
 }
 
