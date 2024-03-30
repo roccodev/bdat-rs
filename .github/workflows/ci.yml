@@ -92,5 +92,5 @@ jobs:
         uses: actions/upload-artifact@v3
         with:
           name: bdat-toolset-${{ matrix.builds.file }}
-          path: toolset/target/${{ matrix.builds.target }}/release/${{ matrix.builds.out }}
+          path: target/${{ matrix.builds.target }}/release/${{ matrix.builds.out }}
     

@@ -91,12 +91,12 @@ jobs:
       - name: Build
         run: cd toolset && cargo build --release --target ${{ matrix.builds.target }}
       - name: Rename files
-        working-directory: toolset/target/${{ matrix.builds.target }}/release
+        working-directory: target/${{ matrix.builds.target }}/release
         run: mv ${{ matrix.builds.out }} bdat-toolset-${{ matrix.builds.file }}
       - name: Upload executable to release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        working-directory: toolset/target/${{ matrix.builds.target }}/release
+        working-directory: target/${{ matrix.builds.target }}/release
         run: gh release upload ${{ inputs.tag || github.ref_name }} bdat-toolset-${{ matrix.builds.file }} --clobber
   
  
