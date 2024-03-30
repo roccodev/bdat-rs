@@ -86,10 +86,10 @@ impl<'b> Serialize for Value<'b> {
     {
         match self {
             Value::Unknown => panic!("serialize unknown value"),
-            Value::UnsignedByte(b) | Value::Percent(b) | Value::Unknown2(b) => {
+            Value::UnsignedByte(b) | Value::Percent(b) | Value::Unknown12(b) => {
                 serializer.serialize_u8(*b)
             }
-            Value::UnsignedShort(s) | Value::Unknown3(s) => serializer.serialize_u16(*s),
+            Value::UnsignedShort(s) | Value::MessageId(s) => serializer.serialize_u16(*s),
             Value::UnsignedInt(i) => serializer.serialize_u32(*i),
             Value::SignedByte(b) => serializer.serialize_i8(*b),
             Value::SignedShort(s) => serializer.serialize_i16(*s),
@@ -126,8 +126,8 @@ impl ValueType {
             Self::HashRef => Value::HashRef(deserializer.deserialize_any(HexVisitor)?),
             Self::Percent => Value::Percent(u8::deserialize(deserializer)?),
             Self::DebugString => Value::DebugString(Cow::deserialize(deserializer)?),
-            Self::Unknown2 => Value::Unknown2(u8::deserialize(deserializer)?),
-            Self::Unknown3 => Value::Unknown3(u16::deserialize(deserializer)?),
+            Self::Unknown12 => Value::Unknown12(u8::deserialize(deserializer)?),
+            Self::MessageId => Value::MessageId(u16::deserialize(deserializer)?),
         })
     }
 }
@@ -441,11 +441,11 @@ mod tests {
 
     #[test]
     fn deser_external() {
-        let ty = ValueType::Unknown3;
+        let ty = ValueType::MessageId;
         let value = ty
             .deser_value(&mut serde_json::Deserializer::from_str("1024"))
             .unwrap();
-        assert_eq!(value, Value::Unknown3(1024));
+        assert_eq!(value, Value::MessageId(1024));
     }
 
     #[test]

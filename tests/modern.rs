@@ -4,8 +4,6 @@ type FileEndian = SwitchEndian;
 
 static TEST_FILE_1: &[u8] = include_bytes!("res/test_modern_1.bdat");
 
-mod common;
-
 #[test]
 fn version_detect() {
     assert_eq!(

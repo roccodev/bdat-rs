@@ -1,6 +1,6 @@
 //! **NOTE**: Run with `cargo bench --features bench` to resolve test/bench-only modules
 
-use bdat::io::legacy::scramble;
+use bdat::legacy::scramble;
 use criterion::{black_box, criterion_group, criterion_main, Criterion};
 
 pub fn criterion_benchmark(c: &mut Criterion) {

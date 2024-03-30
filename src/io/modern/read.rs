@@ -208,8 +208,8 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
             ValueType::DebugString => Value::DebugString(
                 table_data.get_string(buf.read_u32::<E>()? as usize, usize::MAX)?,
             ),
-            ValueType::Unknown2 => Value::Unknown2(buf.read_u8()?),
-            ValueType::Unknown3 => Value::Unknown3(buf.read_u16::<E>()?),
+            ValueType::Unknown12 => Value::Unknown12(buf.read_u8()?),
+            ValueType::MessageId => Value::MessageId(buf.read_u16::<E>()?),
         })
     }
 }

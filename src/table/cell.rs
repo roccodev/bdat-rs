@@ -72,28 +72,39 @@ pub enum Cell<'b> {
     cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize)),
     cfg_attr(feature = "serde", serde(into = "u8", try_from = "u8"))
 )]
+#[repr(u8)]
 pub enum Value<'b> {
-    Unknown,
-    UnsignedByte(u8),
-    UnsignedShort(u16),
-    UnsignedInt(u32),
-    SignedByte(i8),
-    SignedShort(i16),
-    SignedInt(i32),
-    String(Utf<'b>),
-    Float(BdatReal),
+    Unknown = 0,
+    UnsignedByte(u8) = 1,
+    UnsignedShort(u16) = 2,
+    UnsignedInt(u32) = 3,
+    SignedByte(i8) = 4,
+    SignedShort(i16) = 5,
+    SignedInt(i32) = 6,
+    String(Utf<'b>) = 7,
+    Float(BdatReal) = 8,
+    /// Exclusive to modern tables.
+    ///
     /// A hash referencing a row in the same or some other table
-    HashRef(u32),
-    Percent(u8),
+    HashRef(u32) = 9,
+    /// Exclusive to modern tables.
+    ///
+    /// The value is interpreted as a percentage.
+    Percent(u8) = 10,
+    /// Exclusive to modern tables.
+    ///
     /// It points to a (generally empty) string in the string table,
     /// mostly used for `DebugName` fields.
-    DebugString(Utf<'b>),
-    /// [`BdatVersion::Modern`] unknown type (0xc)
-    Unknown2(u8),
-    /// [`BdatVersion::Modern`] unknown type (0xd)
+    DebugString(Utf<'b>) = 11,
+    /// Exclusive to modern tables.
+    ///
+    /// Currently unknown, as there are no tables using it.
+    Unknown12(u8) = 12,
+    /// Exclusive to modern tables.
+    ///
     /// It seems to be some sort of translation index, mostly used for
     /// `Name` and `Caption` fields.
-    Unknown3(u16),
+    MessageId(u16) = 13,
 }
 
 /// An optionally-borrowed clone-on-write UTF-8 string.
@@ -111,14 +122,6 @@ where
     Self: Sized,
 {
     fn extract(value: &'t Value<'tb>) -> Option<Self>;
-}
-
-/// Converts from a cell reference.
-pub trait FromCell<'t, 'tb> {
-    /// Converts from a cell reference.
-    ///
-    /// The implementation can panic.
-    fn from_cell(cell: &'t Cell<'tb>) -> Self;
 }
 
 impl<'b> Cell<'b> {
@@ -218,9 +221,9 @@ impl<'b> Value<'b> {
     pub fn to_integer(&self) -> u32 {
         match self {
             Self::SignedByte(b) => *b as u32,
-            Self::Percent(b) | Self::UnsignedByte(b) | Self::Unknown2(b) => *b as u32,
+            Self::Percent(b) | Self::UnsignedByte(b) | Self::Unknown12(b) => *b as u32,
             Self::SignedShort(s) => *s as u32,
-            Self::UnsignedShort(s) | Self::Unknown3(s) => *s as u32,
+            Self::UnsignedShort(s) | Self::MessageId(s) => *s as u32,
             Self::SignedInt(i) => *i as u32,
             Self::UnsignedInt(i) | Self::HashRef(i) => *i,
             _ => panic!("value is not an integer"),
@@ -271,8 +274,8 @@ impl ValueType {
         use ValueType::*;
         match self {
             Unknown => 0,
-            UnsignedByte | SignedByte | Percent | Unknown2 => 1,
-            UnsignedShort | SignedShort | Unknown3 => 2,
+            UnsignedByte | SignedByte | Percent | Unknown12 => 1,
+            UnsignedShort | SignedShort | MessageId => 2,
             UnsignedInt | SignedInt | String | Float | HashRef | DebugString => 4,
         }
     }
@@ -281,7 +284,9 @@ impl ValueType {
     pub fn is_supported(self, version: BdatVersion) -> bool {
         use ValueType::*;
         match self {
-            Percent | Unknown2 | Unknown3 | HashRef | DebugString => version == BdatVersion::Modern,
+            Percent | Unknown12 | MessageId | HashRef | DebugString => {
+                version == BdatVersion::Modern
+            }
             _ => true,
         }
     }
@@ -290,24 +295,6 @@ impl ValueType {
 impl From<ValueType> for u8 {
     fn from(t: ValueType) -> Self {
         t as u8
-    }
-}
-
-impl<'t, 'tb> FromCell<'t, 'tb> for ModernCell<'t, 'tb> {
-    fn from_cell(cell: &'t Cell<'tb>) -> Self {
-        match cell {
-            Cell::Single(v) => v,
-            _ => panic!("only Cell::Single supported in modern bdats"),
-        }
-    }
-}
-
-impl<'t, 'tb: 't, T> FromCell<'t, 'tb> for T
-where
-    T: From<&'t Cell<'tb>>,
-{
-    fn from_cell(cell: &'t Cell<'tb>) -> Self {
-        Self::from(cell)
     }
 }
 
@@ -329,7 +316,7 @@ impl<'b> Display for Value<'b> {
             Self::HashRef(h) => Label::Hash(*h).fmt(f),
             Self::Percent(v) => write!(f, "{}%", v),
             v => {
-                default_display!(f, v, SignedByte SignedShort SignedInt UnsignedByte UnsignedShort UnsignedInt DebugString Unknown2 Unknown3 String Float)
+                default_display!(f, v, SignedByte SignedShort SignedInt UnsignedByte UnsignedShort UnsignedInt DebugString Unknown12 MessageId String Float)
             }
         }
     }
@@ -377,8 +364,8 @@ macro_rules! from_value {
 }
 
 from_value!(u32, Value::UnsignedInt Value::HashRef);
-from_value!(u16, Value::UnsignedShort Value::Unknown3);
-from_value!(u8, Value::UnsignedByte Value::Unknown2 Value::Percent);
+from_value!(u16, Value::UnsignedShort Value::MessageId);
+from_value!(u8, Value::UnsignedByte Value::Unknown12 Value::Percent);
 from_value!(i32, Value::SignedInt);
 from_value!(i16, Value::SignedShort);
 from_value!(i8, Value::SignedByte);

@@ -224,8 +224,8 @@ where
     ) -> std::io::Result<()> {
         match value {
             Value::Unknown => panic!("tried to serialize unknown value"),
-            Value::UnsignedByte(b) | Value::Percent(b) | Value::Unknown2(b) => writer.write_u8(*b),
-            Value::UnsignedShort(s) | Value::Unknown3(s) => writer.write_u16::<E>(*s),
+            Value::UnsignedByte(b) | Value::Percent(b) | Value::Unknown12(b) => writer.write_u8(*b),
+            Value::UnsignedShort(s) | Value::MessageId(s) => writer.write_u16::<E>(*s),
             Value::UnsignedInt(i) | Value::HashRef(i) => writer.write_u32::<E>(*i),
             Value::SignedByte(b) => writer.write_i8(*b),
             Value::SignedShort(s) => writer.write_i16::<E>(*s),
