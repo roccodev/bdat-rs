@@ -16,17 +16,21 @@ pub struct InfoArgs {
     /// Only print these columns. If absent, prints all columns.
     #[arg(short, long)]
     columns: Vec<String>,
+
+    #[clap(flatten)]
+    input: InputData,
 }
 
-pub fn get_info(input: InputData, args: InfoArgs) -> Result<()> {
-    let hash_table = input.load_hashes()?;
+pub fn get_info(args: InfoArgs) -> Result<()> {
+    let hash_table = args.input.load_hashes()?;
     let table_filter: Filter = args.tables.into_iter().map(FilterArg).collect();
     let column_filter: Filter = args.columns.into_iter().map(FilterArg).collect();
 
-    for file in input.list_files("bdat", false)? {
+    for file in args.input.list_files("bdat", false)? {
         let path = file?;
         let mut file = std::fs::read(&path)?;
-        let tables = input
+        let tables = args
+            .input
             .game_from_bytes(&file)?
             .from_bytes(&mut file)
             .with_context(|| format!("Could not parse BDAT tables ({})", path.to_string_lossy()))?;

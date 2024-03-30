@@ -29,6 +29,9 @@ pub struct DiffArgs {
     /// Don't print file names.
     #[arg(long)]
     no_file_names: bool,
+
+    #[clap(flatten)]
+    input: InputData,
 }
 
 #[derive(Debug)]
@@ -62,11 +65,14 @@ struct ColumnChange<'a, 'tb> {
     value: Cell<'tb>,
 }
 
-pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
+pub fn run_diff(args: DiffArgs) -> Result<()> {
     let progress = ProgressBar::new(3)
         .with_style(crate::convert::build_progress_style("Diff", true))
         .with_message(" (Reading files)");
-    let new_files = input.list_files("bdat", !args.no_file_names)?.into_iter();
+    let new_files = args
+        .input
+        .list_files("bdat", !args.no_file_names)?
+        .into_iter();
     let old_files = InputData {
         files: args.old_files,
         ..Default::default()
@@ -74,7 +80,7 @@ pub fn run_diff(input: InputData, args: DiffArgs) -> Result<()> {
     let old_files = old_files
         .list_files("bdat", !args.no_file_names)?
         .into_iter();
-    let hash_table = input.load_hashes()?;
+    let hash_table = args.input.load_hashes()?;
 
     let files_to_read = new_files
         .map(|f| f.map(|f| (f, true)))

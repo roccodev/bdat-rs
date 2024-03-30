@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use convert::ConvertArgs;
 use diff::DiffArgs;
+use hash::HashArgs;
 use info::InfoArgs;
 use itertools::Itertools;
 use util::hash::HashNameTable;
@@ -34,9 +35,6 @@ pub mod util;
 struct Cli {
     #[command(subcommand)]
     command: Option<Commands>,
-
-    #[clap(flatten)]
-    input: InputData,
 }
 
 #[derive(Subcommand)]
@@ -53,6 +51,9 @@ enum Commands {
     Scramble(ScrambleArgs),
     /// Unscramble all tables in legacy (XC1/X/2/DE) BDAT files
     Unscramble(ScrambleArgs),
+    /// Calculates hashes from file or command input. Hashes are returned one per line, in the order
+    /// of the respective input strings.
+    Hash(HashArgs),
 }
 
 #[derive(Args, Default)]
@@ -76,12 +77,13 @@ fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
-        Some(Commands::Info(args)) => info::get_info(cli.input, args),
-        Some(Commands::Extract(args)) => convert::run_conversions(cli.input, args, true),
-        Some(Commands::Pack(args)) => convert::run_conversions(cli.input, args, false),
-        Some(Commands::Diff(args)) => diff::run_diff(cli.input, args),
-        Some(Commands::Scramble(args)) => scramble::scramble(cli.input, args),
-        Some(Commands::Unscramble(args)) => scramble::unscramble(cli.input, args),
+        Some(Commands::Info(args)) => info::get_info(args),
+        Some(Commands::Extract(args)) => convert::run_conversions(args, true),
+        Some(Commands::Pack(args)) => convert::run_conversions(args, false),
+        Some(Commands::Diff(args)) => diff::run_diff(args),
+        Some(Commands::Scramble(args)) => scramble::scramble(args),
+        Some(Commands::Unscramble(args)) => scramble::unscramble(args),
+        Some(Commands::Hash(args)) => hash::run(args),
         _ => Ok(()),
     }
 }

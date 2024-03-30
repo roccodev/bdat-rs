@@ -19,25 +19,28 @@ pub struct ScrambleArgs {
     out_dir: Option<String>,
     #[clap(flatten)]
     jobs: RayonPoolJobs,
+
+    #[clap(flatten)]
+    input: InputData,
 }
 
-pub fn scramble(input: InputData, args: ScrambleArgs) -> Result<()> {
-    run(input, args, "scrambled.bdat", scramble_file)
+pub fn scramble(args: ScrambleArgs) -> Result<()> {
+    run(args, "scrambled.bdat", scramble_file)
 }
 
-pub fn unscramble(input: InputData, args: ScrambleArgs) -> Result<()> {
-    run(input, args, "plain.bdat", unscramble_file)
+pub fn unscramble(args: ScrambleArgs) -> Result<()> {
+    run(args, "plain.bdat", unscramble_file)
 }
 
 fn run(
-    input: InputData,
     args: ScrambleArgs,
     extension: &str,
     func: fn(PathBuf, PathBuf, &ProgressBarState) -> Result<()>,
 ) -> Result<()> {
     args.jobs.configure()?;
 
-    let files = input
+    let files = args
+        .input
         .list_files("bdat", false)?
         .into_iter()
         .collect::<walkdir::Result<Vec<_>>>()?;

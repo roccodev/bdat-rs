@@ -55,6 +55,9 @@ pub struct ConvertArgs {
     csv_opts: csv::CsvOptions,
     #[clap(flatten)]
     json_opts: json::JsonOptions,
+
+    #[clap(flatten)]
+    input: InputData,
 }
 
 pub trait BdatSerialize {
@@ -78,22 +81,18 @@ pub trait BdatDeserialize {
     fn get_table_extension(&self) -> &'static str;
 }
 
-pub fn run_conversions(input: InputData, args: ConvertArgs, is_extracting: bool) -> Result<()> {
+pub fn run_conversions(args: ConvertArgs, is_extracting: bool) -> Result<()> {
     args.jobs.configure()?;
 
     if is_extracting {
-        let hash_table = input.load_hashes()?;
-        run_serialization(input, args, hash_table)
+        let hash_table = args.input.load_hashes()?;
+        run_serialization(args, hash_table)
     } else {
-        run_deserialization(input, args)
+        run_deserialization(args)
     }
 }
 
-pub fn run_serialization(
-    input: InputData,
-    args: ConvertArgs,
-    hash_table: HashNameTable,
-) -> Result<()> {
+pub fn run_serialization(args: ConvertArgs, hash_table: HashNameTable) -> Result<()> {
     let out_dir = args
         .out_dir
         .as_ref()
@@ -114,7 +113,8 @@ pub fn run_serialization(
 
     let table_filter: Filter = args.tables.into_iter().map(FilterArg).collect();
 
-    let files = input
+    let files = args
+        .input
         .list_files("bdat", false)?
         .into_iter()
         .collect::<walkdir::Result<Vec<_>>>()?;
@@ -130,7 +130,7 @@ pub fn run_serialization(
         .panic_fuse()
         .map(|path| {
             let mut file = std::fs::read(&path)?;
-            let game = input.game_from_bytes(&file)?;
+            let game = args.input.game_from_bytes(&file)?;
             let tables = game.from_bytes(&mut file).with_context(|| {
                 format!("Could not parse BDAT tables ({})", path.to_string_lossy())
             })?;
@@ -201,8 +201,9 @@ pub fn run_serialization(
     Ok(())
 }
 
-fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
-    let schema_files = input
+fn run_deserialization(args: ConvertArgs) -> Result<()> {
+    let schema_files = args
+        .input
         .list_files("bschema", false)?
         .into_iter()
         .collect::<walkdir::Result<Vec<_>>>()?;
@@ -279,7 +280,8 @@ fn run_deserialization(input: InputData, args: ConvertArgs) -> Result<()> {
             let out_dir = out_dir.join(relative_path);
             std::fs::create_dir_all(&out_dir)?;
             let out_file = File::create(out_dir.join(format!("{}.bdat", schema_file.file_name)))?;
-            let game = input
+            let game = args
+                .input
                 .game
                 .unwrap_or_else(|| BdatGame::version_default(schema_file.version));
             game.to_writer(out_file, tables)?;
