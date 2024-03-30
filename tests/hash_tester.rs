@@ -2,7 +2,7 @@
 
 use bdat::legacy::{LegacyHashTable, LegacyWriteOptions};
 use bdat::{
-    BdatVersion, LegacyColumnBuilder, LegacyFlag, LegacyTable, LegacyTableBuilder, SwitchEndian,
+    LegacyColumnBuilder, LegacyFlag, LegacyTable, LegacyTableBuilder, LegacyVersion, SwitchEndian,
     ValueType, WiiEndian,
 };
 use byteorder::ByteOrder;
@@ -12,14 +12,14 @@ use std::ffi::CStr;
 #[test]
 fn hash_table_legacy() {
     for slots in [1, 5, 10, 32, 61, 128] {
-        test_table(&create_table(), BdatVersion::LegacySwitch, slots);
+        test_table(&create_table(), LegacyVersion::Switch, slots);
     }
 }
 
 #[test]
 fn hash_table_xcx() {
     for slots in [1, 5, 10, 32, 61, 128] {
-        test_table(&create_table(), BdatVersion::LegacyX, slots);
+        test_table(&create_table(), LegacyVersion::X, slots);
     }
 }
 
@@ -52,21 +52,20 @@ fn create_table<'b>() -> LegacyTable<'b> {
         .build()
 }
 
-fn test_table(table: &LegacyTable, version: BdatVersion, slots: usize) {
+fn test_table(table: &LegacyTable, version: LegacyVersion, slots: usize) {
     let written = match version {
-        BdatVersion::LegacySwitch => bdat::legacy::to_vec_options::<SwitchEndian>(
+        LegacyVersion::Switch => bdat::legacy::to_vec_options::<SwitchEndian>(
             [table],
             version,
             LegacyWriteOptions::new().hash_slots(slots),
         )
         .unwrap(),
-        BdatVersion::LegacyX | BdatVersion::LegacyWii => bdat::legacy::to_vec_options::<WiiEndian>(
+        LegacyVersion::X | LegacyVersion::Wii => bdat::legacy::to_vec_options::<WiiEndian>(
             [table],
             version,
             LegacyWriteOptions::new().hash_slots(slots),
         )
         .unwrap(),
-        _ => unreachable!(),
     };
 
     let table_bytes = &written[12..];
@@ -79,11 +78,10 @@ fn test_table(table: &LegacyTable, version: BdatVersion, slots: usize) {
     ) {
         assert!(
             match version {
-                BdatVersion::LegacySwitch =>
+                LegacyVersion::Switch =>
                     find_col_def::<SwitchEndian>(table_bytes, &col, slots as u32),
-                BdatVersion::LegacyX | BdatVersion::LegacyWii =>
+                LegacyVersion::X | LegacyVersion::Wii =>
                     find_col_def::<WiiEndian>(table_bytes, &col, slots as u32),
-                _ => unreachable!(),
             },
             "column {col} not found"
         );

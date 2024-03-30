@@ -1,6 +1,6 @@
 use std::fmt::{Display, Formatter};
 
-use crate::BdatVersion;
+use crate::{BdatVersion, LegacyVersion};
 
 /// A real number with a different internal representation based on the BDAT version.
 ///
@@ -25,7 +25,7 @@ impl BdatReal {
     /// the BDAT version.
     pub fn from_bits(bits: u32, version: BdatVersion) -> Self {
         match version {
-            BdatVersion::LegacyX => Self::Fixed(bits.into()),
+            BdatVersion::Legacy(LegacyVersion::X) => Self::Fixed(bits.into()),
             _ => Self::Floating(f32::from_bits(bits).into()),
         }
     }
@@ -47,9 +47,11 @@ impl BdatReal {
     ///
     /// Does nothing if `self` is not [`BdatReal::Unknown`].
     pub fn make_known(&mut self, version: BdatVersion) {
-        let Self::Unknown(internal) = *self else { return };
+        let Self::Unknown(internal) = *self else {
+            return;
+        };
         match version {
-            BdatVersion::LegacyX => *self = Self::Fixed(internal.into()),
+            BdatVersion::Legacy(LegacyVersion::X) => *self = Self::Fixed(internal.into()),
             _ => *self = Self::Floating(internal.into()),
         }
     }

@@ -14,7 +14,7 @@ use rayon::{iter::Either, prelude::*};
 
 use bdat::{BdatFile, Cell, CompatRef, CompatRowRef, CompatTable, Label, RowId};
 
-use crate::{hash::MurmurHashSet, InputData};
+use crate::{util::hash::MurmurHashSet, InputData};
 
 #[derive(Args)]
 pub struct DiffArgs {

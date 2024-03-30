@@ -7,7 +7,7 @@ use crate::io::read::{BdatFile, BdatReader, BdatSlice};
 use crate::io::BDAT_MAGIC;
 use crate::legacy::read::{LegacyBytes, LegacyReader};
 use crate::modern::FileReader;
-use crate::{BdatVersion, CompatTable, SwitchEndian, WiiEndian};
+use crate::{BdatVersion, CompatTable, LegacyVersion, SwitchEndian, WiiEndian};
 
 pub enum VersionReader<R: Read + Seek> {
     LegacyWii(LegacyReader<R, WiiEndian>),
@@ -65,11 +65,10 @@ pub enum DetectError {
 /// [`LegacyTable`]: crate::LegacyTable
 pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
     match detect_version(Cursor::new(&bytes))? {
-        BdatVersion::LegacySwitch => Ok(VersionSlice::LegacySwitch(LegacyBytes::new(
-            bytes,
-            BdatVersion::LegacySwitch,
-        )?)),
-        v @ BdatVersion::LegacyWii | v @ BdatVersion::LegacyX => {
+        BdatVersion::Legacy(LegacyVersion::Switch) => Ok(VersionSlice::LegacySwitch(
+            LegacyBytes::new(bytes, LegacyVersion::Switch)?,
+        )),
+        BdatVersion::Legacy(v @ LegacyVersion::Wii | v @ LegacyVersion::X) => {
             Ok(VersionSlice::LegacyWii(LegacyBytes::new(bytes, v)?))
         }
         BdatVersion::Modern => Ok(VersionSlice::Modern(
@@ -108,11 +107,10 @@ pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<VersionReader<R>> {
     let version = detect_version(&mut reader)?;
     reader.seek(SeekFrom::Start(pos))?;
     match version {
-        BdatVersion::LegacySwitch => Ok(VersionReader::LegacySwitch(LegacyReader::new(
-            reader,
-            BdatVersion::LegacySwitch,
-        )?)),
-        v @ BdatVersion::LegacyWii | v @ BdatVersion::LegacyX => {
+        BdatVersion::Legacy(LegacyVersion::Switch) => Ok(VersionReader::LegacySwitch(
+            LegacyReader::new(reader, LegacyVersion::Switch)?,
+        )),
+        BdatVersion::Legacy(v @ LegacyVersion::Wii | v @ LegacyVersion::X) => {
             Ok(VersionReader::LegacyWii(LegacyReader::new(reader, v)?))
         }
         BdatVersion::Modern => Ok(VersionReader::Modern(
@@ -166,7 +164,7 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
             // format.
             return Err(DetectError::LegacyNoTables.into());
         }
-        return Ok(BdatVersion::LegacySwitch);
+        return Ok(LegacyVersion::Switch.into());
     }
 
     let mut actual_table_count = 0;
@@ -185,7 +183,7 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
 
     reader.seek(SeekFrom::Start(0))?;
     if actual_table_count == u32::from_le_bytes(magic) {
-        return Ok(BdatVersion::LegacySwitch);
+        return Ok(LegacyVersion::Switch.into());
     }
 
     // If we've reached this point, we either have a XC1 (Wii) file or a XCX file, which are both
@@ -217,14 +215,14 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
     let final_offset = string_table_offset + string_table_len;
 
     if first_offset + 36 > final_offset {
-        return Ok(BdatVersion::LegacyWii);
+        return Ok(LegacyVersion::Wii.into());
     }
 
     let t_32 = reader.read_u32::<WiiEndian>()? >> 16;
     let t_36 = reader.read_u32::<WiiEndian>()?;
     Ok(match (t_32, t_36) {
-        (x, 0) if x <= final_offset => BdatVersion::LegacyX,
-        (_, _) => BdatVersion::LegacyWii,
+        (x, 0) if x <= final_offset => LegacyVersion::X.into(),
+        (_, _) => LegacyVersion::Wii.into(),
     })
 }
 

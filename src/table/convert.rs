@@ -2,7 +2,7 @@ use thiserror::Error;
 
 use crate::{
     BdatVersion, Cell, ColumnMap, LegacyColumn, LegacyRow, LegacyTable, LegacyTableBuilder,
-    ModernColumn, ModernRow, ModernTable, ModernTableBuilder, RowId, ValueType,
+    LegacyVersion, ModernColumn, ModernRow, ModernTable, ModernTableBuilder, RowId, ValueType,
 };
 
 /// Error encountered while converting tables
@@ -42,7 +42,7 @@ impl<'b> TryFrom<ModernColumn<'b>> for LegacyColumn<'b> {
         // any legacy version works here
         if !modern_col
             .value_type()
-            .is_supported(BdatVersion::LegacySwitch)
+            .is_supported(BdatVersion::Legacy(LegacyVersion::Switch))
         {
             return Err(FormatConvertError::UnsupportedValueType(
                 modern_col.value_type(),

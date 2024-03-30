@@ -9,9 +9,9 @@ use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use convert::ConvertArgs;
 use diff::DiffArgs;
-use hash::HashNameTable;
 use info::InfoArgs;
 use itertools::Itertools;
+use util::hash::HashNameTable;
 use walkdir::WalkDir;
 
 mod convert;

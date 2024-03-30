@@ -17,7 +17,7 @@ use std::ops::Range;
 use crate::error::Result;
 use crate::legacy::read::{LegacyBytes, LegacyReader};
 use crate::legacy::write::FileWriter;
-use crate::{BdatVersion, LegacyTable};
+use crate::{LegacyTable, LegacyVersion};
 
 pub(super) const HEADER_SIZE: usize = 64;
 pub(super) const HEADER_SIZE_WII: usize = 32;
@@ -95,11 +95,11 @@ impl From<(usize, usize)> for OffsetAndLen {
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatFile, BdatResult, BdatVersion, SwitchEndian};
+/// use bdat::{BdatFile, BdatResult, LegacyVersion, SwitchEndian};
 ///
 /// fn read_file(name: &str) -> BdatResult<()> {
 ///     let file = File::open(name)?;
-///     let tables = bdat::legacy::from_reader::<_, SwitchEndian>(file, BdatVersion::LegacySwitch)?.get_tables();
+///     let tables = bdat::legacy::from_reader::<_, SwitchEndian>(file, LegacyVersion::Switch)?.get_tables();
 ///     Ok(())
 /// }
 /// ```
@@ -109,7 +109,7 @@ impl From<(usize, usize)> for OffsetAndLen {
 /// [`BdatFile::get_tables`]: crate::BdatFile::get_tables
 pub fn from_reader<R: Read + Seek, E: ByteOrder>(
     reader: R,
-    version: BdatVersion,
+    version: LegacyVersion,
 ) -> Result<LegacyReader<R, E>> {
     LegacyReader::new(reader, version)
 }
@@ -129,10 +129,10 @@ pub fn from_reader<R: Read + Seek, E: ByteOrder>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatFile, BdatResult, BdatVersion, SwitchEndian};
+/// use bdat::{BdatFile, BdatResult, LegacyVersion, SwitchEndian};
 ///
 /// fn read(data: &mut [u8]) -> BdatResult<()> {
-///     let tables = bdat::legacy::from_bytes::<SwitchEndian>(data, BdatVersion::LegacySwitch)?.get_tables();
+///     let tables = bdat::legacy::from_bytes::<SwitchEndian>(data, LegacyVersion::Switch)?.get_tables();
 ///     Ok(())
 /// }
 /// ```
@@ -142,7 +142,7 @@ pub fn from_reader<R: Read + Seek, E: ByteOrder>(
 /// [`BdatFile::get_tables`]: crate::BdatFile::get_tables
 pub fn from_bytes<E: ByteOrder>(
     bytes: &mut [u8],
-    version: BdatVersion,
+    version: LegacyVersion,
 ) -> Result<LegacyBytes<'_, E>> {
     LegacyBytes::new(bytes, version)
 }
@@ -161,10 +161,10 @@ pub fn from_bytes<E: ByteOrder>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatFile, BdatResult, BdatVersion, SwitchEndian};
+/// use bdat::{BdatFile, BdatResult, LegacyVersion, SwitchEndian};
 ///
 /// fn read(data: &mut [u8]) -> BdatResult<()> {
-///     let tables = bdat::legacy::from_bytes::<SwitchEndian>(data, BdatVersion::LegacySwitch)?.get_tables();
+///     let tables = bdat::legacy::from_bytes::<SwitchEndian>(data, LegacyVersion::Switch)?.get_tables();
 ///     Ok(())
 /// }
 /// ```
@@ -174,7 +174,7 @@ pub fn from_bytes<E: ByteOrder>(
 /// [`BdatFile::get_tables`]: crate::BdatFile::get_tables
 pub fn from_bytes_copy<E: ByteOrder>(
     bytes: &[u8],
-    version: BdatVersion,
+    version: LegacyVersion,
 ) -> Result<LegacyBytes<'_, E>> {
     LegacyBytes::new_copy(bytes, version)
 }
@@ -184,19 +184,19 @@ pub fn from_bytes_copy<E: ByteOrder>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, SwitchEndian, BdatVersion, LegacyTable};
+/// use bdat::{BdatResult, SwitchEndian, LegacyVersion, LegacyTable};
 ///
 /// fn write_file(name: &str, tables: &[LegacyTable]) -> BdatResult<()> {
 ///     let file = File::create(name)?;
-///     // The legacy writer supports BdatVersion::Legacy and BdatVersion::LegacyX
-///     bdat::legacy::to_writer::<_, SwitchEndian>(file, tables, BdatVersion::LegacySwitch)?;
+///     // The legacy writer supports LegacyVersion:: and LegacyVersion::X
+///     bdat::legacy::to_writer::<_, SwitchEndian>(file, tables, LegacyVersion::Switch)?;
 ///     Ok(())
 /// }
 /// ```
 pub fn to_writer<'t, W: Write + Seek, E: ByteOrder + 'static>(
     writer: W,
     tables: impl IntoIterator<Item = impl Borrow<LegacyTable<'t>>>,
-    version: BdatVersion,
+    version: LegacyVersion,
 ) -> Result<()> {
     to_writer_options::<W, E>(writer, tables, version, LegacyWriteOptions::new())
 }
@@ -209,13 +209,13 @@ pub fn to_writer<'t, W: Write + Seek, E: ByteOrder + 'static>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, LegacyTable, SwitchEndian, BdatVersion};
+/// use bdat::{BdatResult, LegacyTable, SwitchEndian, LegacyVersion};
 /// use bdat::legacy::LegacyWriteOptions;
 ///
 /// fn write_file(name: &str, tables: &[LegacyTable]) -> BdatResult<()> {
 ///     let file = File::create(name)?;
-///     // The legacy writer supports BdatVersion::Legacy and BdatVersion::LegacyX
-///     bdat::legacy::to_writer_options::<_, SwitchEndian>(file, tables, BdatVersion::LegacySwitch,
+///     // The legacy writer supports LegacyVersion:: and LegacyVersion::X
+///     bdat::legacy::to_writer_options::<_, SwitchEndian>(file, tables, LegacyVersion::Switch,
 ///             LegacyWriteOptions::new().hash_slots(10))?;
 ///     Ok(())
 /// }
@@ -223,7 +223,7 @@ pub fn to_writer<'t, W: Write + Seek, E: ByteOrder + 'static>(
 pub fn to_writer_options<'t, W: Write + Seek, E: ByteOrder + 'static>(
     writer: W,
     tables: impl IntoIterator<Item = impl Borrow<LegacyTable<'t>>>,
-    version: BdatVersion,
+    version: LegacyVersion,
     opts: LegacyWriteOptions,
 ) -> Result<()> {
     let mut writer = FileWriter::<W, E>::new(writer, version, opts);
@@ -234,17 +234,17 @@ pub fn to_writer_options<'t, W: Write + Seek, E: ByteOrder + 'static>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, LegacyTable, SwitchEndian, BdatVersion};
+/// use bdat::{BdatResult, LegacyTable, SwitchEndian, LegacyVersion};
 ///
 /// fn write_vec(tables: &[LegacyTable]) -> BdatResult<()> {
-///     // The legacy writer supports BdatVersion::Legacy and BdatVersion::LegacyX
-///     let vec = bdat::legacy::to_vec::<SwitchEndian>(tables, BdatVersion::LegacySwitch)?;
+///     // The legacy writer supports LegacyVersion:: and LegacyVersion::X
+///     let vec = bdat::legacy::to_vec::<SwitchEndian>(tables, LegacyVersion::Switch)?;
 ///     Ok(())
 /// }
 /// ```
 pub fn to_vec<'t, E: ByteOrder + 'static>(
     tables: impl IntoIterator<Item = impl Borrow<LegacyTable<'t>>>,
-    version: BdatVersion,
+    version: LegacyVersion,
 ) -> Result<Vec<u8>> {
     to_vec_options::<E>(tables, version, LegacyWriteOptions::new())
 }
@@ -256,19 +256,19 @@ pub fn to_vec<'t, E: ByteOrder + 'static>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, LegacyTable, SwitchEndian, BdatVersion};
+/// use bdat::{BdatResult, LegacyTable, SwitchEndian, LegacyVersion};
 /// use bdat::legacy::LegacyWriteOptions;
 ///
 /// fn write_vec(tables: &[LegacyTable]) -> BdatResult<()> {
-///     // The legacy writer supports BdatVersion::Legacy and BdatVersion::LegacyX
-///     let vec = bdat::legacy::to_vec_options::<SwitchEndian>(tables, BdatVersion::LegacySwitch,
+///     // The legacy writer supports LegacyVersion:: and LegacyVersion::X
+///     let vec = bdat::legacy::to_vec_options::<SwitchEndian>(tables, LegacyVersion::Switch,
 ///             LegacyWriteOptions::new().hash_slots(10))?;
 ///     Ok(())
 /// }
 /// ```
 pub fn to_vec_options<'t, E: ByteOrder + 'static>(
     tables: impl IntoIterator<Item = impl Borrow<LegacyTable<'t>>>,
-    version: BdatVersion,
+    version: LegacyVersion,
     opts: LegacyWriteOptions,
 ) -> Result<Vec<u8>> {
     let mut vec = Vec::new();

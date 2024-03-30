@@ -284,9 +284,7 @@ impl ValueType {
     pub fn is_supported(self, version: BdatVersion) -> bool {
         use ValueType::*;
         match self {
-            Percent | Unknown12 | MessageId | HashRef | DebugString => {
-                version == BdatVersion::Modern
-            }
+            Percent | Unknown12 | MessageId | HashRef | DebugString => version.is_modern(),
             _ => true,
         }
     }

@@ -14,7 +14,7 @@ use rayon::prelude::*;
 use crate::{
     error::Error,
     filter::{Filter, FilterArg},
-    hash::HashNameTable,
+    util::hash::HashNameTable,
     InputData,
 };
 use crate::{

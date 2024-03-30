@@ -16,14 +16,14 @@ use crate::legacy::{
     LegacyWriteOptions, COLUMN_NODE_SIZE, COLUMN_NODE_SIZE_WII, HEADER_SIZE, HEADER_SIZE_WII,
 };
 use crate::{
-    BdatError, BdatVersion, Cell, LegacyColumn, LegacyFlag, LegacyRow, LegacyTable, Value,
+    BdatError, Cell, LegacyColumn, LegacyFlag, LegacyRow, LegacyTable, LegacyVersion, Value,
     ValueType, WiiEndian,
 };
 
 /// Writes a full BDAT file to a writer.
 pub struct FileWriter<W, E> {
     writer: W,
-    version: BdatVersion,
+    version: LegacyVersion,
     opts: LegacyWriteOptions,
     _endianness: PhantomData<E>,
 }
@@ -32,7 +32,7 @@ pub struct FileWriter<W, E> {
 struct TableWriter<'a, 't, E> {
     table: &'a LegacyTable<'t>,
     buf: Cursor<Vec<u8>>,
-    version: BdatVersion,
+    version: LegacyVersion,
     opts: LegacyWriteOptions,
     names: StringTable,
     strings: StringTable,
@@ -128,7 +128,7 @@ struct StringTable {
 }
 
 impl<W: Write + Seek, E: ByteOrder + 'static> FileWriter<W, E> {
-    pub fn new(writer: W, version: BdatVersion, opts: LegacyWriteOptions) -> Self {
+    pub fn new(writer: W, version: LegacyVersion, opts: LegacyWriteOptions) -> Self {
         Self {
             writer,
             version,
@@ -188,7 +188,7 @@ impl<W: Write + Seek, E: ByteOrder + 'static> FileWriter<W, E> {
 }
 
 impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
-    fn new(table: &'a LegacyTable<'t>, version: BdatVersion, opts: LegacyWriteOptions) -> Self {
+    fn new(table: &'a LegacyTable<'t>, version: LegacyVersion, opts: LegacyWriteOptions) -> Self {
         Self {
             table,
             buf: Cursor::new(Vec::new()),
@@ -196,7 +196,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
             opts,
             names: StringTable::new(
                 match version {
-                    BdatVersion::LegacyWii => HEADER_SIZE_WII,
+                    LegacyVersion::Wii => HEADER_SIZE_WII,
                     _ => HEADER_SIZE,
                 },
                 true,
@@ -218,7 +218,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
 
         columns.write_infos::<E>(&mut self.buf)?;
         self.names.write(&mut self.buf)?;
-        if self.version != BdatVersion::LegacyWii {
+        if self.version != LegacyVersion::Wii {
             columns.write_nodes::<E>(&mut self.buf)?;
         }
 
@@ -284,7 +284,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
             info_offset,
         );
         let columns = match self.version {
-            BdatVersion::LegacyWii => columns.build_wii()?,
+            LegacyVersion::Wii => columns.build_wii()?,
             _ => columns.build_regular()?,
         };
         self.columns = Some(columns);
@@ -351,7 +351,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
             (self.strings.size_bytes_current() + self.header.final_padding).try_into()?,
         )?;
 
-        if self.version != BdatVersion::LegacyWii {
+        if self.version != LegacyVersion::Wii {
             // Column node table offset
             self.buf.write_u16::<E>(
                 (self.names.base_offset + self.names.size_bytes_current()).try_into()?,
@@ -557,10 +557,15 @@ impl<'a, 'b, 't, E: ByteOrder> RowWriter<'a, 'b, 't, E> {
             Value::String(s) => writer.write_u32::<E>(self.table.strings.insert(s).try_into()?),
             Value::Float(f) => {
                 let mut f = *f;
-                f.make_known(self.table.version);
+                f.make_known(self.table.version.into());
                 writer.write_u32::<E>(f.to_bits())
             }
-            t => return Err(BdatError::UnsupportedType(t.into(), self.table.version)),
+            t => {
+                return Err(BdatError::UnsupportedType(
+                    t.into(),
+                    self.table.version.into(),
+                ))
+            }
         }?)
     }
 
@@ -699,9 +704,9 @@ impl StringTable {
         }
     }
 
-    fn make_space_names(&mut self, text: &str, version: BdatVersion) {
+    fn make_space_names(&mut self, text: &str, version: LegacyVersion) {
         self.make_space(text);
-        if version == BdatVersion::LegacyWii {
+        if version == LegacyVersion::Wii {
             self.max_len += COLUMN_NODE_SIZE_WII;
         }
     }

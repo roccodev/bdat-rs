@@ -1,6 +1,6 @@
 use crate::{
     filter::{Filter, FilterArg},
-    hash::HashNameTable,
+    util::hash::HashNameTable,
     InputData,
 };
 use anyhow::{Context, Result};

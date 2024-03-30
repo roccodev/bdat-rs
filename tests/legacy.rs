@@ -1,5 +1,5 @@
 use bdat::legacy::LegacyWriteOptions;
-use bdat::{BdatFile, BdatVersion, Cell, Label, SwitchEndian, Value};
+use bdat::{BdatFile, Cell, Label, LegacyVersion, SwitchEndian, Value};
 
 type FileEndian = SwitchEndian;
 
@@ -10,18 +10,17 @@ mod common;
 #[test]
 fn version_detect() {
     assert_eq!(
-        BdatVersion::LegacySwitch,
-        bdat::detect_bytes_version(TEST_FILE_1).unwrap()
+        bdat::detect_bytes_version(TEST_FILE_1).unwrap(),
+        LegacyVersion::Switch.into(),
     );
 }
 
 #[test]
 fn basic_read() {
-    let tables =
-        bdat::legacy::from_bytes_copy::<FileEndian>(TEST_FILE_1, BdatVersion::LegacySwitch)
-            .unwrap()
-            .get_tables()
-            .unwrap();
+    let tables = bdat::legacy::from_bytes_copy::<FileEndian>(TEST_FILE_1, LegacyVersion::Switch)
+        .unwrap()
+        .get_tables()
+        .unwrap();
     assert_eq!(1, tables.len());
 
     let table = &tables[0];
@@ -98,22 +97,20 @@ fn basic_read() {
 
 #[test]
 fn write_back() {
-    let tables =
-        bdat::legacy::from_bytes_copy::<FileEndian>(TEST_FILE_1, BdatVersion::LegacySwitch)
-            .unwrap()
-            .get_tables()
-            .unwrap();
+    let tables = bdat::legacy::from_bytes_copy::<FileEndian>(TEST_FILE_1, LegacyVersion::Switch)
+        .unwrap()
+        .get_tables()
+        .unwrap();
     let mut new_out = bdat::legacy::to_vec_options::<FileEndian>(
         &tables,
-        BdatVersion::LegacySwitch,
+        LegacyVersion::Switch,
         LegacyWriteOptions::new().scramble(true),
     )
     .unwrap();
-    let new_tables =
-        bdat::legacy::from_bytes::<FileEndian>(&mut new_out, BdatVersion::LegacySwitch)
-            .unwrap()
-            .get_tables()
-            .unwrap();
+    let new_tables = bdat::legacy::from_bytes::<FileEndian>(&mut new_out, LegacyVersion::Switch)
+        .unwrap()
+        .get_tables()
+        .unwrap();
     assert_eq!(tables, new_tables);
 }
 
@@ -121,8 +118,8 @@ fn write_back() {
 fn duplicate_columns() {
     let tables = [common::duplicate_table_create()];
 
-    let mut bytes = bdat::legacy::to_vec::<FileEndian>(&tables, BdatVersion::LegacySwitch).unwrap();
-    let back = bdat::legacy::from_bytes::<FileEndian>(&mut bytes, BdatVersion::LegacySwitch)
+    let mut bytes = bdat::legacy::to_vec::<FileEndian>(&tables, LegacyVersion::Switch).unwrap();
+    let back = bdat::legacy::from_bytes::<FileEndian>(&mut bytes, LegacyVersion::Switch)
         .unwrap()
         .get_tables()
         .unwrap();
@@ -132,11 +129,10 @@ fn duplicate_columns() {
 
 #[test]
 fn table_map() {
-    let tables =
-        bdat::legacy::from_bytes_copy::<FileEndian>(TEST_FILE_1, BdatVersion::LegacySwitch)
-            .unwrap()
-            .get_tables_by_name()
-            .unwrap();
+    let tables = bdat::legacy::from_bytes_copy::<FileEndian>(TEST_FILE_1, LegacyVersion::Switch)
+        .unwrap()
+        .get_tables_by_name()
+        .unwrap();
 
     assert_eq!(1, tables.len());
     let table = &tables[&Label::from("Table1")];

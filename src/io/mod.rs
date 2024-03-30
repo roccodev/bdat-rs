@@ -17,14 +17,21 @@ pub type WiiEndian = byteorder::BigEndian;
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BdatVersion {
-    /// Used in XC1 (Wii)
-    LegacyWii,
-    /// Used in XC2/XCDE
-    LegacySwitch,
-    /// Used in XCX
-    LegacyX,
+    /// Used in all games prior to XC3
+    Legacy(LegacyVersion),
     /// Used in XC3
     Modern,
+}
+
+#[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub enum LegacyVersion {
+    /// Used in XC1 (Wii)
+    Wii,
+    /// Used in XC2/XCDE
+    Switch,
+    /// Used in XCX
+    X,
 }
 
 impl BdatVersion {
@@ -45,8 +52,23 @@ impl BdatVersion {
     pub const fn table_header_size(&self) -> usize {
         match self {
             BdatVersion::Modern => 48,
-            BdatVersion::LegacyWii => legacy::HEADER_SIZE_WII,
+            BdatVersion::Legacy(l) => l.table_header_size(),
+        }
+    }
+}
+
+impl LegacyVersion {
+    /// Returns the size in bytes of the table header.
+    pub const fn table_header_size(&self) -> usize {
+        match self {
+            Self::Wii => legacy::HEADER_SIZE_WII,
             _ => legacy::HEADER_SIZE,
         }
+    }
+}
+
+impl From<LegacyVersion> for BdatVersion {
+    fn from(value: LegacyVersion) -> Self {
+        Self::Legacy(value)
     }
 }

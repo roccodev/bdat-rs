@@ -4,7 +4,7 @@ use crate::InputData;
 use anyhow::{Context, Result};
 use bdat::legacy::scramble::ScrambleType;
 use bdat::legacy::{FileHeader, TableHeader};
-use bdat::{BdatVersion, SwitchEndian, WiiEndian};
+use bdat::{BdatVersion, LegacyVersion, SwitchEndian, WiiEndian};
 use clap::Args;
 use rayon::iter::{IntoParallelIterator, ParallelIterator};
 use std::io::Cursor;
@@ -86,12 +86,13 @@ fn run(
 
 fn unscramble_file(path_in: PathBuf, path_out: PathBuf, progress: &ProgressBarState) -> Result<()> {
     let mut bytes = std::fs::read(path_in)?;
-    let version = bdat::detect_bytes_version(&bytes)?;
+    let BdatVersion::Legacy(version) = bdat::detect_bytes_version(&bytes)? else {
+        return Err(Error::NotLegacy.into());
+    };
     let cursor = Cursor::new(&bytes);
     let header = match version {
-        BdatVersion::LegacySwitch => FileHeader::read::<_, SwitchEndian>(cursor),
-        BdatVersion::LegacyX | BdatVersion::LegacyWii => FileHeader::read::<_, WiiEndian>(cursor),
-        _ => return Err(Error::NotLegacy.into()),
+        LegacyVersion::Switch => FileHeader::read::<_, SwitchEndian>(cursor),
+        LegacyVersion::X | LegacyVersion::Wii => FileHeader::read::<_, WiiEndian>(cursor),
     }?;
 
     let table_bar = progress.add_child(header.table_count);
@@ -99,13 +100,12 @@ fn unscramble_file(path_in: PathBuf, path_out: PathBuf, progress: &ProgressBarSt
 
     header.for_each_table_mut(&mut bytes, |table| {
         let header = match version {
-            BdatVersion::LegacySwitch => {
+            LegacyVersion::Switch => {
                 TableHeader::read::<SwitchEndian>(Cursor::new(&table), version)
             }
-            BdatVersion::LegacyX | BdatVersion::LegacyWii => {
+            LegacyVersion::X | LegacyVersion::Wii => {
                 TableHeader::read::<WiiEndian>(Cursor::new(&table), version)
             }
-            _ => unreachable!(),
         }?;
         if let ScrambleType::None = header.scramble_type {
             progress.println(format!(
@@ -129,12 +129,13 @@ fn unscramble_file(path_in: PathBuf, path_out: PathBuf, progress: &ProgressBarSt
 fn scramble_file(path_in: PathBuf, path_out: PathBuf, progress: &ProgressBarState) -> Result<()> {
     let file_name = path_in.file_name().unwrap().to_string_lossy();
     let mut bytes = std::fs::read(&path_in)?;
-    let version = bdat::detect_bytes_version(&bytes)?;
+    let BdatVersion::Legacy(version) = bdat::detect_bytes_version(&bytes)? else {
+        return Err(Error::NotLegacy.into());
+    };
     let cursor = Cursor::new(&bytes);
     let wii_endian = match version {
-        BdatVersion::LegacyWii | BdatVersion::LegacyX => true,
-        BdatVersion::LegacySwitch => false,
-        _ => return Err(Error::NotLegacy.into()),
+        LegacyVersion::Wii | LegacyVersion::X => true,
+        LegacyVersion::Switch => false,
     };
     let header = match wii_endian {
         true => FileHeader::read::<_, WiiEndian>(cursor),

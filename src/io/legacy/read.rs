@@ -12,8 +12,8 @@ use crate::legacy::float::BdatReal;
 use crate::legacy::scramble::{calc_checksum, scramble, unscramble, ScrambleType};
 use crate::legacy::{ColumnNodeInfo, COLUMN_NODE_SIZE};
 use crate::{
-    BdatError, BdatFile, BdatVersion, Cell, LegacyColumn, LegacyFlag, LegacyRow, LegacyTable,
-    LegacyTableBuilder, Utf, Value, ValueType,
+    BdatError, BdatFile, Cell, LegacyColumn, LegacyFlag, LegacyRow, LegacyTable,
+    LegacyTableBuilder, LegacyVersion, Utf, Value, ValueType,
 };
 
 use super::{FileHeader, TableHeader};
@@ -22,7 +22,7 @@ use super::{FileHeader, TableHeader};
 pub struct LegacyBytes<'t, E> {
     data: Cow<'t, [u8]>,
     header: FileHeader,
-    version: BdatVersion,
+    version: LegacyVersion,
     table_headers: Vec<TableHeader>,
     _endianness: PhantomData<E>,
 }
@@ -31,14 +31,14 @@ pub struct LegacyBytes<'t, E> {
 pub struct LegacyReader<R, E> {
     reader: R,
     header: FileHeader,
-    version: BdatVersion,
+    version: LegacyVersion,
     _endianness: PhantomData<E>,
 }
 
 /// Reads tables in a file.
 struct TableReader<'t, E> {
     header: TableHeader,
-    version: BdatVersion,
+    version: LegacyVersion,
     data: Cursor<Cow<'t, [u8]>>,
     _endianness: PhantomData<E>,
 }
@@ -100,7 +100,7 @@ struct TableColumns<'t> {
 struct Flags<'t>(Vec<ColumnData<'t>>);
 
 impl<R: Read + Seek, E: ByteOrder> LegacyReader<R, E> {
-    pub fn new(mut reader: R, version: BdatVersion) -> Result<Self> {
+    pub fn new(mut reader: R, version: LegacyVersion) -> Result<Self> {
         let header = FileHeader::read::<_, E>(&mut reader)?;
         Ok(Self {
             header,
@@ -112,7 +112,7 @@ impl<R: Read + Seek, E: ByteOrder> LegacyReader<R, E> {
 }
 
 impl<'t, E: ByteOrder> LegacyBytes<'t, E> {
-    pub fn new(bytes: &'t mut [u8], version: BdatVersion) -> Result<Self> {
+    pub fn new(bytes: &'t mut [u8], version: LegacyVersion) -> Result<Self> {
         let header = FileHeader::read::<_, E>(Cursor::new(&bytes))?;
         let mut headers = vec![];
         header.for_each_table_mut(bytes, |table| {
@@ -130,7 +130,7 @@ impl<'t, E: ByteOrder> LegacyBytes<'t, E> {
         })
     }
 
-    pub fn new_copy(bytes: &[u8], version: BdatVersion) -> Result<Self> {
+    pub fn new_copy(bytes: &[u8], version: LegacyVersion) -> Result<Self> {
         let header = FileHeader::read::<_, E>(Cursor::new(&bytes))?;
         Ok(Self {
             header,
@@ -185,7 +185,7 @@ impl FileHeader {
 }
 
 impl TableHeader {
-    pub fn read<E: ByteOrder>(mut reader: impl Read, version: BdatVersion) -> Result<Self> {
+    pub fn read<E: ByteOrder>(mut reader: impl Read, version: LegacyVersion) -> Result<Self> {
         let mut magic = [0u8; 4];
         reader.read_exact(&mut magic)?;
         if magic != BDAT_MAGIC {
@@ -207,7 +207,7 @@ impl TableHeader {
         let scramble_key = reader.read_u16::<E>()?;
         let offset_strings = reader.read_u32::<E>()? as usize;
         let strings_len = reader.read_u32::<E>()? as usize;
-        let columns = if version != BdatVersion::LegacyWii {
+        let columns = if version != LegacyVersion::Wii {
             let offset_columns = reader.read_u16::<E>()? as usize;
             let column_count = reader.read_u16::<E>()? as usize;
             Some(ColumnNodeInfo {
@@ -279,7 +279,7 @@ impl TableHeader {
 }
 
 impl<'t, E: ByteOrder> TableReader<'t, E> {
-    fn from_reader<R: Read + Seek>(mut reader: R, version: BdatVersion) -> Result<Self> {
+    fn from_reader<R: Read + Seek>(mut reader: R, version: LegacyVersion) -> Result<Self> {
         let original_pos = reader.stream_position()?;
         let header = TableHeader::read::<E>(&mut reader, version)?;
         reader.seek(SeekFrom::Start(original_pos))?;
@@ -308,7 +308,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
 
     fn from_slice(
         bytes: &'t [u8],
-        version: BdatVersion,
+        version: LegacyVersion,
         header: Option<TableHeader>,
     ) -> Result<TableReader<'t, E>> {
         let mut reader = Cursor::new(&bytes);
@@ -628,9 +628,9 @@ impl<'a, 't, E: ByteOrder> RowReader<'a, 't, E> {
             }
             ValueType::Float => Value::Float(BdatReal::from_bits(
                 buf.read_u32::<E>()?,
-                self.table.version,
+                self.table.version.into(),
             )),
-            t => return Err(BdatError::UnsupportedType(t, self.table.version)),
+            t => return Err(BdatError::UnsupportedType(t, self.table.version.into())),
         })
     }
 

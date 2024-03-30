@@ -12,7 +12,7 @@ use serde::{Deserialize, Serialize};
 /// Incremental format version, used to determine schema compatibility.
 const FORMAT_VERSION: usize = 2;
 /// Currently supported format versions (backwards compatibility)
-const SUPPORTED_VERSIONS: &[usize] = &[FORMAT_VERSION, 1];
+const SUPPORTED_VERSIONS: &[usize] = &[FORMAT_VERSION];
 
 /// Defines the structure of a BDAT file, so it can
 /// be re-serialized properly.

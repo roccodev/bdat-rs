@@ -1,18 +1,18 @@
 use bdat::legacy::LegacyWriteOptions;
-use bdat::{BdatFile, BdatVersion, Cell, Value, WiiEndian};
+use bdat::{BdatFile, Cell, LegacyVersion, Value, WiiEndian};
 
 mod common;
 
 type FileEndian = WiiEndian;
 
-const VERSION: BdatVersion = BdatVersion::LegacyX;
+const VERSION: LegacyVersion = LegacyVersion::X;
 static TEST_FILE_1: &[u8] = include_bytes!("res/test_legacy_x_1.bdat");
 
 #[test]
 fn version_detect() {
     assert_eq!(
-        BdatVersion::LegacyX,
-        bdat::detect_bytes_version(TEST_FILE_1).unwrap()
+        bdat::detect_bytes_version(TEST_FILE_1).unwrap(),
+        LegacyVersion::X.into(),
     );
 }
 

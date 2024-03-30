@@ -1,5 +1,7 @@
 use anyhow::{Context, Result};
-use bdat::{BdatFile, BdatResult, BdatVersion, CompatTable, SwitchEndian, WiiEndian};
+use bdat::{
+    BdatFile, BdatResult, BdatVersion, CompatTable, LegacyVersion, SwitchEndian, WiiEndian,
+};
 use clap::{Args, ValueEnum};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use itertools::Itertools;
@@ -7,6 +9,7 @@ use std::io::{Seek, Write};
 use std::path::{Path, PathBuf};
 
 pub mod fixed_vec;
+pub mod hash;
 
 #[derive(Clone)]
 pub struct ProgressBarState {
@@ -34,27 +37,27 @@ pub enum BdatGame {
 impl BdatGame {
     pub fn version_default(version: BdatVersion) -> Self {
         match version {
-            BdatVersion::LegacyWii => Self::Wii,
-            BdatVersion::LegacySwitch => Self::LegacySwitch,
-            BdatVersion::LegacyX => Self::Xcx,
+            BdatVersion::Legacy(LegacyVersion::Wii) => Self::Wii,
+            BdatVersion::Legacy(LegacyVersion::Switch) => Self::LegacySwitch,
+            BdatVersion::Legacy(LegacyVersion::X) => Self::Xcx,
             BdatVersion::Modern => Self::Modern,
         }
     }
 
     pub fn from_bytes(self, bytes: &mut [u8]) -> BdatResult<Vec<CompatTable>> {
         Ok(match self {
-            Self::Wii => bdat::legacy::from_bytes::<WiiEndian>(bytes, BdatVersion::LegacyWii)?
+            Self::Wii => bdat::legacy::from_bytes::<WiiEndian>(bytes, LegacyVersion::Wii)?
                 .get_tables()?
                 .into_iter()
                 .map(Into::into)
                 .collect(),
-            Self::Xcx => bdat::legacy::from_bytes::<WiiEndian>(bytes, BdatVersion::LegacyX)?
+            Self::Xcx => bdat::legacy::from_bytes::<WiiEndian>(bytes, LegacyVersion::X)?
                 .get_tables()?
                 .into_iter()
                 .map(Into::into)
                 .collect(),
             Self::LegacySwitch => {
-                bdat::legacy::from_bytes::<SwitchEndian>(bytes, BdatVersion::LegacySwitch)?
+                bdat::legacy::from_bytes::<SwitchEndian>(bytes, LegacyVersion::Switch)?
                     .get_tables()?
                     .into_iter()
                     .map(Into::into)
@@ -86,16 +89,12 @@ impl BdatGame {
             .collect_vec();
         match self {
             Self::Wii => {
-                bdat::legacy::to_writer::<_, WiiEndian>(writer, tables, BdatVersion::LegacyWii)
+                bdat::legacy::to_writer::<_, WiiEndian>(writer, tables, LegacyVersion::Wii)
             }
-            Self::LegacySwitch => bdat::legacy::to_writer::<_, SwitchEndian>(
-                writer,
-                tables,
-                BdatVersion::LegacySwitch,
-            ),
-            Self::Xcx => {
-                bdat::legacy::to_writer::<_, WiiEndian>(writer, tables, BdatVersion::LegacyX)
+            Self::LegacySwitch => {
+                bdat::legacy::to_writer::<_, SwitchEndian>(writer, tables, LegacyVersion::Switch)
             }
+            Self::Xcx => bdat::legacy::to_writer::<_, WiiEndian>(writer, tables, LegacyVersion::X),
             _ => unreachable!(),
         }
     }
@@ -116,11 +115,11 @@ impl BdatGame {
             .map(CompatTable::into_legacy)
             .collect_vec();
         match self {
-            Self::Wii => bdat::legacy::to_vec::<WiiEndian>(tables, BdatVersion::LegacyWii),
+            Self::Wii => bdat::legacy::to_vec::<WiiEndian>(tables, LegacyVersion::Wii),
             Self::LegacySwitch => {
-                bdat::legacy::to_vec::<SwitchEndian>(tables, BdatVersion::LegacySwitch)
+                bdat::legacy::to_vec::<SwitchEndian>(tables, LegacyVersion::Switch)
             }
-            Self::Xcx => bdat::legacy::to_vec::<WiiEndian>(tables, BdatVersion::LegacyX),
+            Self::Xcx => bdat::legacy::to_vec::<WiiEndian>(tables, LegacyVersion::X),
             _ => unreachable!(),
         }
     }
@@ -198,9 +197,9 @@ impl ValueEnum for BdatGame {
 impl From<BdatGame> for BdatVersion {
     fn from(value: BdatGame) -> Self {
         match value {
-            BdatGame::Wii => BdatVersion::LegacyWii,
-            BdatGame::Xcx => BdatVersion::LegacyX,
-            BdatGame::LegacySwitch => BdatVersion::LegacySwitch,
+            BdatGame::Wii => LegacyVersion::Wii.into(),
+            BdatGame::Xcx => LegacyVersion::X.into(),
+            BdatGame::LegacySwitch => LegacyVersion::Switch.into(),
             BdatGame::Modern => BdatVersion::Modern,
         }
     }

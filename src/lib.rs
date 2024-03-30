@@ -55,7 +55,7 @@
 //! See also: [`LegacyTable`]
 //!
 //! ```
-//! use bdat::{BdatResult, SwitchEndian, BdatFile, LegacyTable, BdatVersion, Label};
+//! use bdat::{BdatResult, SwitchEndian, BdatFile, LegacyTable, LegacyVersion, Label};
 //!
 //! fn read_legacy() -> BdatResult<()> {
 //!     // Mutable access is required as text might need to be unscrambled.
@@ -63,7 +63,7 @@
 //!     // Use `WiiEndian` for Xenoblade (Wii) and Xenoblade X.
 //!     let mut bdat_file = bdat::legacy::from_bytes::<SwitchEndian>(
 //!         &mut data,
-//!         BdatVersion::LegacySwitch
+//!         LegacyVersion::Switch
 //!     )?;
 //!
 //!     let table: &LegacyTable = &bdat_file.get_tables()?[0];
@@ -124,7 +124,7 @@
 //! Tables obtained with the auto-detecting functions must be extracted or converted first.
 //!
 //! ```
-//! use bdat::{BdatResult, BdatVersion, SwitchEndian, WiiEndian, ModernTable, LegacyTable};
+//! use bdat::{BdatResult, LegacyVersion, SwitchEndian, WiiEndian, ModernTable, LegacyTable};
 //!
 //! fn write_modern(table: &ModernTable) -> BdatResult<()> {
 //!     // also bdat::to_writer for io::Write implementations
@@ -134,7 +134,7 @@
 //!
 //! fn write_legacy(table: &LegacyTable) -> BdatResult<()> {
 //!     // Endianness and version may vary, here it's writing Xenoblade X tables.
-//!     let _written: Vec<u8> = bdat::legacy::to_vec::<WiiEndian>([table], BdatVersion::LegacyX)?;
+//!     let _written: Vec<u8> = bdat::legacy::to_vec::<WiiEndian>([table], LegacyVersion::X)?;
 //!     Ok(())
 //! }
 //! ```
