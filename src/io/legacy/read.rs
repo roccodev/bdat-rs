@@ -188,10 +188,18 @@ impl TableHeader {
     pub fn read<E: ByteOrder>(mut reader: impl Read, version: LegacyVersion) -> Result<Self> {
         let mut magic = [0u8; 4];
         reader.read_exact(&mut magic)?;
-        if magic != BDAT_MAGIC {
-            // BDAT - doesn't change with endianness
-            return Err(BdatError::MalformedBdat(Scope::Table));
+        if version != LegacyVersion::New3ds {
+            if magic != BDAT_MAGIC {
+                // BDAT - doesn't change with endianness
+                return Err(BdatError::MalformedBdat(Scope::Table));
+            }
+        } else {
+            magic.reverse(); // Sike!
+            if magic != BDAT_MAGIC {
+                return Err(BdatError::MalformedBdat(Scope::Table));
+            }
         }
+
         // Bit 0: seems to be 1 for Big Endian, 0 for Little Endian
         // Bit 1: whether the table is scrambled
         let flags = reader.read_u8()? as usize;
@@ -207,7 +215,7 @@ impl TableHeader {
         let scramble_key = reader.read_u16::<E>()?;
         let offset_strings = reader.read_u32::<E>()? as usize;
         let strings_len = reader.read_u32::<E>()? as usize;
-        let columns = if version != LegacyVersion::Wii {
+        let columns = if !version.is_wii_table_format() {
             let offset_columns = reader.read_u16::<E>()? as usize;
             let column_count = reader.read_u16::<E>()? as usize;
             Some(ColumnNodeInfo {

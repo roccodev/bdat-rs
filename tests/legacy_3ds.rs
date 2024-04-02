@@ -1,10 +1,9 @@
 use bdat::legacy::LegacyWriteOptions;
-use bdat::{BdatFile, Cell, LegacyVersion, Value, WiiEndian};
+use bdat::{BdatFile, Cell, LegacyVersion, SwitchEndian, Value};
 
-type FileEndian = WiiEndian;
-
-const VERSION: LegacyVersion = LegacyVersion::Wii;
-static TEST_FILE_1: &[u8] = include_bytes!("res/test_legacy_wii_1.bdat");
+type FileEndian = SwitchEndian;
+const VERSION: LegacyVersion = LegacyVersion::New3ds;
+static TEST_FILE_1: &[u8] = include_bytes!("res/test_legacy_3ds_1.bdat");
 
 mod common;
 
@@ -12,7 +11,7 @@ mod common;
 fn version_detect() {
     assert_eq!(
         bdat::detect_bytes_version(TEST_FILE_1).unwrap(),
-        LegacyVersion::Wii.into(),
+        VERSION.into(),
     );
 }
 

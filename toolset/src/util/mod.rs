@@ -30,6 +30,7 @@ pub struct RayonPoolJobs {
 pub enum BdatGame {
     Wii,
     Xcx,
+    New3ds,
     LegacySwitch,
     Modern,
 }
@@ -38,6 +39,7 @@ impl BdatGame {
     pub fn version_default(version: BdatVersion) -> Self {
         match version {
             BdatVersion::Legacy(LegacyVersion::Wii) => Self::Wii,
+            BdatVersion::Legacy(LegacyVersion::New3ds) => Self::New3ds,
             BdatVersion::Legacy(LegacyVersion::Switch) => Self::LegacySwitch,
             BdatVersion::Legacy(LegacyVersion::X) => Self::Xcx,
             BdatVersion::Modern => Self::Modern,
@@ -63,6 +65,11 @@ impl BdatGame {
                     .map(Into::into)
                     .collect()
             }
+            Self::New3ds => bdat::legacy::from_bytes::<SwitchEndian>(bytes, LegacyVersion::New3ds)?
+                .get_tables()?
+                .into_iter()
+                .map(Into::into)
+                .collect(),
             Self::Modern => bdat::modern::from_bytes::<SwitchEndian>(bytes)?
                 .get_tables()?
                 .into_iter()
@@ -95,7 +102,10 @@ impl BdatGame {
                 bdat::legacy::to_writer::<_, SwitchEndian>(writer, tables, LegacyVersion::Switch)
             }
             Self::Xcx => bdat::legacy::to_writer::<_, WiiEndian>(writer, tables, LegacyVersion::X),
-            _ => unreachable!(),
+            Self::New3ds => {
+                bdat::legacy::to_writer::<_, SwitchEndian>(writer, tables, LegacyVersion::New3ds)
+            }
+            Self::Modern => unreachable!(),
         }
     }
 
@@ -181,12 +191,19 @@ impl RayonPoolJobs {
 
 impl ValueEnum for BdatGame {
     fn value_variants<'a>() -> &'a [Self] {
-        &[Self::Wii, Self::LegacySwitch, Self::Xcx, Self::Modern]
+        &[
+            Self::Wii,
+            Self::New3ds,
+            Self::Xcx,
+            Self::LegacySwitch,
+            Self::Modern,
+        ]
     }
 
     fn to_possible_value<'a>(&self) -> Option<clap::builder::PossibleValue> {
         match self {
             Self::Wii => Some(clap::builder::PossibleValue::new("xc1")),
+            Self::New3ds => Some(clap::builder::PossibleValue::new("xc3d")),
             Self::LegacySwitch => Some(clap::builder::PossibleValue::new("xc2de")),
             Self::Xcx => Some(clap::builder::PossibleValue::new("xcx")),
             Self::Modern => Some(clap::builder::PossibleValue::new("xc3")),
@@ -198,6 +215,7 @@ impl From<BdatGame> for BdatVersion {
     fn from(value: BdatGame) -> Self {
         match value {
             BdatGame::Wii => LegacyVersion::Wii.into(),
+            BdatGame::New3ds => LegacyVersion::New3ds.into(),
             BdatGame::Xcx => LegacyVersion::X.into(),
             BdatGame::LegacySwitch => LegacyVersion::Switch.into(),
             BdatGame::Modern => BdatVersion::Modern,

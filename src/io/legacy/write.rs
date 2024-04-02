@@ -1,4 +1,3 @@
-use std::any::TypeId;
 use std::borrow::Borrow;
 use std::collections::HashMap;
 use std::io::{Cursor, Seek, SeekFrom, Write};
@@ -12,12 +11,10 @@ use crate::io::BDAT_MAGIC;
 use crate::legacy::hash::HashTable;
 use crate::legacy::scramble::{calc_checksum, scramble};
 use crate::legacy::util::{pad_2, pad_32, pad_4, pad_64};
-use crate::legacy::{
-    LegacyWriteOptions, COLUMN_NODE_SIZE, COLUMN_NODE_SIZE_WII, HEADER_SIZE, HEADER_SIZE_WII,
-};
+use crate::legacy::{LegacyWriteOptions, COLUMN_NODE_SIZE, COLUMN_NODE_SIZE_WII, HEADER_SIZE};
 use crate::{
     BdatError, Cell, LegacyColumn, LegacyFlag, LegacyRow, LegacyTable, LegacyVersion, Value,
-    ValueType, WiiEndian,
+    ValueType,
 };
 
 /// Writes a full BDAT file to a writer.
@@ -194,13 +191,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
             buf: Cursor::new(Vec::new()),
             version,
             opts,
-            names: StringTable::new(
-                match version {
-                    LegacyVersion::Wii => HEADER_SIZE_WII,
-                    _ => HEADER_SIZE,
-                },
-                true,
-            ),
+            names: StringTable::new(version.table_header_size(), true),
             strings: StringTable::new(0, false),
             columns: None,
             header: Default::default(),
@@ -217,8 +208,8 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
         let columns = self.columns.as_ref().unwrap();
 
         columns.write_infos::<E>(&mut self.buf)?;
-        self.names.write(&mut self.buf)?;
-        if self.version != LegacyVersion::Wii {
+        self.names.write::<E>(&mut self.buf)?;
+        if !self.version.is_wii_table_format() {
             columns.write_nodes::<E>(&mut self.buf)?;
         }
 
@@ -252,7 +243,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
             self.buf.write_u8(0)?;
         }
 
-        self.strings.write(&mut self.buf)?;
+        self.strings.write::<E>(&mut self.buf)?;
 
         let table_size = self.buf.position() as usize;
         for _ in table_size..pad_64(table_size) {
@@ -283,9 +274,10 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
             self.opts.hash_slots.try_into()?,
             info_offset,
         );
-        let columns = match self.version {
-            LegacyVersion::Wii => columns.build_wii()?,
-            _ => columns.build_regular()?,
+        let columns = if self.version.is_wii_table_format() {
+            columns.build_wii()?
+        } else {
+            columns.build_regular()?
         };
         self.columns = Some(columns);
 
@@ -308,10 +300,16 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
     fn write_header(&mut self) -> Result<()> {
         let columns = self.columns.as_ref().unwrap();
 
-        self.buf.write_all(&BDAT_MAGIC)?; // "BDAT"
+        if self.version != LegacyVersion::New3ds {
+            self.buf.write_all(&BDAT_MAGIC)?; // "BDAT"
+        } else {
+            let mut magic = BDAT_MAGIC;
+            magic.reverse();
+            self.buf.write_all(&magic)?; // "TADB"
+        }
 
         let mut flags = 0;
-        if TypeId::of::<E>() == TypeId::of::<WiiEndian>() {
+        if self.version.is_wii_table_format() {
             flags |= 0b1;
         }
         if self.opts.scramble {
@@ -351,7 +349,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
             (self.strings.size_bytes_current() + self.header.final_padding).try_into()?,
         )?;
 
-        if self.version != LegacyVersion::Wii {
+        if !self.version.is_wii_table_format() {
             // Column node table offset
             self.buf.write_u16::<E>(
                 (self.names.base_offset + self.names.size_bytes_current()).try_into()?,
@@ -706,7 +704,7 @@ impl StringTable {
 
     fn make_space_names(&mut self, text: &str, version: LegacyVersion) {
         self.make_space(text);
-        if version == LegacyVersion::Wii {
+        if version.is_wii_table_format() {
             self.max_len += COLUMN_NODE_SIZE_WII;
         }
     }
@@ -748,7 +746,7 @@ impl StringTable {
             .map(|o| o + self.base_offset)
     }
 
-    fn write(&self, mut writer: impl Write) -> Result<()> {
+    fn write<E: ByteOrder>(&self, mut writer: impl Write) -> Result<()> {
         for text in &self.table {
             match text {
                 StringNode::String(text) => {
@@ -760,8 +758,8 @@ impl StringTable {
                     }
                 }
                 StringNode::WiiColumn(node) => {
-                    writer.write_u16::<WiiEndian>(node.info_ptr.try_into()?)?;
-                    writer.write_u16::<WiiEndian>(node.linked_ptr.try_into()?)?;
+                    writer.write_u16::<E>(node.info_ptr.try_into()?)?;
+                    writer.write_u16::<E>(node.linked_ptr.try_into()?)?;
                     let len = node.name.len() + 1;
                     writer.write_all(node.name.as_bytes())?;
                     writer.write_u8(0)?;

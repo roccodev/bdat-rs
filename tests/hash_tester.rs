@@ -54,12 +54,14 @@ fn create_table<'b>() -> LegacyTable<'b> {
 
 fn test_table(table: &LegacyTable, version: LegacyVersion, slots: usize) {
     let written = match version {
-        LegacyVersion::Switch => bdat::legacy::to_vec_options::<SwitchEndian>(
-            [table],
-            version,
-            LegacyWriteOptions::new().hash_slots(slots),
-        )
-        .unwrap(),
+        LegacyVersion::Switch | LegacyVersion::New3ds => {
+            bdat::legacy::to_vec_options::<SwitchEndian>(
+                [table],
+                version,
+                LegacyWriteOptions::new().hash_slots(slots),
+            )
+            .unwrap()
+        }
         LegacyVersion::X | LegacyVersion::Wii => bdat::legacy::to_vec_options::<WiiEndian>(
             [table],
             version,
@@ -78,7 +80,7 @@ fn test_table(table: &LegacyTable, version: LegacyVersion, slots: usize) {
     ) {
         assert!(
             match version {
-                LegacyVersion::Switch =>
+                LegacyVersion::Switch | LegacyVersion::New3ds =>
                     find_col_def::<SwitchEndian>(table_bytes, &col, slots as u32),
                 LegacyVersion::X | LegacyVersion::Wii =>
                     find_col_def::<WiiEndian>(table_bytes, &col, slots as u32),

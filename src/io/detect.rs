@@ -65,9 +65,9 @@ pub enum DetectError {
 /// [`LegacyTable`]: crate::LegacyTable
 pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
     match detect_version(Cursor::new(&bytes))? {
-        BdatVersion::Legacy(LegacyVersion::Switch) => Ok(VersionSlice::LegacySwitch(
-            LegacyBytes::new(bytes, LegacyVersion::Switch)?,
-        )),
+        BdatVersion::Legacy(v @ LegacyVersion::Switch | v @ LegacyVersion::New3ds) => {
+            Ok(VersionSlice::LegacySwitch(LegacyBytes::new(bytes, v)?))
+        }
         BdatVersion::Legacy(v @ LegacyVersion::Wii | v @ LegacyVersion::X) => {
             Ok(VersionSlice::LegacyWii(LegacyBytes::new(bytes, v)?))
         }
@@ -107,9 +107,9 @@ pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<VersionReader<R>> {
     let version = detect_version(&mut reader)?;
     reader.seek(SeekFrom::Start(pos))?;
     match version {
-        BdatVersion::Legacy(LegacyVersion::Switch) => Ok(VersionReader::LegacySwitch(
-            LegacyReader::new(reader, LegacyVersion::Switch)?,
-        )),
+        BdatVersion::Legacy(v @ LegacyVersion::Switch | v @ LegacyVersion::New3ds) => {
+            Ok(VersionReader::LegacySwitch(LegacyReader::new(reader, v)?))
+        }
         BdatVersion::Legacy(v @ LegacyVersion::Wii | v @ LegacyVersion::X) => {
             Ok(VersionReader::LegacyWii(LegacyReader::new(reader, v)?))
         }
@@ -152,27 +152,25 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
     // In other games, the magic space is the table count instead. By looking at how long
     // the table offset list is (reading until we meet "BDAT", which marks the start of the first
     // table), we can figure out endianness by checking against the table count.
-
-    let file_size = reader.read_u32::<SwitchEndian>()?;
+    const MAGIC_INT: u32 = u32::from_le_bytes(BDAT_MAGIC);
 
     if magic == [0, 0, 0, 0] {
-        // No tables, meaning we will have a very small file size. If the size is too large
-        // it means we have the wrong endianness
-        reader.seek(SeekFrom::Start(0))?;
-        if file_size > 1000 {
-            // In this case, we can't distinguish between Wii/X, as they only differ in table
-            // format.
-            return Err(DetectError::LegacyNoTables.into());
-        }
-        return Ok(LegacyVersion::Switch.into());
+        // No tables, we can't distinguish. Prior to 0.5, this used to be allowed for little endian
+        // tables, because proper XC3D tables weren't supported yet.
+        return Err(DetectError::LegacyNoTables.into());
     }
 
     let mut actual_table_count = 0;
     let mut new_magic = [0u8; 4];
     let mut first_offset = 0;
+    reader.seek(SeekFrom::Current(4))?;
     loop {
         reader.read_exact(&mut new_magic)?;
-        if new_magic == [0, 0, 0, 0] || new_magic == BDAT_MAGIC {
+        // Read until padding, "BDAT", or "TADB" (3DS)
+        if new_magic == [0, 0, 0, 0]
+            || SwitchEndian::read_u32(&new_magic) == MAGIC_INT
+            || WiiEndian::read_u32(&new_magic) == MAGIC_INT
+        {
             break;
         }
         if first_offset == 0 {
@@ -182,7 +180,17 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
     }
 
     reader.seek(SeekFrom::Start(0))?;
-    if actual_table_count == u32::from_le_bytes(magic) {
+    let expected_table_count = SwitchEndian::read_u32(&magic);
+    if actual_table_count == expected_table_count {
+        // `first_offset` was first read as big endian, but if the table count matches we
+        // need little endian (either 3DS or Switch)
+        reader.seek(SeekFrom::Start(
+            SwitchEndian::read_u32(&first_offset.to_be_bytes()) as u64,
+        ))?;
+        if reader.read_u32::<WiiEndian>()? == MAGIC_INT {
+            // Table magic in big endian, this is a 3DS file.
+            return Ok(LegacyVersion::New3ds.into());
+        }
         return Ok(LegacyVersion::Switch.into());
     }
 
@@ -209,7 +217,7 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
     // offset), then the table is from XCX.
     // In any other case, it's the XC1 format.
 
-    reader.seek(SeekFrom::Start(first_offset as u64 + 32 - 4 - 4))?;
+    reader.seek(SeekFrom::Start(first_offset as u64 + 32 - 4 * 2))?;
     let string_table_offset = reader.read_u32::<WiiEndian>()?;
     let string_table_len = reader.read_u32::<WiiEndian>()?;
     let final_offset = string_table_offset + string_table_len;
