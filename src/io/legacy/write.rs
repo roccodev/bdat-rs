@@ -309,7 +309,7 @@ impl<'a, 't, E: ByteOrder + 'static> TableWriter<'a, 't, E> {
         }
 
         let mut flags = 0;
-        if self.version.is_wii_table_format() {
+        if self.version != LegacyVersion::Switch {
             flags |= 0b1;
         }
         if self.opts.scramble {
