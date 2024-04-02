@@ -123,7 +123,11 @@ impl JsonConverter {
             .build())
     }
 
-    fn read_table_legacy<'b>(&self, name: Label<'b>, table: JsonTable) -> Result<LegacyTable<'b>> {
+    fn read_table_legacy<'b>(
+        &self,
+        name: Label<'b>,
+        table: JsonTable<'b>,
+    ) -> Result<LegacyTable<'b>> {
         let schema = table
             .schema
             .ok_or_else(|| FormatError::MissingTypeInfo.with_context(name.clone()))?;
@@ -136,7 +140,10 @@ impl JsonConverter {
             schema.into_iter().try_fold(
                 (Vec::new(), HashMap::default(), 0),
                 |(mut cols, mut map, idx), col| {
-                    let def = LegacyColumnBuilder::new(col.ty, col.name.clone().into()).build();
+                    let def = LegacyColumnBuilder::new(col.ty, col.name.clone().into())
+                        .set_flags(col.flags)
+                        .set_count(col.count.max(1))
+                        .build();
                     // Only keep the first occurrence: there's a table in XC2 (likely more) with
                     // a duplicate column (FLD_RequestItemSet)
                     let (indices, dup_col) = map
