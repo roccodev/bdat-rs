@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use clap::{Args, Parser, Subcommand};
 use convert::ConvertArgs;
 use diff::DiffArgs;
+use filter::FileFilter;
 use hash::HashArgs;
 use info::InfoArgs;
 use itertools::Itertools;
@@ -89,12 +90,11 @@ fn main() -> anyhow::Result<()> {
 }
 
 impl InputData {
-    pub fn list_files<'a, 'b: 'a, E: Into<Option<&'b str>>>(
-        &'a self,
-        extension: E,
+    pub fn list_files(
+        &self,
+        filter: impl FileFilter + 'static,
         canonical_paths: bool,
-    ) -> Result<impl IntoIterator<Item = walkdir::Result<PathBuf>> + 'a> {
-        let extension = extension.into();
+    ) -> Result<impl IntoIterator<Item = walkdir::Result<PathBuf>> + '_> {
         let paths: Vec<_> = self
             .files
             .iter()
@@ -108,17 +108,18 @@ impl InputData {
             .try_collect()?;
 
         Ok(paths.into_iter().flat_map(move |name| {
+            let filter = filter.clone();
             WalkDir::new(name)
                 .into_iter()
-                .filter_map(move |p| match (p, extension) {
+                .filter_map(move |p| match (p, Some(&filter)) {
                     (Err(e), _) => Some(Err(e)),
+                    // might want this later
                     (Ok(e), None) => Some(Ok(e.path().to_owned())),
-                    (Ok(e), Some(ext)) => {
+                    (Ok(e), Some(filter)) => {
                         let path = e.path();
-                        if let Some(path_ext) = path.extension() {
-                            if matches!(path_ext.to_str(), Some(p) if p == ext) {
-                                return Some(Ok(path.to_owned()));
-                            }
+                        let ext = path.extension().and_then(|p| p.to_str());
+                        if filter.filter_file(path, ext) {
+                            return Some(Ok(path.to_owned()));
                         }
                         None
                     }

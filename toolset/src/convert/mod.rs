@@ -13,7 +13,7 @@ use rayon::prelude::*;
 
 use crate::{
     error::Error,
-    filter::{Filter, FilterArg},
+    filter::{BdatFileFilter, Filter, FilterArg, SchemaFileFilter},
     util::hash::HashNameTable,
     InputData,
 };
@@ -115,7 +115,7 @@ pub fn run_serialization(args: ConvertArgs, hash_table: HashNameTable) -> Result
 
     let files = args
         .input
-        .list_files("bdat", false)?
+        .list_files(BdatFileFilter, false)?
         .into_iter()
         .collect::<walkdir::Result<Vec<_>>>()?;
     let base_path = crate::util::get_common_denominator(&files);
@@ -204,7 +204,7 @@ pub fn run_serialization(args: ConvertArgs, hash_table: HashNameTable) -> Result
 fn run_deserialization(args: ConvertArgs) -> Result<()> {
     let schema_files = args
         .input
-        .list_files("bschema", false)?
+        .list_files(SchemaFileFilter, false)?
         .into_iter()
         .collect::<walkdir::Result<Vec<_>>>()?;
     if schema_files.is_empty() {

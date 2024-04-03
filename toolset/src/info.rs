@@ -1,5 +1,5 @@
 use crate::{
-    filter::{Filter, FilterArg},
+    filter::{BdatFileFilter, Filter, FilterArg},
     util::hash::HashNameTable,
     InputData,
 };
@@ -26,7 +26,7 @@ pub fn get_info(args: InfoArgs) -> Result<()> {
     let table_filter: Filter = args.tables.into_iter().map(FilterArg).collect();
     let column_filter: Filter = args.columns.into_iter().map(FilterArg).collect();
 
-    for file in args.input.list_files("bdat", false)? {
+    for file in args.input.list_files(BdatFileFilter, false)? {
         let path = file?;
         let mut file = std::fs::read(&path)?;
         let tables = args

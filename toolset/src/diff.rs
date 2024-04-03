@@ -14,7 +14,7 @@ use rayon::{iter::Either, prelude::*};
 
 use bdat::{BdatFile, Cell, CompatRef, CompatRowRef, CompatTable, Label, RowId};
 
-use crate::{util::hash::MurmurHashSet, InputData};
+use crate::{filter::BdatFileFilter, util::hash::MurmurHashSet, InputData};
 
 #[derive(Args)]
 pub struct DiffArgs {
@@ -71,14 +71,14 @@ pub fn run_diff(args: DiffArgs) -> Result<()> {
         .with_message(" (Reading files)");
     let new_files = args
         .input
-        .list_files("bdat", !args.no_file_names)?
+        .list_files(BdatFileFilter, !args.no_file_names)?
         .into_iter();
     let old_files = InputData {
         files: args.old_files,
         ..Default::default()
     };
     let old_files = old_files
-        .list_files("bdat", !args.no_file_names)?
+        .list_files(BdatFileFilter, !args.no_file_names)?
         .into_iter();
     let hash_table = args.input.load_hashes()?;
 

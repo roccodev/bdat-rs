@@ -23,6 +23,8 @@ pub enum VersionSlice<'b> {
 
 #[derive(thiserror::Error, Debug)]
 pub enum DetectError {
+    #[error("Not a BDAT file")]
+    NotBdat,
     #[error("Can't determine legacy platform: no tables found")]
     LegacyNoTables,
 }
@@ -135,6 +137,8 @@ pub fn detect_bytes_version(bytes: &[u8]) -> Result<BdatVersion> {
 /// An error ([`BdatError::VersionDetect`]) might be returned if the version couldn't be detected
 /// because of ambiguous details.
 ///
+/// **Note**: the state of the reader will be modified after the call.
+///
 /// [`BdatError::VersionDetect`]: crate::BdatError::VersionDetect
 pub fn detect_file_version<R: Read + Seek>(reader: R) -> Result<BdatVersion> {
     detect_version(reader)
@@ -145,7 +149,6 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
     reader.read_exact(&mut magic)?;
     if magic == BDAT_MAGIC {
         // XC3 BDAT files start with "BDAT"
-        reader.seek(SeekFrom::Start(0))?;
         return Ok(BdatVersion::Modern);
     }
 
@@ -187,11 +190,14 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
         reader.seek(SeekFrom::Start(
             SwitchEndian::read_u32(&first_offset.to_be_bytes()) as u64,
         ))?;
-        if reader.read_u32::<WiiEndian>()? == MAGIC_INT {
+        reader.read_exact(&mut new_magic)?;
+        if WiiEndian::read_u32(&new_magic) == MAGIC_INT {
             // Table magic in big endian, this is a 3DS file.
             return Ok(LegacyVersion::New3ds.into());
+        } else if SwitchEndian::read_u32(&new_magic) == MAGIC_INT {
+            return Ok(LegacyVersion::Switch.into());
         }
-        return Ok(LegacyVersion::Switch.into());
+        return Err(DetectError::NotBdat.into());
     }
 
     // If we've reached this point, we either have a XC1 (Wii) file or a XCX file, which are both
@@ -217,7 +223,12 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
     // offset), then the table is from XCX.
     // In any other case, it's the XC1 format.
 
-    reader.seek(SeekFrom::Start(first_offset as u64 + 32 - 4 * 2))?;
+    reader.seek(SeekFrom::Start(first_offset as u64))?;
+    // Magic is always BDAT for non-3DS games
+    if reader.read_u32::<SwitchEndian>()? != MAGIC_INT {
+        return Err(DetectError::NotBdat.into());
+    }
+    reader.seek(SeekFrom::Current(32 - 4 * 3))?;
     let string_table_offset = reader.read_u32::<WiiEndian>()?;
     let string_table_len = reader.read_u32::<WiiEndian>()?;
     let final_offset = string_table_offset + string_table_len;

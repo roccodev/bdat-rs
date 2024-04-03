@@ -1,3 +1,5 @@
+use std::{fs::File, io::BufReader, path::Path};
+
 use bdat::Label;
 
 #[derive(Debug)]
@@ -6,6 +8,17 @@ pub struct Filter {
 }
 
 pub struct FilterArg(pub String);
+
+pub trait FileFilter: Clone {
+    /// This function does not fail: we only care about BDAT files, so if there is an error
+    /// in parsing a BDAT file for the purpose of file type discovery, it should panic instead.
+    fn filter_file(&self, path: impl AsRef<Path>, extension: Option<&str>) -> bool;
+}
+
+#[derive(Clone, Copy)]
+pub struct BdatFileFilter;
+#[derive(Clone, Copy)]
+pub struct SchemaFileFilter;
 
 impl Filter {
     pub fn contains(&self, label: &Label) -> bool {
@@ -22,6 +35,27 @@ impl Filter {
 
     fn hash(key: &str) -> u32 {
         bdat::hash::murmur3_str(key)
+    }
+}
+
+impl FileFilter for BdatFileFilter {
+    fn filter_file(&self, path: impl AsRef<Path>, extension: Option<&str>) -> bool {
+        if extension.is_some_and(|e| e == "bdat") {
+            // This also makes sure to throw errors if a ".bdat" file failed
+            // version detection
+            return true;
+        }
+        // Accept non-".bdat" files that actually appear to be BDAT files
+        File::open(path)
+            .map_err(|_| ())
+            .and_then(|f| bdat::detect_file_version(BufReader::new(f)).map_err(|_| ()))
+            .is_ok()
+    }
+}
+
+impl FileFilter for SchemaFileFilter {
+    fn filter_file(&self, _: impl AsRef<Path>, extension: Option<&str>) -> bool {
+        extension.is_some_and(|e| e == "bschema")
     }
 }
 

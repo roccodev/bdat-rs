@@ -1,4 +1,5 @@
 use crate::error::Error;
+use crate::filter::BdatFileFilter;
 use crate::util::{ProgressBarState, RayonPoolJobs};
 use crate::InputData;
 use anyhow::{Context, Result};
@@ -41,7 +42,7 @@ fn run(
 
     let files = args
         .input
-        .list_files("bdat", false)?
+        .list_files(BdatFileFilter, false)?
         .into_iter()
         .collect::<walkdir::Result<Vec<_>>>()?;
 
