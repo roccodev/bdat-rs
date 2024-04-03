@@ -164,21 +164,26 @@ impl FileHeader {
         // An iterator for this would require unsafe code because it's returning mutable
         // references
 
+        // Weird XC3D quirk where reported file size is higher than the actual size.
+        // Still appears to work well for all files, so the reported file probably
+        // accounts for padding that is not exported in dumps.
+        let file_size = self.file_size.min(data.len());
+
         match self.table_offsets.len() {
             0 => return Ok(()),
-            1 => return f(&mut data[self.table_offsets[0]..self.file_size]),
+            1 => return f(&mut data[self.table_offsets[0]..file_size]),
             _ => {}
         }
 
         for bounds in self.table_offsets.windows(2) {
             match *bounds {
                 [s, e] => f(&mut data[s..e])?,
-                [s] => f(&mut data[s..self.file_size])?,
+                [s] => f(&mut data[s..file_size])?,
                 _ => return Ok(()),
             }
         }
 
-        f(&mut data[(self.table_offsets[self.table_offsets.len() - 1])..self.file_size])?;
+        f(&mut data[(self.table_offsets[self.table_offsets.len() - 1])..file_size])?;
 
         Ok(())
     }
