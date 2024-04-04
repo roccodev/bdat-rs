@@ -12,12 +12,14 @@ use byteorder::ByteOrder;
 use scramble::ScrambleType;
 use std::borrow::Borrow;
 use std::io::{Cursor, Read, Seek, Write};
+use std::num::NonZeroUsize;
 use std::ops::Range;
 
 use crate::error::Result;
 use crate::legacy::read::{LegacyBytes, LegacyReader};
-use crate::legacy::write::FileWriter;
-use crate::{LegacyTable, LegacyVersion};
+use crate::table::legacy::LegacyTable;
+use crate::LegacyVersion;
+use write::FileWriter;
 
 pub(super) const HEADER_SIZE: usize = 64;
 pub(super) const HEADER_SIZE_WII: usize = 32;
@@ -26,6 +28,7 @@ const COLUMN_NODE_SIZE_WII: usize = 4;
 
 pub use hash::HashTable as LegacyHashTable;
 
+/// Additional options for writing legacy BDAT tables.
 #[derive(Copy, Clone)]
 pub struct LegacyWriteOptions {
     pub(crate) hash_slots: usize,
@@ -184,7 +187,7 @@ pub fn from_bytes_copy<E: ByteOrder>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, SwitchEndian, LegacyVersion, LegacyTable};
+/// use bdat::{BdatResult, SwitchEndian, LegacyVersion, legacy::LegacyTable};
 ///
 /// fn write_file(name: &str, tables: &[LegacyTable]) -> BdatResult<()> {
 ///     let file = File::create(name)?;
@@ -209,14 +212,14 @@ pub fn to_writer<'t, W: Write + Seek, E: ByteOrder + 'static>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, LegacyTable, SwitchEndian, LegacyVersion};
-/// use bdat::legacy::LegacyWriteOptions;
+/// use bdat::{BdatResult, SwitchEndian, LegacyVersion};
+/// use bdat::legacy::{LegacyWriteOptions, LegacyTable};
 ///
 /// fn write_file(name: &str, tables: &[LegacyTable]) -> BdatResult<()> {
 ///     let file = File::create(name)?;
 ///     // The legacy writer supports LegacyVersion:: and LegacyVersion::X
 ///     bdat::legacy::to_writer_options::<_, SwitchEndian>(file, tables, LegacyVersion::Switch,
-///             LegacyWriteOptions::new().hash_slots(10))?;
+///             LegacyWriteOptions::new().hash_slots(10.try_into().unwrap()))?;
 ///     Ok(())
 /// }
 /// ```
@@ -234,7 +237,7 @@ pub fn to_writer_options<'t, W: Write + Seek, E: ByteOrder + 'static>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, LegacyTable, SwitchEndian, LegacyVersion};
+/// use bdat::{BdatResult, legacy::LegacyTable, SwitchEndian, LegacyVersion};
 ///
 /// fn write_vec(tables: &[LegacyTable]) -> BdatResult<()> {
 ///     // The legacy writer supports LegacyVersion:: and LegacyVersion::X
@@ -256,13 +259,13 @@ pub fn to_vec<'t, E: ByteOrder + 'static>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, LegacyTable, SwitchEndian, LegacyVersion};
-/// use bdat::legacy::LegacyWriteOptions;
+/// use bdat::{BdatResult, SwitchEndian, LegacyVersion};
+/// use bdat::legacy::{LegacyWriteOptions, LegacyTable};
 ///
 /// fn write_vec(tables: &[LegacyTable]) -> BdatResult<()> {
 ///     // The legacy writer supports LegacyVersion:: and LegacyVersion::X
 ///     let vec = bdat::legacy::to_vec_options::<SwitchEndian>(tables, LegacyVersion::Switch,
-///             LegacyWriteOptions::new().hash_slots(10))?;
+///             LegacyWriteOptions::new().hash_slots(10.try_into().unwrap()))?;
 ///     Ok(())
 /// }
 /// ```
@@ -292,12 +295,8 @@ impl LegacyWriteOptions {
     /// matter the hash table size.
     ///
     /// The default value is 61.
-    ///
-    /// ## Panics
-    /// Panics if `slots == 0`.
-    pub fn hash_slots(mut self, slots: usize) -> Self {
-        assert_ne!(0, slots);
-        self.hash_slots = slots;
+    pub fn hash_slots(mut self, slots: NonZeroUsize) -> Self {
+        self.hash_slots = slots.into();
         self
     }
 

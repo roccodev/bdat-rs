@@ -1,11 +1,11 @@
 //! Modern (XC3) format types
 
+use crate::compat::CompatTable;
 use crate::hash::PreHashedMap;
-use crate::{
-    ColumnMap, CompatTable, Label, ModernColumn, ModernTableBuilder, RowId, RowRef, Value,
-};
+use crate::modern::ModernTableBuilder;
+use crate::{ColumnMap, Label, RowId, RowRef, Value, ValueType};
 
-use super::private::{CellAccessor, ColumnSerialize, LabelMap, Table};
+use super::private::{CellAccessor, Column, ColumnSerialize, LabelMap, Table};
 use super::util::EnumId;
 
 /// The BDAT table representation in modern formats, currently used in Xenoblade 3.
@@ -31,7 +31,7 @@ use super::util::EnumId;
 /// Note: this requires the `hash-table` feature flag, which is enabled by default.
 ///
 /// ```
-/// use bdat::ModernTable;
+/// use bdat::modern::ModernTable;
 ///
 /// fn foo(table: &ModernTable) {
 ///     let row = table.row_by_hash(0xDEADBEEF);
@@ -42,7 +42,7 @@ use super::util::EnumId;
 /// ## Operating on single-value cells
 ///
 /// ```
-/// use bdat::{Label, ModernTable, label_hash};
+/// use bdat::{Label, modern::ModernTable, label_hash};
 ///
 /// fn get_character_id(table: &ModernTable, row_id: u32) -> u32 {
 ///     table.row(row_id).get(label_hash!("CharacterID")).get_as()
@@ -69,6 +69,13 @@ pub struct ModernTable<'b> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModernRow<'b> {
     pub(crate) values: Vec<Value<'b>>,
+}
+
+/// A column definition from a modern BDAT table
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModernColumn<'buf> {
+    pub(crate) value_type: ValueType,
+    pub(crate) label: Label<'buf>,
 }
 
 pub type ModernRowRef<'t, 'buf> = RowRef<&'t ModernRow<'buf>, &'t ColumnMap<ModernColumn<'buf>>>;
@@ -111,7 +118,7 @@ impl<'b> ModernTable<'b> {
     ///
     /// ## Example
     /// ```
-    /// use bdat::{Label, ModernTable};
+    /// use bdat::{Label, modern::ModernTable};
     ///
     /// fn foo(table: &ModernTable) -> u32 {
     ///     // This returns a `Value` as it's the only type supported by modern tables.
@@ -277,6 +284,29 @@ impl<'b> ModernRow<'b> {
     }
 }
 
+impl<'tb> ModernColumn<'tb> {
+    pub fn new(ty: ValueType, label: Label<'tb>) -> Self {
+        Self {
+            value_type: ty,
+            label,
+        }
+    }
+    /// Returns this column's type.
+    pub fn value_type(&self) -> ValueType {
+        self.value_type
+    }
+
+    /// Returns this column's name.
+    pub fn label(&self) -> &Label<'tb> {
+        &self.label
+    }
+
+    /// Returns the total space occupied by a cell of this column.
+    pub fn data_size(&self) -> usize {
+        self.value_type.data_len()
+    }
+}
+
 /// Builds a primary key index for the table.
 ///
 /// If there is no hash-type column, the map will be empty.
@@ -356,12 +386,25 @@ impl<'buf> ColumnSerialize for ModernColumn<'buf> {
     }
 }
 
+impl<'buf> Column for ModernColumn<'buf> {
+    type Name = Label<'buf>;
+
+    fn value_type(&self) -> ValueType {
+        self.value_type
+    }
+
+    fn clone_label(&self) -> Self::Name {
+        self.label.clone()
+    }
+}
+
 #[cfg(test)]
 mod tests {
     #[cfg(feature = "hash-table")]
     #[test]
     fn test_hash_table() {
-        use crate::{Label, ModernColumn, ModernRow, ModernTableBuilder, Value, ValueType};
+        use crate::modern::{ModernColumn, ModernRow, ModernTableBuilder};
+        use crate::{Label, Value, ValueType};
 
         let table = ModernTableBuilder::with_name(Label::Hash(0xDEADBEEF))
             .set_base_id(1)

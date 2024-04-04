@@ -1,7 +1,5 @@
-use bdat::{
-    Cell, LegacyColumnBuilder, LegacyFlag, LegacyRow, LegacyTable, LegacyTableBuilder, Value,
-    ValueType,
-};
+use bdat::legacy::{LegacyColumnBuilder, LegacyRow, LegacyTable, LegacyTableBuilder};
+use bdat::{Cell, LegacyFlag, Value, ValueType};
 
 pub fn duplicate_table_create() -> LegacyTable<'static> {
     let flag = LegacyFlag::new_bit("Flag1", 0);

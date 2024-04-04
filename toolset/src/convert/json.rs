@@ -4,13 +4,13 @@ use std::{
 };
 
 use anyhow::{anyhow, Context, Result};
+use bdat::compat::{CompatColumn, CompatTable};
+use bdat::legacy::{LegacyColumn, LegacyColumnBuilder, LegacyRow, LegacyTable, LegacyTableBuilder};
+use bdat::modern::{ModernColumn, ModernRow, ModernTable, ModernTableBuilder};
 use bdat::{
     serde::{CellSeed, SerializeCell},
-    Cell, CompatTable, Label, LegacyColumn, LegacyColumnBuilder, LegacyRow, LegacyTable,
-    LegacyTableBuilder, ModernColumn, ModernRow, ModernTable, ModernTableBuilder, RowId, Value,
-    ValueType,
+    Cell, Label, LegacyFlag, RowId, Value, ValueType,
 };
-use bdat::{CompatColumn, LegacyFlag};
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
 use serde_json::Map;

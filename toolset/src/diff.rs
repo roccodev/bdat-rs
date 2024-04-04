@@ -12,7 +12,8 @@ use indicatif::ProgressBar;
 use itertools::Itertools;
 use rayon::{iter::Either, prelude::*};
 
-use bdat::{BdatFile, Cell, CompatRef, CompatRowRef, CompatTable, Label, RowId};
+use bdat::compat::{CompatRef, CompatRowRef, CompatTable};
+use bdat::{BdatFile, Cell, Label, RowId};
 
 use crate::{filter::BdatFileFilter, util::hash::MurmurHashSet, InputData};
 

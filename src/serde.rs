@@ -374,14 +374,18 @@ impl<'a, C: ColumnSerialize> From<&'a C> for CellSeed<'a, C> {
 mod tests {
     use crate::{
         serde::{CellSeed, SerializeCell, ValueWithType},
-        Cell, LegacyColumn, LegacyFlag, Value, ValueType,
+        table::legacy::LegacyColumn,
+        Cell, LegacyFlag, Value, ValueType,
     };
     use serde::{de::DeserializeSeed, Deserialize};
 
     macro_rules! col {
         ($ty:expr) => {
-            $crate::CompatColumn::Modern($crate::ModernColumn::new($ty, $crate::Label::Hash(0)))
-                .as_ref()
+            $crate::compat::CompatColumn::Modern($crate::modern::ModernColumn::new(
+                $ty,
+                $crate::Label::Hash(0),
+            ))
+            .as_ref()
         };
     }
 

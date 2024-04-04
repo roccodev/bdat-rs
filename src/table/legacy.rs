@@ -1,10 +1,10 @@
 //! Legacy (XC1 up to DE) format types
 
-use crate::{Cell, ColumnMap, CompatTable, LegacyColumn, RowRef, Utf};
+use crate::{compat::CompatTable, Cell, ColumnMap, LegacyFlag, RowRef, Utf, ValueType};
 
 use super::{
     builder::LegacyTableBuilder,
-    private::{CellAccessor, ColumnSerialize, LabelMap, Table},
+    private::{CellAccessor, Column, ColumnSerialize, LabelMap, Table},
     util::EnumId,
 };
 
@@ -24,7 +24,7 @@ use super::{
 /// ## Operating on cells
 ///
 /// ```
-/// use bdat::{Label, LegacyTable, label_hash};
+/// use bdat::{Label, legacy::LegacyTable, label_hash};
 ///
 /// fn get_character_id(table: &LegacyTable, row_id: u16) -> u32 {
 ///     let cell = table.row(row_id).get("CharacterID");
@@ -48,6 +48,18 @@ pub struct LegacyTable<'b> {
 pub struct LegacyRow<'b> {
     pub(crate) cells: Vec<Cell<'b>>,
 }
+
+/// A column definition from a legacy BDAT table
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct LegacyColumn<'buf> {
+    pub(crate) value_type: ValueType,
+    pub(crate) label: Utf<'buf>,
+    pub(crate) count: usize,
+    pub(crate) flags: Vec<LegacyFlag<'buf>>,
+}
+
+/// A builder interface for [`LegacyColumn`].
+pub struct LegacyColumnBuilder<'tb>(LegacyColumn<'tb>);
 
 pub type LegacyRowRef<'t, 'buf> = RowRef<&'t LegacyRow<'buf>, &'t ColumnMap<LegacyColumn<'buf>>>;
 pub type LegacyRowMut<'t, 'buf> =
@@ -196,6 +208,77 @@ impl<'b> LegacyRow<'b> {
     }
 }
 
+impl<'tb> LegacyColumn<'tb> {
+    /// Creates a new [`LegacyColumn`]. For more advanced settings, such as item count or flag
+    /// data, use [`LegacyColumnBuilder`].
+    pub fn new(ty: ValueType, label: Utf<'tb>) -> Self {
+        Self::with_flags(ty, label, Vec::new())
+    }
+
+    fn with_flags(ty: ValueType, label: Utf<'tb>, flags: Vec<LegacyFlag<'tb>>) -> Self {
+        Self {
+            value_type: ty,
+            label,
+            flags,
+            count: 1,
+        }
+    }
+
+    /// Returns this column's type.
+    pub fn value_type(&self) -> ValueType {
+        self.value_type
+    }
+
+    /// Returns this column's name.
+    pub fn label(&self) -> &str {
+        self.label.as_ref()
+    }
+
+    /// Returns the number of values in this column's cells.
+    /// For [`Cell::Single`] and [`Cell::Flags`] cells, this is 1. For [`Cell::List`] cells, it is
+    /// the number of elements in the list.
+    ///
+    /// [`Cell::Single`]: crate::Cell::Single
+    /// [`Cell::Flags`]: crate::Cell::Flags
+    /// [`Cell::List`]: crate::Cell::List
+    pub fn count(&self) -> usize {
+        self.count
+    }
+
+    /// Returns this column's defined set of sub-flags.
+    pub fn flags(&self) -> &[LegacyFlag<'tb>] {
+        &self.flags
+    }
+
+    /// Returns the total space occupied by a cell of this column.
+    pub fn data_size(&self) -> usize {
+        self.value_type.data_len() * self.count
+    }
+}
+
+impl<'tb> LegacyColumnBuilder<'tb> {
+    pub fn new(value_type: ValueType, label: Utf<'tb>) -> Self {
+        Self(LegacyColumn::new(value_type, label))
+    }
+
+    /// Sets the column's full flag data.
+    pub fn set_flags(mut self, flags: Vec<LegacyFlag<'tb>>) -> Self {
+        self.0.flags = flags;
+        self
+    }
+
+    /// Sets how many elements the column holds, if cells are of the list type.
+    pub fn set_count(mut self, count: usize) -> Self {
+        assert!(count > 0);
+        self.0.count = count;
+        self
+    }
+
+    pub fn build(self) -> LegacyColumn<'tb> {
+        self.0
+    }
+}
+
 impl<'buf> Table<'buf> for LegacyTable<'buf> {
     type Id = u16;
     type Name = Utf<'buf>;
@@ -248,5 +331,29 @@ impl<'buf> ColumnSerialize for LegacyColumn<'buf> {
 
     fn ser_flags(&self) -> &[crate::LegacyFlag] {
         &self.flags
+    }
+}
+
+impl<'buf> Column for LegacyColumn<'buf> {
+    type Name = Utf<'buf>;
+
+    fn value_type(&self) -> ValueType {
+        self.value_type
+    }
+
+    fn clone_label(&self) -> Self::Name {
+        self.label.clone()
+    }
+}
+
+impl<'tb> From<LegacyColumn<'tb>> for LegacyColumnBuilder<'tb> {
+    fn from(value: LegacyColumn<'tb>) -> Self {
+        Self(value)
+    }
+}
+
+impl<'tb> From<LegacyColumnBuilder<'tb>> for LegacyColumn<'tb> {
+    fn from(value: LegacyColumnBuilder<'tb>) -> Self {
+        value.build()
     }
 }

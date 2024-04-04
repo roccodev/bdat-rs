@@ -8,14 +8,11 @@
 
 use std::convert::Infallible;
 
-use super::legacy::LegacyRow;
-use super::modern::ModernRow;
-use super::private::{CellAccessor, ColumnSerialize, LabelMap, Table};
+use super::private::{CellAccessor, Column, ColumnSerialize, LabelMap, Table};
 use super::util::CompatIter;
-use crate::{
-    BdatResult, Cell, ColumnMap, Label, LegacyColumn, LegacyFlag, LegacyTable, ModernColumn,
-    ModernTable, RowId, RowRef, Utf, ValueType,
-};
+use crate::legacy::{LegacyColumn, LegacyRow, LegacyTable};
+use crate::modern::{ModernColumn, ModernRow, ModernTable};
+use crate::{BdatResult, Cell, ColumnMap, Label, LegacyFlag, RowId, RowRef, Utf, ValueType};
 
 /// A BDAT table view with version metadata.
 ///
@@ -40,6 +37,7 @@ use crate::{
 ///
 /// ```
 /// # use bdat::*;
+/// # use bdat::compat::CompatTable;
 /// # fn read(bytes: &mut [u8]) -> BdatResult<()> {
 /// let table: &CompatTable = &bdat::from_bytes(bytes)?.get_tables()?[0];
 /// println!("Table {} has {} rows.", table.name(), table.row_count());
@@ -49,8 +47,8 @@ use crate::{
 ///
 /// [`as_modern_mut`]: CompatTable::as_modern_mut
 /// [`as_legacy_mut`]: CompatTable::as_legacy_mut
-/// [`LegacyTableBuilder`]: crate::LegacyTableBuilder
-/// [`ModernTableBuilder`]: crate::ModernTableBuilder
+/// [`LegacyTableBuilder`]: crate::legacy::LegacyTableBuilder
+/// [`ModernTableBuilder`]: crate::modern::ModernTableBuilder
 #[derive(Debug, Clone, PartialEq)]
 pub enum CompatTable<'b> {
     Modern(ModernTable<'b>),
@@ -557,6 +555,36 @@ impl<'a, 'buf> ColumnSerialize for CompatColumnRef<'a, 'buf> {
         match self {
             Self::Modern(m) => m.ser_flags(),
             Self::Legacy(l) => l.ser_flags(),
+        }
+    }
+}
+
+impl<'buf> Column for CompatColumn<'buf> {
+    type Name = Label<'buf>;
+
+    fn value_type(&self) -> ValueType {
+        self.value_type()
+    }
+
+    fn clone_label(&self) -> Self::Name {
+        match self {
+            Self::Modern(m) => m.label.clone(),
+            Self::Legacy(l) => Label::String(l.label.clone()),
+        }
+    }
+}
+
+impl<'a, 'buf> Column for CompatColumnRef<'a, 'buf> {
+    type Name = Label<'buf>;
+
+    fn value_type(&self) -> ValueType {
+        self.value_type()
+    }
+
+    fn clone_label(&self) -> Self::Name {
+        match self {
+            Self::Modern(m) => m.label.clone(),
+            Self::Legacy(l) => Label::String(l.label.clone()),
         }
     }
 }

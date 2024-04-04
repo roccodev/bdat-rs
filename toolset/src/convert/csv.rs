@@ -1,6 +1,7 @@
 use anyhow::{Context, Result};
+use bdat::compat::{CompatColumnRef, CompatTable};
 use bdat::serde::SerializeCell;
-use bdat::{Cell, CompatColumnRef, CompatTable, Value};
+use bdat::{Cell, Value};
 use clap::Args;
 use csv::WriterBuilder;
 use std::io::Write;

@@ -1,5 +1,8 @@
+use crate::compat::CompatTable;
 use crate::error::Result;
-use crate::{CompatTable, Label, LegacyTable, ModernTable};
+use crate::table::legacy::LegacyTable;
+use crate::table::modern::ModernTable;
+use crate::Label;
 use std::collections::HashMap;
 use std::io::Cursor;
 use std::marker::PhantomData;

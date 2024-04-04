@@ -5,7 +5,8 @@ use std::io::{Cursor, Read, Seek, Write};
 
 use self::write::BdatWriter;
 use super::read::{BdatReader, BdatSlice};
-use crate::{error::Result, ModernTable};
+use crate::error::Result;
+use crate::table::modern::ModernTable;
 use byteorder::ByteOrder;
 
 // doc
@@ -75,7 +76,7 @@ pub fn from_bytes<E: ByteOrder>(bytes: &[u8]) -> Result<FileReader<BdatSlice<'_,
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, SwitchEndian, ModernTable};
+/// use bdat::{BdatResult, SwitchEndian, modern::ModernTable};
 ///
 /// fn write_file(name: &str, tables: &[ModernTable]) -> BdatResult<()> {
 ///     let file = File::create(name)?;
@@ -95,7 +96,7 @@ pub fn to_writer<'t, W: Write + Seek, E: ByteOrder>(
 ///
 /// ```
 /// use std::fs::File;
-/// use bdat::{BdatResult, SwitchEndian, ModernTable};
+/// use bdat::{BdatResult, SwitchEndian, modern::ModernTable};
 ///
 /// fn write_vec(tables: &[ModernTable]) -> BdatResult<()> {
 ///     let vec = bdat::modern::to_vec::<SwitchEndian>(tables)?;
@@ -113,10 +114,8 @@ pub fn to_vec<'t, E: ByteOrder>(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{
-        io::SwitchEndian, BdatFile, Label, ModernColumn, ModernRow, ModernTableBuilder, Value,
-        ValueType,
-    };
+    use crate::modern::{ModernColumn, ModernRow, ModernTableBuilder};
+    use crate::{io::SwitchEndian, BdatFile, Label, Value, ValueType};
 
     #[test]
     fn table_write_back() {

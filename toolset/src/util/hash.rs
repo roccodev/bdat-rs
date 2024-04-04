@@ -6,8 +6,10 @@ use std::{
 };
 
 use bdat::{
+    compat::CompatTable,
     hash::{murmur3_with_seed, IdentityHasher, PreHashedMap},
-    CompatTable, Label, ModernColumn,
+    modern::ModernColumn,
+    Label,
 };
 
 #[derive(Clone, Copy, Default)]

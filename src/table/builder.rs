@@ -1,7 +1,9 @@
-use crate::{ColumnMap, LegacyTable, ModernTable};
+use crate::ColumnMap;
 
 use super::{
     convert::FormatConvertError,
+    legacy::LegacyTable,
+    modern::ModernTable,
     private::{Column, Table},
 };
 

@@ -1,7 +1,6 @@
-pub mod legacy;
-pub mod modern;
-
 pub(crate) mod detect;
+pub(crate) mod legacy;
+pub(crate) mod modern;
 
 mod read;
 
@@ -30,6 +29,8 @@ pub enum BdatVersion {
 /// The high-level format (i.e. [`LegacyTable`]) is the same
 /// for all of these. Only some parts of the internal binary representation
 /// are different.
+///
+/// [`LegacyTable`]: crate::legacy::LegacyTable
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LegacyVersion {

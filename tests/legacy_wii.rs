@@ -1,4 +1,4 @@
-use bdat::legacy::LegacyWriteOptions;
+use bdat::legacy::{LegacyTable, LegacyWriteOptions};
 use bdat::{BdatFile, Cell, LegacyVersion, Value, WiiEndian};
 
 type FileEndian = WiiEndian;
@@ -120,10 +120,9 @@ fn duplicate_columns() {
     let tables = [common::duplicate_table_create()];
 
     let mut bytes = bdat::legacy::to_vec::<FileEndian>(&tables, VERSION).unwrap();
-    let back: Vec<bdat::LegacyTable<'_>> =
-        bdat::legacy::from_bytes::<FileEndian>(&mut bytes, VERSION)
-            .unwrap()
-            .get_tables()
-            .unwrap();
+    let back: Vec<LegacyTable<'_>> = bdat::legacy::from_bytes::<FileEndian>(&mut bytes, VERSION)
+        .unwrap()
+        .get_tables()
+        .unwrap();
     assert_eq!(tables[0], back[0]);
 }

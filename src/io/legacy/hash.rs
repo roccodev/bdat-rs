@@ -1,5 +1,5 @@
+use super::util::pad_8;
 use crate::error::Result;
-use crate::legacy::util::pad_8;
 use byteorder::{ByteOrder, WriteBytesExt};
 use std::io::{Seek, SeekFrom, Write};
 
@@ -64,7 +64,9 @@ impl HashTable {
     ) -> Result<()> {
         for slot in self.slots.iter().filter(|s| s.len() >= 2) {
             for offsets in slot.windows(2) {
-                let &[cur, next] = offsets else { unreachable!() };
+                let &[cur, next] = offsets else {
+                    unreachable!()
+                };
                 writer.seek(SeekFrom::Start(cur as u64 + 2))?;
                 writer.write_u16::<E>(next)?;
             }

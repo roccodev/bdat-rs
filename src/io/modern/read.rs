@@ -10,10 +10,10 @@ use byteorder::{ByteOrder, ReadBytesExt};
 use crate::io::read::{BdatReader, BdatSlice};
 use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
-use crate::ModernColumn;
+use crate::modern::{ModernColumn, ModernRow, ModernTable, ModernTableBuilder};
 use crate::{
     error::{BdatError, Result, Scope},
-    BdatFile, Label, ModernRow, ModernTable, ModernTableBuilder, Utf, Value, ValueType,
+    BdatFile, Label, Utf, Value, ValueType,
 };
 
 use super::FileHeader;

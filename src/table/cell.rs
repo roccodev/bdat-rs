@@ -29,7 +29,7 @@ use super::private::FromValue;
 /// [`SerializeCell::from_owned`].
 ///
 /// ```
-/// use bdat::{Cell, ModernColumn};
+/// use bdat::{Cell, modern::ModernColumn};
 /// use bdat::serde::SerializeCell;
 ///
 /// fn serialize_cell(column: ModernColumn, cell: &Cell) -> String {
@@ -40,7 +40,7 @@ use super::private::FromValue;
 /// To deserialize a `Cell` that was serialized into the previous format, you can use
 /// [`CellSeed::from`], along with `DeserializeSeed` from Serde.
 /// ```
-/// use bdat::{Cell, ModernColumn};
+/// use bdat::{Cell, modern::ModernColumn};
 /// use bdat::serde::CellSeed;
 /// use serde_json::Deserializer;
 /// use serde::de::DeserializeSeed;

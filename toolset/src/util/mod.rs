@@ -1,6 +1,6 @@
 use anyhow::{Context, Result};
 use bdat::{
-    BdatFile, BdatResult, BdatVersion, CompatTable, LegacyVersion, SwitchEndian, WiiEndian,
+    compat::CompatTable, BdatFile, BdatResult, BdatVersion, LegacyVersion, SwitchEndian, WiiEndian,
 };
 use clap::{Args, ValueEnum};
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};

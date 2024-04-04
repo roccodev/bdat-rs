@@ -2,12 +2,13 @@ use std::io::{Cursor, Read, Seek, SeekFrom};
 
 use byteorder::{ByteOrder, ReadBytesExt};
 
+use crate::compat::CompatTable;
 use crate::error::Result;
 use crate::io::read::{BdatFile, BdatReader, BdatSlice};
 use crate::io::BDAT_MAGIC;
 use crate::legacy::read::{LegacyBytes, LegacyReader};
 use crate::modern::FileReader;
-use crate::{BdatVersion, CompatTable, LegacyVersion, SwitchEndian, WiiEndian};
+use crate::{BdatVersion, LegacyVersion, SwitchEndian, WiiEndian};
 
 pub enum VersionReader<R: Read + Seek> {
     LegacyWii(LegacyReader<R, WiiEndian>),
@@ -63,8 +64,8 @@ pub enum DetectError {
 /// [`bdat::legacy`]: crate::legacy
 /// [`bdat::modern`]: crate::modern
 /// [`BdatFile::get_tables`]: crate::BdatFile::get_tables
-/// [`ModernTable`]: crate::ModernTable
-/// [`LegacyTable`]: crate::LegacyTable
+/// [`ModernTable`]: crate::modern::ModernTable
+/// [`LegacyTable`]: crate::legacy::LegacyTable
 pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
     match detect_version(Cursor::new(&bytes))? {
         BdatVersion::Legacy(v @ LegacyVersion::Switch | v @ LegacyVersion::New3ds) => {

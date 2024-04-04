@@ -19,7 +19,7 @@
 //! See also: [`ModernTable`]
 //!
 //! ```
-//! use bdat::{BdatResult, SwitchEndian, BdatFile, ModernTable, label_hash};
+//! use bdat::{BdatResult, SwitchEndian, BdatFile, modern::ModernTable, label_hash};
 //! use bdat::hash::murmur3_str;
 //!
 //! fn read_xc3() -> BdatResult<()> {
@@ -55,7 +55,7 @@
 //! See also: [`LegacyTable`]
 //!
 //! ```
-//! use bdat::{BdatResult, SwitchEndian, BdatFile, LegacyTable, LegacyVersion, Label};
+//! use bdat::{BdatResult, SwitchEndian, BdatFile, legacy::LegacyTable, LegacyVersion, Label};
 //!
 //! fn read_legacy() -> BdatResult<()> {
 //!     // Mutable access is required as text might need to be unscrambled.
@@ -87,7 +87,7 @@
 //! crate root can be used instead.
 //!
 //! ```
-//! use bdat::{BdatResult, SwitchEndian, BdatFile, CompatTable, Label, label_hash};
+//! use bdat::{BdatResult, SwitchEndian, BdatFile, compat::CompatTable, Label, label_hash};
 //!
 //! fn read_detect() -> BdatResult<()> {
 //!     // Mutable access is required, as this might be a legacy table.
@@ -124,7 +124,9 @@
 //! Tables obtained with the auto-detecting functions must be extracted or converted first.
 //!
 //! ```
-//! use bdat::{BdatResult, LegacyVersion, SwitchEndian, WiiEndian, ModernTable, LegacyTable};
+//! use bdat::{BdatResult, LegacyVersion, SwitchEndian, WiiEndian};
+//! use bdat::modern::ModernTable;
+//! use bdat::legacy::LegacyTable;
 //!
 //! fn write_modern(table: &ModernTable) -> BdatResult<()> {
 //!     // also bdat::to_writer for io::Write implementations
@@ -149,6 +151,8 @@
 //!
 //! [MONOLITHSOFT]: https://www.monolithsoft.co.jp/
 //! [bdat-toolset]: https://github.com/RoccoDev/bdat-rs/tree/master/toolset
+//! [`LegacyTable`]: crate::legacy::LegacyTable
+//! [`ModernTable`]: crate::modern::ModernTable
 
 pub mod hash;
 #[cfg(feature = "serde")]
@@ -156,18 +160,18 @@ pub mod serde;
 
 pub(crate) mod error;
 pub(crate) mod io;
-pub(crate) mod label;
-pub mod table;
+pub mod label;
+pub(crate) mod table;
+
+mod public;
 
 pub use error::BdatError;
 pub use error::Result as BdatResult;
 pub use io::detect::*;
-pub use io::*;
-pub use label::*;
-pub use table::builder::*;
+pub use io::{BdatFile, BdatVersion, LegacyVersion, SwitchEndian, WiiEndian};
+pub use label::Label;
+pub use public::*;
 pub use table::cell::*;
 pub use table::column::*;
-pub use table::compat::*;
-pub use table::legacy::*;
-pub use table::modern::*;
+pub use table::compat;
 pub use table::row::*;

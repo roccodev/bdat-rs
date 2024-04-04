@@ -6,16 +6,14 @@ use std::rc::Rc;
 
 use byteorder::{ByteOrder, WriteBytesExt};
 
+use super::hash::HashTable;
+use super::scramble::{calc_checksum, scramble};
+use super::util::{pad_2, pad_32, pad_4, pad_64};
+use super::{LegacyWriteOptions, COLUMN_NODE_SIZE, COLUMN_NODE_SIZE_WII, HEADER_SIZE};
 use crate::error::Result;
 use crate::io::BDAT_MAGIC;
-use crate::legacy::hash::HashTable;
-use crate::legacy::scramble::{calc_checksum, scramble};
-use crate::legacy::util::{pad_2, pad_32, pad_4, pad_64};
-use crate::legacy::{LegacyWriteOptions, COLUMN_NODE_SIZE, COLUMN_NODE_SIZE_WII, HEADER_SIZE};
-use crate::{
-    BdatError, Cell, LegacyColumn, LegacyFlag, LegacyRow, LegacyTable, LegacyVersion, Value,
-    ValueType,
-};
+use crate::legacy::{LegacyColumn, LegacyRow, LegacyTable};
+use crate::{BdatError, Cell, LegacyFlag, LegacyVersion, Value, ValueType};
 
 /// Writes a full BDAT file to a writer.
 pub struct FileWriter<W, E> {

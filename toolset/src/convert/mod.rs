@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::{CompatTable, Label};
+use bdat::{compat::CompatTable, Label};
 use clap::Args;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use rayon::prelude::*;

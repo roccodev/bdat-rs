@@ -1,13 +1,13 @@
 //! Tests the hash table found in legacy BDAT files.
 
-use bdat::legacy::{LegacyHashTable, LegacyWriteOptions};
-use bdat::{
-    LegacyColumnBuilder, LegacyFlag, LegacyTable, LegacyTableBuilder, LegacyVersion, SwitchEndian,
-    ValueType, WiiEndian,
+use bdat::legacy::{
+    LegacyColumnBuilder, LegacyHashTable, LegacyTable, LegacyTableBuilder, LegacyWriteOptions,
 };
+use bdat::{LegacyFlag, LegacyVersion, SwitchEndian, ValueType, WiiEndian};
 use byteorder::ByteOrder;
 use std::collections::HashSet;
 use std::ffi::CStr;
+use std::num::NonZeroUsize;
 
 #[test]
 fn hash_table_legacy() {
@@ -52,7 +52,10 @@ fn create_table<'b>() -> LegacyTable<'b> {
         .build()
 }
 
-fn test_table(table: &LegacyTable, version: LegacyVersion, slots: usize) {
+fn test_table(table: &LegacyTable, version: LegacyVersion, slots: impl TryInto<NonZeroUsize>) {
+    let Ok(slots) = slots.try_into() else {
+        panic!("slots = 0")
+    };
     let written = match version {
         LegacyVersion::Switch | LegacyVersion::New3ds => {
             bdat::legacy::to_vec_options::<SwitchEndian>(
@@ -81,9 +84,9 @@ fn test_table(table: &LegacyTable, version: LegacyVersion, slots: usize) {
         assert!(
             match version {
                 LegacyVersion::Switch | LegacyVersion::New3ds =>
-                    find_col_def::<SwitchEndian>(table_bytes, &col, slots as u32),
+                    find_col_def::<SwitchEndian>(table_bytes, &col, usize::from(slots) as u32),
                 LegacyVersion::X | LegacyVersion::Wii =>
-                    find_col_def::<WiiEndian>(table_bytes, &col, slots as u32),
+                    find_col_def::<WiiEndian>(table_bytes, &col, usize::from(slots) as u32),
             },
             "column {col} not found"
         );

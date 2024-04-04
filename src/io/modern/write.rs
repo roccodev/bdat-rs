@@ -9,7 +9,8 @@ use std::{
 use byteorder::{ByteOrder, WriteBytesExt};
 
 use crate::io::BDAT_MAGIC;
-use crate::{error::Result, Label, ModernTable, Value};
+use crate::modern::ModernTable;
+use crate::{error::Result, Label, Value};
 use crate::{BdatError, ValueType};
 
 use super::FileHeader;

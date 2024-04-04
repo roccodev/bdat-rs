@@ -25,10 +25,11 @@
 pub(crate) mod builder;
 pub(crate) mod cell;
 pub(crate) mod column;
-pub(crate) mod compat;
 pub(crate) mod convert;
 pub(crate) mod legacy;
 pub(crate) mod modern;
 pub(crate) mod private;
 pub(crate) mod row;
 pub(crate) mod util;
+
+pub mod compat;
