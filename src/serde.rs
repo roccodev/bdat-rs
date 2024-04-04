@@ -374,8 +374,8 @@ impl<'a, C: ColumnSerialize> From<&'a C> for CellSeed<'a, C> {
 mod tests {
     use crate::{
         serde::{CellSeed, SerializeCell, ValueWithType},
-        table::legacy::LegacyColumn,
-        Cell, LegacyFlag, Value, ValueType,
+        table::legacy::{LegacyColumn, LegacyFlag},
+        Cell, Value, ValueType,
     };
     use serde::{de::DeserializeSeed, Deserialize};
 

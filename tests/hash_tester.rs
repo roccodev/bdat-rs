@@ -1,9 +1,10 @@
 //! Tests the hash table found in legacy BDAT files.
 
 use bdat::legacy::{
-    LegacyColumnBuilder, LegacyHashTable, LegacyTable, LegacyTableBuilder, LegacyWriteOptions,
+    LegacyColumnBuilder, LegacyFlag, LegacyHashTable, LegacyTable, LegacyTableBuilder,
+    LegacyWriteOptions,
 };
-use bdat::{LegacyFlag, LegacyVersion, SwitchEndian, ValueType, WiiEndian};
+use bdat::{LegacyVersion, SwitchEndian, ValueType, WiiEndian};
 use byteorder::ByteOrder;
 use std::collections::HashSet;
 use std::ffi::CStr;

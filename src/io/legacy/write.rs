@@ -12,8 +12,8 @@ use super::util::{pad_2, pad_32, pad_4, pad_64};
 use super::{LegacyWriteOptions, COLUMN_NODE_SIZE, COLUMN_NODE_SIZE_WII, HEADER_SIZE};
 use crate::error::Result;
 use crate::io::BDAT_MAGIC;
-use crate::legacy::{LegacyColumn, LegacyRow, LegacyTable};
-use crate::{BdatError, Cell, LegacyFlag, LegacyVersion, Value, ValueType};
+use crate::legacy::{LegacyColumn, LegacyFlag, LegacyRow, LegacyTable};
+use crate::{BdatError, Cell, LegacyVersion, Value, ValueType};
 
 /// Writes a full BDAT file to a writer.
 pub struct FileWriter<W, E> {

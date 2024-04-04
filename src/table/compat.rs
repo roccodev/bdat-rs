@@ -3,16 +3,20 @@
 //! If a file or table's version is known in advance, the
 //! versioned modules [`modern`] and [`legacy`] should be preferred.
 //!
+//! Most types in this module are enums wrapping version-specific types and providing a common
+//! interface.
+//!
 //! [`modern`]: crate::modern
 //! [`legacy`]: crate::legacy
 
 use std::convert::Infallible;
 
+use super::column::CompatColumnMap;
 use super::private::{CellAccessor, Column, ColumnSerialize, LabelMap, Table};
 use super::util::CompatIter;
-use crate::legacy::{LegacyColumn, LegacyRow, LegacyTable};
+use crate::legacy::{LegacyColumn, LegacyFlag, LegacyRow, LegacyTable};
 use crate::modern::{ModernColumn, ModernRow, ModernTable};
-use crate::{BdatResult, Cell, ColumnMap, Label, LegacyFlag, RowId, RowRef, Utf, ValueType};
+use crate::{BdatResult, Cell, Label, RowId, RowRef, ValueType};
 
 /// A BDAT table view with version metadata.
 ///
@@ -30,8 +34,6 @@ use crate::{BdatResult, Cell, ColumnMap, Label, LegacyFlag, RowId, RowRef, Utf, 
 /// New tables **must** be built as versioned tables. In other words, there is no builder for
 /// this compatibility wrapper, you must use one of [`LegacyTableBuilder`] or [`ModernTableBuilder`].
 /// You may then wrap the build result if you deem it necessary.
-///
-/// See also the [module-level documentation](crate::table) for tables.
 ///
 /// ## Examples
 ///
@@ -55,35 +57,34 @@ pub enum CompatTable<'b> {
     Legacy(LegacyTable<'b>),
 }
 
+/// Wraps an owned table row.
 pub enum CompatRow<'buf> {
     Modern(ModernRow<'buf>),
     Legacy(LegacyRow<'buf>),
 }
 
+/// Wraps a reference to a table row.
 #[derive(Clone, Copy)]
 pub enum CompatRef<'t, 'buf> {
     Modern(&'t ModernRow<'buf>),
     Legacy(&'t LegacyRow<'buf>),
 }
 
+/// Wraps an owned table column.
 #[derive(Clone, PartialEq, Eq)]
 pub enum CompatColumn<'buf> {
     Modern(ModernColumn<'buf>),
     Legacy(LegacyColumn<'buf>),
 }
 
+/// Wraps a reference to a table column.
 #[derive(Clone, Copy)]
 pub enum CompatColumnRef<'t, 'buf> {
     Modern(&'t ModernColumn<'buf>),
     Legacy(&'t LegacyColumn<'buf>),
 }
 
-#[derive(Clone, Copy)]
-pub enum CompatColumnMap<'t, 'buf> {
-    Modern(&'t ColumnMap<ModernColumn<'buf>, Label<'buf>>),
-    Legacy(&'t ColumnMap<LegacyColumn<'buf>, Utf<'buf>>),
-}
-
+/// The [`RowRef`] returned by queries on [`CompatTable`].
 pub type CompatRowRef<'t, 'buf> = RowRef<CompatRef<'t, 'buf>, CompatColumnMap<'t, 'buf>>;
 
 macro_rules! versioned {
@@ -538,7 +539,7 @@ impl<'buf> ColumnSerialize for CompatColumn<'buf> {
         self.value_type()
     }
 
-    fn ser_flags(&self) -> &[crate::LegacyFlag] {
+    fn ser_flags(&self) -> &[LegacyFlag] {
         match self {
             Self::Modern(m) => m.ser_flags(),
             Self::Legacy(l) => l.ser_flags(),
@@ -551,7 +552,7 @@ impl<'a, 'buf> ColumnSerialize for CompatColumnRef<'a, 'buf> {
         self.value_type()
     }
 
-    fn ser_flags(&self) -> &[crate::LegacyFlag] {
+    fn ser_flags(&self) -> &[LegacyFlag] {
         match self {
             Self::Modern(m) => m.ser_flags(),
             Self::Legacy(l) => l.ser_flags(),

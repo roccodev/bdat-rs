@@ -2,9 +2,11 @@
 
 use crate::compat::CompatTable;
 use crate::hash::PreHashedMap;
+use crate::legacy::LegacyFlag;
 use crate::modern::ModernTableBuilder;
-use crate::{ColumnMap, Label, RowId, RowRef, Value, ValueType};
+use crate::{Label, RowId, RowRef, Value, ValueType};
 
+use super::column::ColumnMap;
 use super::private::{CellAccessor, Column, ColumnSerialize, LabelMap, Table};
 use super::util::EnumId;
 
@@ -78,7 +80,9 @@ pub struct ModernColumn<'buf> {
     pub(crate) label: Label<'buf>,
 }
 
+/// The [`RowRef`] returned by queries on [`ModernTable`].
 pub type ModernRowRef<'t, 'buf> = RowRef<&'t ModernRow<'buf>, &'t ColumnMap<ModernColumn<'buf>>>;
+/// The [`RowRef`] (mutable view) returned by queries on [`ModernTable`].
 pub type ModernRowMut<'t, 'buf> =
     RowRef<&'t mut ModernRow<'buf>, &'t ColumnMap<ModernColumn<'buf>>>;
 
@@ -377,11 +381,11 @@ impl<'t, 'b> LabelMap for &'t ColumnMap<ModernColumn<'b>, Label<'b>> {
 }
 
 impl<'buf> ColumnSerialize for ModernColumn<'buf> {
-    fn ser_value_type(&self) -> crate::ValueType {
+    fn ser_value_type(&self) -> ValueType {
         self.value_type()
     }
 
-    fn ser_flags(&self) -> &[crate::LegacyFlag] {
+    fn ser_flags(&self) -> &[LegacyFlag] {
         &[]
     }
 }

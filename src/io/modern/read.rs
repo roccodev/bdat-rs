@@ -21,6 +21,7 @@ use super::FileHeader;
 const LEN_COLUMN_DEF_V2: usize = 3;
 const LEN_HASH_DEF_V2: usize = 8;
 
+#[doc(hidden)]
 pub struct FileReader<R, E> {
     tables: TableReader<R, E>,
     header: FileHeader,

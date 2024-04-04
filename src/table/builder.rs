@@ -1,13 +1,14 @@
-use crate::ColumnMap;
-
 use super::{
+    column::ColumnMap,
     convert::FormatConvertError,
     legacy::LegacyTable,
     modern::ModernTable,
     private::{Column, Table},
 };
 
+/// Builder for [`ModernTable`]
 pub type ModernTableBuilder<'b> = TableBuilderImpl<'b, ModernTable<'b>>;
+/// Builder for [`LegacyTable`]
 pub type LegacyTableBuilder<'b> = TableBuilderImpl<'b, LegacyTable<'b>>;
 
 /// A builder interface for tables.

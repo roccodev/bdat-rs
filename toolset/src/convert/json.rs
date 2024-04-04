@@ -5,11 +5,13 @@ use std::{
 
 use anyhow::{anyhow, Context, Result};
 use bdat::compat::{CompatColumn, CompatTable};
-use bdat::legacy::{LegacyColumn, LegacyColumnBuilder, LegacyRow, LegacyTable, LegacyTableBuilder};
+use bdat::legacy::{
+    LegacyColumn, LegacyColumnBuilder, LegacyFlag, LegacyRow, LegacyTable, LegacyTableBuilder,
+};
 use bdat::modern::{ModernColumn, ModernRow, ModernTable, ModernTableBuilder};
 use bdat::{
     serde::{CellSeed, SerializeCell},
-    Cell, Label, LegacyFlag, RowId, Value, ValueType,
+    Cell, Label, RowId, Value, ValueType,
 };
 use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};

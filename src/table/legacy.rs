@@ -1,9 +1,10 @@
 //! Legacy (XC1 up to DE) format types
 
-use crate::{compat::CompatTable, Cell, ColumnMap, LegacyFlag, RowRef, Utf, ValueType};
+use crate::{compat::CompatTable, Cell, RowRef, Utf, ValueType};
 
 use super::{
     builder::LegacyTableBuilder,
+    column::ColumnMap,
     private::{CellAccessor, Column, ColumnSerialize, LabelMap, Table},
     util::EnumId,
 };
@@ -58,10 +59,26 @@ pub struct LegacyColumn<'buf> {
     pub(crate) flags: Vec<LegacyFlag<'buf>>,
 }
 
+/// A sub-definition for flag data that is associated to a column in legacy formats.
+#[derive(Debug, Clone, PartialEq, Eq)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+pub struct LegacyFlag<'tb> {
+    /// The flag's identifier. Because flags are only supported in legacy BDATs, this is
+    /// equivalent to a [`Label::String`].
+    pub(crate) label: Utf<'tb>,
+    /// The bits this flag is setting on the parent
+    pub(crate) mask: u32,
+    /// The index in the parent cell's flag list
+    #[cfg_attr(feature = "serde", serde(rename = "index"))]
+    pub(crate) flag_index: usize,
+}
+
 /// A builder interface for [`LegacyColumn`].
 pub struct LegacyColumnBuilder<'tb>(LegacyColumn<'tb>);
 
+/// The [`RowRef`] returned by queries on [`LegacyTable`].
 pub type LegacyRowRef<'t, 'buf> = RowRef<&'t LegacyRow<'buf>, &'t ColumnMap<LegacyColumn<'buf>>>;
+/// The [`RowRef`] (mutable view) returned by queries on [`LegacyTable`].
 pub type LegacyRowMut<'t, 'buf> =
     RowRef<&'t mut LegacyRow<'buf>, &'t ColumnMap<LegacyColumn<'buf>>>;
 
@@ -256,6 +273,43 @@ impl<'tb> LegacyColumn<'tb> {
     }
 }
 
+impl<'tb> LegacyFlag<'tb> {
+    /// Creates a flag definition with an arbitrary mask and shift amount.
+    pub fn new(label: impl Into<Utf<'tb>>, mask: u32, shift_amount: usize) -> Self {
+        Self {
+            label: label.into(),
+            mask,
+            flag_index: shift_amount,
+        }
+    }
+
+    /// Creates a flag definition that only masks a single bit.
+    ///
+    /// Bits are numbered starting from 0, i.e. the least significant bit of the parent value
+    /// is the bit at index 0.
+    ///
+    /// Note: the bit must not be greater than the parent value's bit count.
+    /// For example, a bit of 14 is invalid for an 8-bit value.
+    pub fn new_bit(label: impl Into<Utf<'tb>>, bit: u32) -> Self {
+        Self::new(label, 1 << bit, bit as usize)
+    }
+
+    /// Returns this flag's name.
+    pub fn label(&self) -> &str {
+        &self.label
+    }
+
+    /// Returns this flag's bit mask.
+    pub fn mask(&self) -> u32 {
+        self.mask
+    }
+
+    /// Returns this flag's right shift amount.
+    pub fn shift_amount(&self) -> usize {
+        self.flag_index
+    }
+}
+
 impl<'tb> LegacyColumnBuilder<'tb> {
     pub fn new(value_type: ValueType, label: Utf<'tb>) -> Self {
         Self(LegacyColumn::new(value_type, label))
@@ -329,7 +383,7 @@ impl<'buf> ColumnSerialize for LegacyColumn<'buf> {
         self.value_type()
     }
 
-    fn ser_flags(&self) -> &[crate::LegacyFlag] {
+    fn ser_flags(&self) -> &[LegacyFlag] {
         &self.flags
     }
 }

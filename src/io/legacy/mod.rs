@@ -37,6 +37,7 @@ pub struct LegacyWriteOptions {
 }
 
 #[derive(Debug)]
+#[doc(hidden)]
 pub struct FileHeader {
     pub table_count: usize,
     file_size: usize,
@@ -44,6 +45,7 @@ pub struct FileHeader {
 }
 
 #[derive(Debug, Clone)]
+#[doc(hidden)]
 pub struct TableHeader {
     pub scramble_type: ScrambleType,
     hashes: OffsetAndLen,

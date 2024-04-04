@@ -22,6 +22,7 @@ pub enum VersionSlice<'b> {
     Modern(FileReader<BdatSlice<'b, SwitchEndian>, SwitchEndian>),
 }
 
+/// Errors that may occur while detecting the version of a BDAT file.
 #[derive(thiserror::Error, Debug)]
 pub enum DetectError {
     #[error("Not a BDAT file")]
@@ -43,8 +44,7 @@ pub enum DetectError {
 /// need to unscramble text), yet this function is forced to carry that restriction, even when
 /// effectively dealing with modern tables.
 ///
-/// Tables read using this function are compatible with most operations (see the [module-level
-/// documentation](crate::table) for tables).
+/// Tables read using this function are compatible with most operations.  
 /// If you know in advance that you are dealing with modern (XC3) or legacy (other games) tables,
 /// you should use the specialized functions instead. That way, you can benefit from ergonomic
 /// functions on the [`ModernTable`] and [`LegacyTable`] types.

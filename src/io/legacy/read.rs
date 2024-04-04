@@ -11,8 +11,8 @@ use super::scramble::{calc_checksum, scramble, unscramble, ScrambleType};
 use super::{ColumnNodeInfo, COLUMN_NODE_SIZE};
 use crate::error::{Result, Scope};
 use crate::io::BDAT_MAGIC;
-use crate::legacy::{LegacyColumn, LegacyRow, LegacyTable, LegacyTableBuilder};
-use crate::{BdatError, BdatFile, Cell, LegacyFlag, LegacyVersion, Utf, Value, ValueType};
+use crate::legacy::{LegacyColumn, LegacyFlag, LegacyRow, LegacyTable, LegacyTableBuilder};
+use crate::{BdatError, BdatFile, Cell, LegacyVersion, Utf, Value, ValueType};
 
 use super::{FileHeader, TableHeader};
 

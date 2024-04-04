@@ -1,7 +1,7 @@
 //! Crate-private traits that help reduce boilerplate or generalize implementations, but aren't
 //! exposed in the public API.
 
-use crate::{LegacyFlag, Value, ValueType};
+use crate::{legacy::LegacyFlag, Value, ValueType};
 
 pub trait Table<'buf> {
     type Id: From<u8>;

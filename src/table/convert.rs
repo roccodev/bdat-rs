@@ -2,7 +2,9 @@ use thiserror::Error;
 
 use crate::legacy::{LegacyColumn, LegacyRow, LegacyTable, LegacyTableBuilder};
 use crate::modern::{ModernColumn, ModernRow, ModernTable, ModernTableBuilder};
-use crate::{BdatVersion, Cell, ColumnMap, LegacyVersion, RowId, ValueType};
+use crate::{BdatVersion, Cell, LegacyVersion, RowId, ValueType};
+
+use super::column::ColumnMap;
 
 /// Error encountered while converting tables
 /// to a different format.

@@ -172,6 +172,5 @@ pub use io::{BdatFile, BdatVersion, LegacyVersion, SwitchEndian, WiiEndian};
 pub use label::Label;
 pub use public::*;
 pub use table::cell::*;
-pub use table::column::*;
 pub use table::compat;
 pub use table::row::*;

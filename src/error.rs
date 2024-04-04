@@ -7,7 +7,7 @@ use thiserror::Error;
 /// Alias for `Result<T, BdatError>`
 pub type Result<T> = std::result::Result<T, BdatError>;
 
-/// Errors that may occur when reading and writing BDAT tables
+/// Errors that may occur while reading and writing BDAT tables
 #[derive(Error, Debug)]
 pub enum BdatError {
     #[error(transparent)]
