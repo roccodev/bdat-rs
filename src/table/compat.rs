@@ -10,11 +10,11 @@ use std::convert::Infallible;
 
 use super::legacy::LegacyRow;
 use super::modern::ModernRow;
-use super::private::{ColumnSerialize, LabelMap, Table};
+use super::private::{CellAccessor, ColumnSerialize, LabelMap, Table};
 use super::util::CompatIter;
 use crate::{
-    BdatResult, Cell, CellAccessor, ColumnMap, Label, LegacyColumn, LegacyFlag, LegacyTable,
-    ModernColumn, ModernTable, RowId, RowRef, Utf, ValueType,
+    BdatResult, Cell, ColumnMap, Label, LegacyColumn, LegacyFlag, LegacyTable, ModernColumn,
+    ModernTable, RowId, RowRef, Utf, ValueType,
 };
 
 /// A BDAT table view with version metadata.

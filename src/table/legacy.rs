@@ -1,10 +1,10 @@
 //! Legacy (XC1 up to DE) format types
 
-use crate::{Cell, CellAccessor, ColumnMap, CompatTable, LegacyColumn, RowRef, Utf};
+use crate::{Cell, ColumnMap, CompatTable, LegacyColumn, RowRef, Utf};
 
 use super::{
     builder::LegacyTableBuilder,
-    private::{ColumnSerialize, LabelMap, Table},
+    private::{CellAccessor, ColumnSerialize, LabelMap, Table},
     util::EnumId,
 };
 

@@ -15,6 +15,7 @@ pub type SwitchEndian = byteorder::LittleEndian;
 /// Alias for [`byteorder::BigEndian`], i.e. the byte order used in the Wii/Wii U games.
 pub type WiiEndian = byteorder::BigEndian;
 
+/// The major categorization of the different BDAT formats.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum BdatVersion {
@@ -24,6 +25,11 @@ pub enum BdatVersion {
     Modern,
 }
 
+/// Subversion for legacy table formats.
+///
+/// The high-level format (i.e. [`LegacyTable`]) is the same
+/// for all of these. Only some parts of the internal binary representation
+/// are different.
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LegacyVersion {

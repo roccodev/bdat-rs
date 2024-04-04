@@ -24,6 +24,7 @@ pub struct LegacyColumnBuilder<'tb>(LegacyColumn<'tb>);
 /// Hosts both the table's column definitions and an index
 /// table to look up cells by column name.
 #[derive(Debug, Clone, PartialEq)]
+#[doc(hidden)]
 pub struct ColumnMap<C: Column, L = <C as Column>::Name> {
     columns: Vec<C>,
     pub(crate) label_map: NameMap<L>,

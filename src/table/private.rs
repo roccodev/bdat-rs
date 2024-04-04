@@ -1,7 +1,7 @@
 //! Crate-private traits that help reduce boilerplate or generalize implementations, but aren't
 //! exposed in the public API.
 
-use crate::{LegacyFlag, ValueType};
+use crate::{LegacyFlag, Value, ValueType};
 
 pub trait Table<'buf> {
     type Id: From<u8>;
@@ -26,6 +26,19 @@ pub trait LabelMap {
     type Name;
 
     fn position(&self, label: &Self::Name) -> Option<usize>;
+}
+
+pub trait CellAccessor {
+    type Target;
+
+    fn access(self, pos: usize) -> Option<Self::Target>;
+}
+
+pub trait FromValue<'t, 'tb>
+where
+    Self: Sized,
+{
+    fn extract(value: &'t Value<'tb>) -> Option<Self>;
 }
 
 pub trait ColumnSerialize {

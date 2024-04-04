@@ -156,20 +156,18 @@ pub mod serde;
 
 pub(crate) mod error;
 pub(crate) mod io;
-pub mod label;
+pub(crate) mod label;
 pub mod table;
 
 pub use error::BdatError;
 pub use error::Result as BdatResult;
 pub use io::detect::*;
 pub use io::*;
-pub use label::Label;
-
+pub use label::*;
+pub use table::builder::*;
 pub use table::cell::*;
 pub use table::column::*;
 pub use table::compat::*;
+pub use table::legacy::*;
+pub use table::modern::*;
 pub use table::row::*;
-pub use table::{
-    CompatTable, LegacyColumn, LegacyRow, LegacyTable, LegacyTableBuilder, ModernColumn, ModernRow,
-    ModernTable, ModernTableBuilder,
-};

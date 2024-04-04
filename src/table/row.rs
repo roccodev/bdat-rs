@@ -2,7 +2,7 @@
 
 use std::ops::{Deref, DerefMut};
 
-use super::private::LabelMap;
+use super::private::{CellAccessor, LabelMap};
 
 /// Best-fit type for row IDs.
 /// In legacy BDATs, row identifiers are 16-bit.
@@ -34,12 +34,6 @@ pub struct RowRef<R, L> {
     id: RowId,
     row: R,
     columns: L,
-}
-
-pub trait CellAccessor {
-    type Target;
-
-    fn access(self, pos: usize) -> Option<Self::Target>;
 }
 
 impl<R, L> RowRef<R, L>

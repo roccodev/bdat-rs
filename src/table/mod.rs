@@ -22,22 +22,13 @@
 //! [`as_legacy`]: CompatTable::as_legacy
 //! [`as_modern`]: CompatTable::as_modern
 
-pub mod cell;
-pub mod column;
-pub mod compat;
-pub mod row;
-
+pub(crate) mod builder;
+pub(crate) mod cell;
+pub(crate) mod column;
+pub(crate) mod compat;
+pub(crate) mod convert;
+pub(crate) mod legacy;
+pub(crate) mod modern;
 pub(crate) mod private;
-
-mod builder;
-mod convert;
-mod legacy;
-mod modern;
-mod util;
-
-pub use builder::{LegacyTableBuilder, ModernTableBuilder};
-pub use column::{LegacyColumn, ModernColumn};
-pub use compat::{CompatColumn, CompatRef, CompatRow, CompatTable};
-pub use convert::FormatConvertError;
-pub use legacy::{LegacyRow, LegacyTable};
-pub use modern::{ModernRow, ModernTable};
+pub(crate) mod row;
+pub(crate) mod util;

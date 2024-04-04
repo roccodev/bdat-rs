@@ -2,11 +2,10 @@
 
 use crate::hash::PreHashedMap;
 use crate::{
-    CellAccessor, ColumnMap, CompatTable, Label, ModernColumn, ModernTableBuilder, RowId, RowRef,
-    Value,
+    ColumnMap, CompatTable, Label, ModernColumn, ModernTableBuilder, RowId, RowRef, Value,
 };
 
-use super::private::{ColumnSerialize, LabelMap, Table};
+use super::private::{CellAccessor, ColumnSerialize, LabelMap, Table};
 use super::util::EnumId;
 
 /// The BDAT table representation in modern formats, currently used in Xenoblade 3.
@@ -23,7 +22,7 @@ use super::util::EnumId;
 /// ## Simpler cells
 ///
 /// Unlike legacy tables, modern tables only support single-value cells (i.e. [`Cell::Single`]).
-/// Rows queried from this struct return [`ModernCell`], letting you directly operate on values.
+/// Rows queried from this struct return [`Value`], letting you directly operate on them.
 ///
 /// # Examples
 ///
@@ -52,7 +51,6 @@ use super::util::EnumId;
 ///
 /// [`get_row_by_hash`]: ModernTable::get_row_by_hash
 /// [`row_by_hash`]: ModernTable::row_by_hash
-/// [`ModernCell`]: crate::ModernCell
 /// [`Cell::Single`]: crate::Cell::Single
 #[derive(Debug, Clone, PartialEq)]
 pub struct ModernTable<'b> {
@@ -116,12 +114,10 @@ impl<'b> ModernTable<'b> {
     /// use bdat::{Label, ModernTable};
     ///
     /// fn foo(table: &ModernTable) -> u32 {
-    ///     // This is a `ModernCell`, which is essentially a single value.
-    ///     // As such, it can be used to avoid having to match on single-value cells
-    ///     // that are included for legacy compatibility.
-    ///     let cell = table.row(1).get(Label::Hash(0xDEADBEEF));
+    ///     // This returns a `Value` as it's the only type supported by modern tables.
+    ///     let value = table.row(1).get(Label::Hash(0xDEADBEEF));
     ///     // Casting values is also supported:
-    ///     cell.get_as::<u32>()
+    ///     value.get_as::<u32>()
     /// }
     /// ```
     pub fn row(&self, id: RowId) -> ModernRowRef<'_, 'b> {

@@ -1,11 +1,13 @@
-use crate::table::FormatConvertError;
+use crate::table::convert::FormatConvertError;
 use crate::{BdatVersion, DetectError, Label, ValueType};
 use std::num::TryFromIntError;
 use std::str::Utf8Error;
 use thiserror::Error;
 
+/// Alias for `Result<T, BdatError>`
 pub type Result<T> = std::result::Result<T, BdatError>;
 
+/// Errors that may occur when reading and writing BDAT tables
 #[derive(Error, Debug)]
 pub enum BdatError {
     #[error(transparent)]

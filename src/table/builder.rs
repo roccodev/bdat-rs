@@ -9,6 +9,7 @@ pub type ModernTableBuilder<'b> = TableBuilderImpl<'b, ModernTable<'b>>;
 pub type LegacyTableBuilder<'b> = TableBuilderImpl<'b, LegacyTable<'b>>;
 
 /// A builder interface for tables.
+#[doc(hidden)]
 pub struct TableBuilderImpl<'buf, T: Table<'buf>> {
     pub(crate) name: T::Name,
     pub(crate) columns: ColumnMap<T::BuilderColumn, <T::BuilderColumn as Column>::Name>,

@@ -5,6 +5,8 @@ use num_enum::TryFromPrimitive;
 use std::borrow::Cow;
 use std::fmt::Display;
 
+use super::private::FromValue;
+
 /// A cell from a BDAT row.
 ///
 /// ## Cell types
@@ -109,20 +111,6 @@ pub enum Value<'b> {
 
 /// An optionally-borrowed clone-on-write UTF-8 string.
 pub type Utf<'t> = Cow<'t, str>;
-
-/// Modern is currently an alias for the value contained in single-value cells,
-/// which is the only cell type supported by the modern format.
-pub type ModernCell<'t, 'tb> = &'t Value<'tb>;
-
-/// Legacy is currently an alias for the version-agnostic [`Cell`].
-pub type LegacyCell<'t, 'tb> = &'t Cell<'tb>;
-
-pub trait FromValue<'t, 'tb>
-where
-    Self: Sized,
-{
-    fn extract(value: &'t Value<'tb>) -> Option<Self>;
-}
 
 impl<'b> Cell<'b> {
     /// Gets a reference to the cell's value, if it
