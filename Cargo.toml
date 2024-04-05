@@ -1,6 +1,6 @@
 [package]
 name = "bdat"
-version = "0.5.0-alpha.1"
+version = "0.5.0"
 description = "(De)serialization library for Monolithsoft's BDAT file format"
 authors = ["RoccoDev <hey@rocco.dev>"]
 edition = "2021"
@@ -12,7 +12,7 @@ exclude = ["/.vscode", "/.github"]
 
 [dependencies]
 serde = { version = "1.0", optional = true, features = ["derive"] }
-byteorder = "1.4"
+byteorder = "1.5"
 thiserror = "1.0"
 enum-kinds = "0.5.1"
 num_enum = "0.7.2"

@@ -448,6 +448,10 @@ impl<'t, 'buf> CompatColumnRef<'t, 'buf> {
 }
 
 impl<'b> CompatRow<'b> {
+    /// Returns an iterator over this row's cells.
+    ///
+    /// Because this is a compatibility wrapper, the returned [`Cell`]s must be owned
+    /// (and therefore cloned), as modern tables do not store cells directly.
     pub fn cells(&self) -> impl Iterator<Item = Cell<'b>> + '_ {
         match self {
             CompatRow::Modern(m) => {
@@ -457,6 +461,10 @@ impl<'b> CompatRow<'b> {
         }
     }
 
+    /// Returns an iterator over this row's cells, taking ownership of the row.
+    ///
+    /// Unlike the [borrowed variant](CompatRow::cells), this iterator moves instead of cloning.
+    /// In the case of modern tables, the moved value is wrapped.
     pub fn into_cells(self) -> impl Iterator<Item = Cell<'b>> {
         match self {
             CompatRow::Modern(m) => CompatIter::Modern(m.into_values().map(Cell::Single)),

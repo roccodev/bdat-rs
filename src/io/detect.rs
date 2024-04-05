@@ -10,12 +10,14 @@ use crate::legacy::read::{LegacyBytes, LegacyReader};
 use crate::modern::FileReader;
 use crate::{BdatVersion, LegacyVersion, SwitchEndian, WiiEndian};
 
+/// Compatibility file reader returned by [`bdat::from_reader`](`crate::from_reader`)
 pub enum VersionReader<R: Read + Seek> {
     LegacyWii(LegacyReader<R, WiiEndian>),
     LegacySwitch(LegacyReader<R, SwitchEndian>),
     Modern(FileReader<BdatReader<R, SwitchEndian>, SwitchEndian>),
 }
 
+/// Compatibility slice reader returned by [`bdat::from_bytes`](`crate::from_bytes`)
 pub enum VersionSlice<'b> {
     LegacyWii(LegacyBytes<'b, WiiEndian>),
     LegacySwitch(LegacyBytes<'b, SwitchEndian>),

@@ -71,6 +71,7 @@ pub enum Cell<'b> {
     ValueType,
     derive(TryFromPrimitive),
     repr(u8),
+    doc = "Discriminants for [`Value`], generated automatically.",
     cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize)),
     cfg_attr(feature = "serde", serde(into = "u8", try_from = "u8"))
 )]

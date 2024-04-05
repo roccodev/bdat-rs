@@ -20,15 +20,15 @@ pub struct BdatSlice<'b, E> {
     _endianness: PhantomData<E>,
 }
 
+/// Table extractor from a BDAT file.
+///
+/// ## Notice
+/// In future versions, this may be replaced by a common file struct.
 pub trait BdatFile<'b> {
     /// The output table type
     type TableOut;
 
     /// Reads all tables from the BDAT source.
-    ///
-    /// ## Future compatibility
-    /// This function might start returning an iterator when Rust 1.75.0
-    /// hits stable (specifically [this issue](https://github.com/rust-lang/rust/issues/91611)).
     fn get_tables(&mut self) -> Result<Vec<Self::TableOut>>;
 
     /// Returns the number of tables in the BDAT file.
