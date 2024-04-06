@@ -117,17 +117,17 @@ void scramble(char* start, char* end, u16 key) {
 | Field                          | Type  | Offset |
 |--------------------------------|-------|--------|
 | Cell type (Flags, Value, List) | u8    | 0      |
-| **<u>Flags Fields</u>**        | ----- |        |
-| Flag right shift amount        | u8 | 1      |
-| Flag AND mask                  | u32 | 2 |
-| Pointer to parent column node  | u16 | 6
-| **<u>Value Fields</u>**        | ----- |        |
+| **<u>Value Fields</u>** (Cell type 1)       | ----- |        |
 | Value type                     | u8 | 1      |
 | Value offset (relative to row) | u16 | 2      |
-| **<u>List Fields</u>**         | ----- |        |
+| **<u>List Fields</u>** (Cell type 2)        | ----- |        |
 | Value type                     | u8 | 1      |
 | Value offset (relative to row) | u16 | 2      |
 | Number of elements             | u16 | 4      |
+| **<u>Flags Fields</u>** (Cell type 3)        | ----- |        |
+| Flag right shift amount        | u8 | 1      |
+| Flag AND mask                  | u32 | 2 |
+| Pointer to parent column node  | u16 | 6
 
 
 ## Column node (XCX+)
@@ -161,7 +161,7 @@ a plain string, not a column node.
 ## Rows and value types
 
 Rows are stored sequentially. "Flag" cells are skipped, as they use the parent cell's value.
-For "List" cells, values are stored sequentially.
+For "List" cells (cell type 2), values are stored sequentially.
 
 Legacy BDATs support these value types:
 
@@ -176,6 +176,11 @@ Legacy BDATs support these value types:
 | 7 | String | 4 | pointer to a nul-terminated C string (absolute) |
 | 8 | Float | 4 | IEEE-754 floating point (1/3D/2/DE), `20.12` fixed-point (`f = raw / 4096.0`) (XCX) |
 
+### Flag cells
+
+Flag cells (cell type 3) do not consume space on their own. Instead, they read bits from their parent column's value. The parent column must then have a single-value integer type. 
+
+Generally, flags are used to read boolean values, but wider flags are also supported.
 
 ## Hash table
 
