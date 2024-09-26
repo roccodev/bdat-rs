@@ -98,6 +98,8 @@ impl JsonConverter {
                 },
             )?;
 
+        let base_id = table.rows.iter().map(|r| r.id).min().unwrap_or(1);
+
         let rows = table
             .rows
             .into_iter()
@@ -122,6 +124,7 @@ impl JsonConverter {
         Ok(ModernTableBuilder::with_name(name)
             .set_columns(columns)
             .set_rows(rows)
+            .set_base_id(base_id)
             .build())
     }
 
@@ -168,6 +171,14 @@ impl JsonConverter {
                 },
             )?;
 
+        let base_id: u16 = table
+            .rows
+            .iter()
+            .map(|r| r.id)
+            .min()
+            .unwrap_or(1)
+            .try_into()?;
+
         let rows = table
             .rows
             .into_iter()
@@ -197,6 +208,7 @@ impl JsonConverter {
         Ok(LegacyTableBuilder::with_name(name_str)
             .set_columns(columns)
             .set_rows(rows)
+            .set_base_id(base_id)
             .build())
     }
 }
