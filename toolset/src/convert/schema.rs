@@ -62,11 +62,7 @@ impl FileSchema {
     pub fn find_table_files(&self, base_dir: &Path, extension: &str) -> Vec<(Label, PathBuf)> {
         let mut files = Vec::with_capacity(self.tables.len());
 
-        for label in self
-            .tables
-            .iter()
-            .chain(std::iter::once(&self.file_name.clone()))
-        {
+        for label in self.tables.iter() {
             let label = Label::parse(label.clone(), false);
             let path = base_dir.join(format!("{}.{extension}", label.as_file_name()));
             if path.is_file() {

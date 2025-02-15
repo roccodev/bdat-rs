@@ -86,13 +86,13 @@ pub fn run_conversions(args: ConvertArgs, is_extracting: bool) -> Result<()> {
 
     if is_extracting {
         let hash_table = args.input.load_hashes()?;
-        run_serialization(args, hash_table)
+        run_extract(args, hash_table)
     } else {
-        run_deserialization(args)
+        run_pack(args)
     }
 }
 
-pub fn run_serialization(args: ConvertArgs, hash_table: HashNameTable) -> Result<()> {
+pub fn run_extract(args: ConvertArgs, hash_table: HashNameTable) -> Result<()> {
     let out_dir = args
         .out_dir
         .as_ref()
@@ -201,7 +201,7 @@ pub fn run_serialization(args: ConvertArgs, hash_table: HashNameTable) -> Result
     Ok(())
 }
 
-fn run_deserialization(args: ConvertArgs) -> Result<()> {
+fn run_pack(args: ConvertArgs) -> Result<()> {
     let schema_files = args
         .input
         .list_files(SchemaFileFilter, false)?
