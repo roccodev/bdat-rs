@@ -89,7 +89,7 @@ jobs:
       - name: Build
         run: cd toolset && cargo build --release --target ${{ matrix.builds.target }}
       - name: Upload executable
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: bdat-toolset-${{ matrix.builds.file }}
           path: target/${{ matrix.builds.target }}/release/${{ matrix.builds.out }}
