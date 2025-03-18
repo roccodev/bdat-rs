@@ -7,6 +7,8 @@ use csv::WriterBuilder;
 use std::io::Write;
 use std::iter::Once;
 
+use crate::util::hash::HashNameTable;
+
 use super::{BdatSerialize, ConvertArgs};
 
 #[derive(Args)]
@@ -70,12 +72,14 @@ impl CsvConverter {
     fn format_cell<'b, 'a: 'b, 't: 'a>(
         &self,
         column: CompatColumnRef<'a, 't>,
-        cell: Cell<'t>,
+        hash_table: &HashNameTable,
+        mut cell: Cell<'t>,
     ) -> ColumnIter<
         SerializeCell<'b, 't, CompatColumnRef<'a, 't>>,
         impl Iterator<Item = SerializeCell<'b, 't, CompatColumnRef<'a, 't>>>,
         impl Iterator<Item = SerializeCell<'b, 't, CompatColumnRef<'a, 't>>>,
     > {
+        self.basic_cell_filter(&mut cell, hash_table);
         match cell {
             // Single values: serialize normally
             c @ Cell::Single(_) => {
@@ -103,7 +107,12 @@ impl CsvConverter {
 }
 
 impl BdatSerialize for CsvConverter {
-    fn write_table(&self, table: CompatTable, writer: &mut dyn Write) -> Result<()> {
+    fn write_table(
+        &self,
+        table: CompatTable,
+        hash_table: &HashNameTable,
+        writer: &mut dyn Write,
+    ) -> Result<()> {
         let mut writer = WriterBuilder::new()
             .delimiter(self.separator_ch as u8)
             .from_writer(writer);
@@ -119,7 +128,7 @@ impl BdatSerialize for CsvConverter {
             let serialized_row = row
                 .cells()
                 .zip(table.columns())
-                .flat_map(|(cell, col)| self.format_cell(col, cell))
+                .flat_map(|(cell, col)| self.format_cell(col, hash_table, cell))
                 .collect::<Vec<_>>();
             writer
                 .serialize(serialized_row)

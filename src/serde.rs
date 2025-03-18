@@ -1,5 +1,6 @@
 //! Serde implementations for crate types (requires feature `serde`)
 
+use crate::hash::murmur3_str;
 use crate::legacy::float::BdatReal;
 use crate::table::private::ColumnSerialize;
 use crate::{Cell, Label, Value, ValueType};
@@ -35,7 +36,7 @@ enum ValueTypeFields {
     Value,
 }
 
-struct HexVisitor;
+struct HashVisitor;
 
 /// An implementation of [`DeserializeSeed`] for [`Cell`]s.
 pub struct CellSeed<'a, C: ColumnSerialize>(&'a C);
@@ -123,7 +124,7 @@ impl ValueType {
             Self::SignedByte => Value::SignedByte(i8::deserialize(deserializer)?),
             Self::String => Value::String(Cow::deserialize(deserializer)?),
             Self::Float => Value::Float(BdatReal::Unknown(f32::deserialize(deserializer)?)),
-            Self::HashRef => Value::HashRef(deserializer.deserialize_any(HexVisitor)?),
+            Self::HashRef => Value::HashRef(deserializer.deserialize_any(HashVisitor)?),
             Self::Percent => Value::Percent(u8::deserialize(deserializer)?),
             Self::DebugString => Value::DebugString(Cow::deserialize(deserializer)?),
             Self::Unknown12 => Value::Unknown12(u8::deserialize(deserializer)?),
@@ -132,11 +133,11 @@ impl ValueType {
     }
 }
 
-impl<'de> Visitor<'de> for HexVisitor {
+impl<'de> Visitor<'de> for HashVisitor {
     type Value = u32;
 
     fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
-        formatter.write_str("number or hex string")
+        formatter.write_str("<HEX> (8 hex digits) or unsigned integer to interpret as hash, or a string to hash automatically")
     }
 
     fn visit_u32<E>(self, v: u32) -> Result<Self::Value, E>
@@ -158,11 +159,13 @@ impl<'de> Visitor<'de> for HexVisitor {
     where
         E: de::Error,
     {
-        match v.len() {
-            10 if v.as_bytes()[0] == b'<' => u32::from_str_radix(&v[1..=8], 16), // <XXXXXXXX>
-            _ => u32::from_str_radix(v, 16),
+        // <XXXXXXXX>
+        if v.len() == 10 && v.as_bytes()[0] == b'<' {
+            if let Ok(hash) = u32::from_str_radix(&v[1..=8], 16) {
+                return Ok(hash);
+            }
         }
-        .map_err(|_| de::Error::invalid_value(de::Unexpected::Str(v), &self))
+        Ok(murmur3_str(v))
     }
 }
 
@@ -373,6 +376,7 @@ impl<'a, C: ColumnSerialize> From<&'a C> for CellSeed<'a, C> {
 #[cfg(test)]
 mod tests {
     use crate::{
+        hash::murmur3_str,
         serde::{CellSeed, SerializeCell, ValueWithType},
         table::legacy::{LegacyColumn, LegacyFlag},
         Cell, Value, ValueType,
@@ -462,9 +466,9 @@ mod tests {
             Value::HashRef(1)
         );
         assert_eq!(
-            ty.deser_value(&mut serde_json::Deserializer::from_str("\"FFFFFFFF\""))
+            ty.deser_value(&mut serde_json::Deserializer::from_str("\"PC_NOAH\""))
                 .unwrap(),
-            Value::HashRef(u32::MAX)
+            Value::HashRef(murmur3_str("PC_NOAH"))
         );
         assert_eq!(
             ty.deser_value(&mut serde_json::Deserializer::from_str("\"<01ABCDEF>\""))

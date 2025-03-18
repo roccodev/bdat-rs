@@ -17,8 +17,11 @@ use clap::Args;
 use serde::{de::DeserializeSeed, Deserialize, Serialize};
 use serde_json::Map;
 
-use crate::error::{FormatError, MAX_DUPLICATE_COLUMNS};
 use crate::util::fixed_vec::FixedVec;
+use crate::{
+    error::{FormatError, MAX_DUPLICATE_COLUMNS},
+    util::hash::HashNameTable,
+};
 
 use super::{schema::FileSchema, BdatDeserialize, BdatSerialize, ConvertArgs};
 
@@ -214,7 +217,12 @@ impl JsonConverter {
 }
 
 impl BdatSerialize for JsonConverter {
-    fn write_table(&self, table: CompatTable, writer: &mut dyn Write) -> Result<()> {
+    fn write_table(
+        &self,
+        table: CompatTable,
+        hash_table: &HashNameTable,
+        writer: &mut dyn Write,
+    ) -> Result<()> {
         let schema = (!self.untyped).then(|| {
             table
                 .columns()
@@ -235,7 +243,8 @@ impl BdatSerialize for JsonConverter {
                 let cells = columns
                     .iter()
                     .zip(row.cells())
-                    .map(|(col, cell)| {
+                    .map(|(col, mut cell)| {
+                        self.basic_cell_filter(&mut cell, hash_table);
                         (
                             col.label().to_string(),
                             serde_json::to_value(SerializeCell::from_owned(*col, cell)).unwrap(),

@@ -189,8 +189,12 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
         let columns = self.reader.read_u32()? as usize;
         let rows = self.reader.read_u32()? as usize;
         let base_id = self.reader.read_u32()?;
-        if self.reader.read_u32()? != 0 {
-            panic!("Found unknown value at index 0x14 that was not 0");
+        let unk = self.reader.read_u32()?;
+        if unk != 0 {
+            return Err(BdatError::Assert(format!(
+                "Found unk={} at index 0x14 that was not 0",
+                unk,
+            )));
         }
 
         let offset_col = self.reader.read_u32()? as usize;

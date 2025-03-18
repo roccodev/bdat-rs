@@ -6,7 +6,7 @@ use std::{
 };
 
 use anyhow::{Context, Result};
-use bdat::{compat::CompatTable, Label};
+use bdat::{compat::CompatTable, Cell, Label, Value};
 use clap::Args;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use itertools::Itertools;
@@ -63,10 +63,24 @@ pub struct ConvertArgs {
 
 pub trait BdatSerialize {
     /// Writes a converted BDAT table to a [`Write`] implementation.
-    fn write_table(&self, table: CompatTable, writer: &mut dyn Write) -> Result<()>;
+    fn write_table(
+        &self,
+        table: CompatTable,
+        hash_table: &HashNameTable,
+        writer: &mut dyn Write,
+    ) -> Result<()>;
 
     /// Formats the file name for a converted BDAT table.
     fn get_file_name(&self, table_name: &str) -> String;
+
+    fn basic_cell_filter(&self, cell: &mut Cell, hash_table: &HashNameTable) {
+        // Support unhashing row IDs
+        if let Cell::Single(Value::HashRef(hash)) = cell {
+            if let Some(source) = hash_table.unhash(*hash) {
+                *cell = Cell::Single(Value::String(source.to_string().into()));
+            }
+        }
+    }
 }
 
 pub trait BdatDeserialize {
@@ -180,7 +194,7 @@ pub fn run_extract(args: ConvertArgs, hash_table: HashNameTable) -> Result<()> {
                         .context("Could not create output file")?;
                 let mut writer = BufWriter::new(out_file);
                 serializer
-                    .write_table(table, &mut writer)
+                    .write_table(table, &hash_table, &mut writer)
                     .context("Could not write table")?;
                 writer.flush().context("Could not save table")?;
 

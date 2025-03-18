@@ -36,6 +36,9 @@ pub enum BdatError {
     NameTableDuplicate(u32),
     #[error("Name table contains ID pair (<{0:08X}>, <{1:08X}>) in incorrect order")]
     NameTableOrder(u32, u32),
+    /// Format-related assertions, error instead of panic to allow recovery on malformed inputs
+    #[error("Assertion error: {0}")]
+    Assert(String),
 }
 
 #[derive(Debug)]

@@ -586,8 +586,7 @@ impl<'a, 't, E: ByteOrder> RowReader<'a, 't, E> {
         self.row_idx += 1;
         self.table.data.seek(SeekFrom::Start(
             (self.table.header.offset_rows + self.row_idx * self.table.header.row_len)
-                .try_into()
-                .unwrap(),
+                .try_into()?,
         ))?;
         self.cells.fill(None);
         Ok(())
