@@ -1,6 +1,6 @@
 use crate::{
     filter::{BdatFileFilter, Filter, FilterArg},
-    util::hash::HashNameTable,
+    util::{hash::HashNameTable, op_result::OpResult},
     InputData,
 };
 use anyhow::{Context, Result};
@@ -22,17 +22,19 @@ pub struct InfoArgs {
 }
 
 pub fn get_info(args: InfoArgs) -> Result<()> {
-    let hash_table = args.input.load_hashes()?;
+    let mut hash_table = args.input.load_hashes()?;
     let table_filter: Filter = args.tables.into_iter().map(FilterArg).collect();
     let column_filter: Filter = args.columns.into_iter().map(FilterArg).collect();
 
+    let mut op_result = OpResult::default();
     for file in args.input.list_files(BdatFileFilter, false)? {
         let path = file?;
+        op_result.start_file(path.to_string_lossy().to_string());
         let mut file = std::fs::read(&path)?;
         let tables = args
             .input
             .game_from_bytes(&file)?
-            .from_bytes(&mut file)
+            .from_bytes(&mut file, &mut hash_table, &mut op_result)
             .with_context(|| format!("Could not parse BDAT tables ({})", path.to_string_lossy()))?;
         for table in tables {
             let name = table.name();
@@ -81,7 +83,10 @@ pub fn get_info(args: InfoArgs) -> Result<()> {
                 }
             }
         }
+        op_result.end_file();
     }
+
+    op_result.print();
 
     Ok(())
 }

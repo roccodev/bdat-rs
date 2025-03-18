@@ -15,7 +15,7 @@ use rayon::prelude::*;
 use crate::{
     error::Error,
     filter::{BdatFileFilter, Filter, FilterArg, SchemaFileFilter},
-    util::hash::HashNameTable,
+    util::{hash::HashNameTable, op_result::OpResult},
     InputData,
 };
 use crate::{
@@ -28,8 +28,6 @@ use self::schema::{AsFileName, FileSchema};
 mod csv;
 mod json;
 mod schema;
-
-const MAX_WARNINGS: usize = 10;
 
 #[derive(Args)]
 pub struct ConvertArgs {
@@ -128,15 +126,20 @@ pub fn run_extract(args: ConvertArgs, hash_table: HashNameTable) -> Result<()> {
         .add(ProgressBar::new(files.len() as u64).with_style(build_progress_style("Files", true)));
     let table_bar_style = build_progress_style("Tables", false);
 
-    let res = files
+    let op_result = files
         .into_par_iter()
         .panic_fuse()
         .map(|path| {
+            let mut op_result = OpResult::default();
+            op_result.start_file(path.to_string_lossy().to_string());
             let mut file = std::fs::read(&path)?;
             let game = args.input.game_from_bytes(&file)?;
-            let tables = game.from_bytes(&mut file).with_context(|| {
-                format!("Could not parse BDAT tables ({})", path.to_string_lossy())
-            })?;
+            let mut hash_table = hash_table.clone();
+            let tables = game
+                .from_bytes(&mut file, &mut hash_table, &mut op_result)
+                .with_context(|| {
+                    format!("Could not parse BDAT tables ({})", path.to_string_lossy())
+                })?;
 
             let file_name = path
                 .file_stem()
@@ -191,15 +194,13 @@ pub fn run_extract(args: ConvertArgs, hash_table: HashNameTable) -> Result<()> {
             file_bar.inc(1);
             multi_bar.remove(&table_bar);
 
-            Ok(())
+            op_result.end_file();
+            Ok(op_result)
         })
-        .find_any(|r: &anyhow::Result<()>| r.is_err());
-
-    if let Some(r) = res {
-        r?;
-    }
+        .collect::<Result<OpResult>>()?;
 
     file_bar.finish();
+    op_result.print();
 
     Ok(())
 }
@@ -235,10 +236,12 @@ fn run_pack(args: ConvertArgs) -> Result<()> {
     let progress_bar = ProgressBarState::new("Files", "Tables", schema_files.len());
 
     progress_bar.master_bar.inc(0);
-    let warnings = schema_files
+    let op_result = schema_files
         .into_par_iter()
         .panic_fuse()
         .map(|schema_path| {
+            let mut op_result = OpResult::default();
+            op_result.start_file(schema_path.to_string_lossy().to_string());
             let schema_file = FileSchema::read(File::open(&schema_path)?)?;
 
             // The relative path to the tables (we mimic the original file structure in the output)
@@ -275,10 +278,13 @@ fn run_pack(args: ConvertArgs) -> Result<()> {
 
             let (tables, warnings): (Vec<CompatTable>, Vec<Option<String>>) =
                 tables.into_iter().unzip();
-            let mut warnings = warnings.into_iter().flatten().collect_vec();
+
+            for warn in warnings.into_iter().flatten() {
+                op_result.warn(warn);
+            }
 
             if tables.is_empty() {
-                warnings.push(format!("File {} has no tables", schema_path.display()));
+                op_result.warn(format!("File {} has no tables", schema_path.display()));
             }
 
             progress_bar.remove_child(&table_bar);
@@ -292,24 +298,14 @@ fn run_pack(args: ConvertArgs) -> Result<()> {
                 .unwrap_or_else(|| BdatGame::version_default(schema_file.version));
             game.to_writer(out_file, tables)?;
             progress_bar.master_bar.inc(1);
-            Ok(warnings)
+
+            op_result.end_file();
+            Ok(op_result)
         })
-        .collect::<Result<Vec<_>>>()?;
-    let warnings = warnings.into_iter().flatten().collect_vec();
+        .collect::<Result<OpResult>>()?;
 
     progress_bar.finish();
-
-    if !warnings.is_empty() {
-        eprintln!("\n");
-        eprint!("Found {} warnings:", warnings.len());
-        if warnings.len() > MAX_WARNINGS {
-            eprint!(" (too many to display)");
-        }
-        eprintln!("\n");
-        for warning in warnings.iter().take(MAX_WARNINGS) {
-            eprintln!("- [Warn]: {warning}");
-        }
-    }
+    op_result.print();
 
     Ok(())
 }

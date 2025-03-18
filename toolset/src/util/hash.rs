@@ -9,7 +9,7 @@ use bdat::{
     compat::CompatTable,
     hash::{murmur3_with_seed, IdentityHasher, PreHashedMap},
     modern::ModernColumn,
-    Label,
+    BdatResult, Label, ModernSlice, SwitchEndian,
 };
 
 #[derive(Clone, Copy, Default)]
@@ -36,6 +36,7 @@ impl Hasher for MurmurHasher {
     }
 }
 
+#[derive(Clone)]
 pub struct HashNameTable {
     file_name_hash: u64,
     inner: PreHashedMap<u32, String>,
@@ -107,6 +108,14 @@ impl HashNameTable {
         res.write(&mut cached)?;
 
         Ok(res)
+    }
+
+    pub fn add_from_bdat(&mut self, reader: &mut ModernSlice<'_, SwitchEndian>) -> BdatResult<()> {
+        for string in reader.extract_hashes()? {
+            self.inner
+                .insert(bdat::hash::murmur3_str(&string), string.to_string());
+        }
+        Ok(())
     }
 
     pub fn convert_all<'b>(&'b self, table: &mut CompatTable<'b>) {

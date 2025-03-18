@@ -18,6 +18,9 @@ mod write;
 
 pub use read::FileReader;
 
+pub type ModernSlice<'a, E> = FileReader<BdatSlice<'a, E>, E>;
+pub type ModernReader<R, E> = FileReader<BdatReader<R, E>, E>;
+
 #[derive(Debug)]
 pub(crate) struct FileHeader {
     pub table_count: usize,

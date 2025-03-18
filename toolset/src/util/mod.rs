@@ -3,13 +3,16 @@ use bdat::{
     compat::CompatTable, BdatFile, BdatResult, BdatVersion, LegacyVersion, SwitchEndian, WiiEndian,
 };
 use clap::{Args, ValueEnum};
+use hash::HashNameTable;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use itertools::Itertools;
+use op_result::OpResult;
 use std::io::{Seek, Write};
 use std::path::{Path, PathBuf};
 
 pub mod fixed_vec;
 pub mod hash;
+pub mod op_result;
 
 #[derive(Clone)]
 pub struct ProgressBarState {
@@ -46,7 +49,12 @@ impl BdatGame {
         }
     }
 
-    pub fn from_bytes(self, bytes: &mut [u8]) -> BdatResult<Vec<CompatTable>> {
+    pub fn from_bytes<'b>(
+        self,
+        bytes: &'b mut [u8],
+        hashes: &mut HashNameTable,
+        op_result: &mut OpResult,
+    ) -> BdatResult<Vec<CompatTable<'b>>> {
         Ok(match self {
             Self::Wii => bdat::legacy::from_bytes::<WiiEndian>(bytes, LegacyVersion::Wii)?
                 .get_tables()?
@@ -70,11 +78,13 @@ impl BdatGame {
                 .into_iter()
                 .map(Into::into)
                 .collect(),
-            Self::Modern => bdat::modern::from_bytes::<SwitchEndian>(bytes)?
-                .get_tables()?
-                .into_iter()
-                .map(Into::into)
-                .collect(),
+            Self::Modern => {
+                let mut reader = bdat::modern::from_bytes::<SwitchEndian>(bytes)?;
+                if let Err(e) = hashes.add_from_bdat(&mut reader) {
+                    op_result.warn(format!("Failed to read debug hashes: {e}"));
+                }
+                reader.get_tables()?.into_iter().map(Into::into).collect()
+            }
         })
     }
 

@@ -168,6 +168,7 @@ mod public;
 pub use error::BdatError;
 pub use error::Result as BdatResult;
 pub use io::detect::*;
+pub use io::modern::{ModernReader, ModernSlice};
 pub use io::{BdatFile, BdatVersion, LegacyVersion, SwitchEndian, WiiEndian};
 pub use label::Label;
 pub use public::*;
