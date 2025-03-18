@@ -267,11 +267,11 @@ fn run_pack(args: ConvertArgs) -> Result<()> {
 
                     table_bar.inc(1);
                     let table = deserializer.read_table(
-                        label.into_hash(schema_file.version).into_owned(),
+                        label.clone().into_hash(schema_file.version).into_owned(),
                         &schema_file,
                         &mut reader,
                     )?;
-                    let warnings = check_table_for_write(&table);
+                    let warnings = check_table_for_write(&table, &label.to_string_convert());
                     Ok((table, warnings))
                 })
                 .collect::<Result<Vec<_>>>()?;
@@ -318,7 +318,7 @@ pub fn build_progress_style(label: &str, with_time: bool) -> ProgressStyle {
     .unwrap()
 }
 
-fn check_table_for_write(table: &CompatTable) -> Option<String> {
+fn check_table_for_write(table: &CompatTable, name: &str) -> Option<String> {
     if table.is_modern() {
         let dups = table
             .as_modern()
@@ -328,7 +328,9 @@ fn check_table_for_write(table: &CompatTable) -> Option<String> {
             .map(|id| format!("<{id:08X}>"))
             .collect_vec();
         if !dups.is_empty() {
-            return Some(format!("Table {} has duplicate row IDs {:?}. This is the case for some vanilla XCXDE tables, please check anyway", table.name(), dups));
+            return Some(
+                format!("Table {name} has duplicate row IDs {:?}. This is the case for some vanilla XCXDE tables, please check anyway", dups),
+            );
         }
     }
     None

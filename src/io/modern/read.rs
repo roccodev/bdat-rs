@@ -383,11 +383,14 @@ where
         let pos = self.data.position() as usize;
         if pos
             .checked_add(length)
-            .is_none_or(|l| l >= self.data.get_ref().len())
+            .is_none_or(|l| l > self.data.get_ref().len())
         {
             return Err(BdatError::Io(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
-                "failed to fill whole buffer",
+                format!(
+                    "failed to fill whole buffer at={pos} len={length} max={}",
+                    self.data.get_ref().len()
+                ),
             )));
         }
         let res = Cow::Borrowed(&self.data.clone().into_inner()[pos..pos + length]);
@@ -399,11 +402,15 @@ where
         if self
             .table_offset
             .checked_add(length)
-            .is_none_or(|l| l >= self.data.get_ref().len())
+            .is_none_or(|l| l > self.data.get_ref().len())
         {
             return Err(BdatError::Io(std::io::Error::new(
                 std::io::ErrorKind::UnexpectedEof,
-                "failed to fill whole buffer",
+                format!(
+                    "failed to fill whole buffer at={} len={length} max={}",
+                    self.table_offset,
+                    self.data.get_ref().len()
+                ),
             )));
         }
         Ok(Cow::Borrowed(
