@@ -9,6 +9,7 @@ use anyhow::{Context, Result};
 use bdat::{compat::CompatTable, Label};
 use clap::Args;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
+use itertools::Itertools;
 use rayon::prelude::*;
 
 use crate::{
@@ -27,6 +28,8 @@ use self::schema::{AsFileName, FileSchema};
 mod csv;
 mod json;
 mod schema;
+
+const MAX_WARNINGS: usize = 10;
 
 #[derive(Args)]
 pub struct ConvertArgs {
@@ -232,7 +235,7 @@ fn run_pack(args: ConvertArgs) -> Result<()> {
     let progress_bar = ProgressBarState::new("Files", "Tables", schema_files.len());
 
     progress_bar.master_bar.inc(0);
-    let res = schema_files
+    let warnings = schema_files
         .into_par_iter()
         .panic_fuse()
         .map(|schema_path| {
@@ -260,19 +263,22 @@ fn run_pack(args: ConvertArgs) -> Result<()> {
                     let mut reader = BufReader::new(table_file);
 
                     table_bar.inc(1);
-                    deserializer.read_table(
+                    let table = deserializer.read_table(
                         label.into_hash(schema_file.version).into_owned(),
                         &schema_file,
                         &mut reader,
-                    )
+                    )?;
+                    let warnings = check_table_for_write(&table);
+                    Ok((table, warnings))
                 })
                 .collect::<Result<Vec<_>>>()?;
 
+            let (tables, warnings): (Vec<CompatTable>, Vec<Option<String>>) =
+                tables.into_iter().unzip();
+            let mut warnings = warnings.into_iter().flatten().collect_vec();
+
             if tables.is_empty() {
-                progress_bar.println(format!(
-                    "[Warn] File {} has no tables",
-                    schema_path.display()
-                ))?;
+                warnings.push(format!("File {} has no tables", schema_path.display()));
             }
 
             progress_bar.remove_child(&table_bar);
@@ -286,15 +292,25 @@ fn run_pack(args: ConvertArgs) -> Result<()> {
                 .unwrap_or_else(|| BdatGame::version_default(schema_file.version));
             game.to_writer(out_file, tables)?;
             progress_bar.master_bar.inc(1);
-            Ok(())
+            Ok(warnings)
         })
-        .find_any(|r: &anyhow::Result<()>| r.is_err());
-
-    if let Some(r) = res {
-        r?;
-    }
+        .collect::<Result<Vec<_>>>()?;
+    let warnings = warnings.into_iter().flatten().collect_vec();
 
     progress_bar.finish();
+
+    if !warnings.is_empty() {
+        eprintln!("\n");
+        eprint!("Found {} warnings:", warnings.len());
+        if warnings.len() > MAX_WARNINGS {
+            eprint!(" (too many to display)");
+        }
+        eprintln!("\n");
+        for warning in warnings.iter().take(MAX_WARNINGS) {
+            eprintln!("- [Warn]: {warning}");
+        }
+    }
+
     Ok(())
 }
 
@@ -304,4 +320,20 @@ pub fn build_progress_style(label: &str, with_time: bool) -> ProgressStyle {
         false => format!("{{spinner:.green}} {label}{{msg}}: {{human_pos}}/{{human_len}} ({{percent}}%) [{{bar}}]"),
     })
     .unwrap()
+}
+
+fn check_table_for_write(table: &CompatTable) -> Option<String> {
+    if table.is_modern() {
+        let dups = table
+            .as_modern()
+            .rows()
+            .filter_map(|r| r.id_hash())
+            .duplicates()
+            .map(|id| format!("<{id:08X}>"))
+            .collect_vec();
+        if !dups.is_empty() {
+            return Some(format!("Table {} has duplicate row IDs {:?}. This is the case for some vanilla XCXDE tables, please check anyway", table.name(), dups));
+        }
+    }
+    None
 }
