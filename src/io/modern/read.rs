@@ -180,11 +180,38 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
             row_data.push(ModernRow::new(values));
         }
 
+        // Read hash table. In XC3, there is an entry for each row. In XCXDE, the hash table ends
+        // where rows start.
+        let row_hash_table = {
+            let hashes_len = row_length.min(offset_row.saturating_sub(offset_hash) / 8);
+            let mut row_hash_table = Vec::with_capacity(hashes_len);
+            let mut reader = Cursor::new(&table_data.data[offset_hash..]);
+
+            for _ in 0..hashes_len {
+                let hash = reader.read_u32::<E>()?;
+                let index = reader.read_u32::<E>()?;
+                if let Some((prev_hash, _)) = row_hash_table.last().copied() {
+                    if hash == prev_hash {
+                        // The issue with XCXDE is that some rows have duplicate IDs. However,
+                        // those rows only have one entry in the hash table, so mark it as an error
+                        // if the hash table has duplicate entries.
+                        return Err(BdatError::NameTableDuplicate(hash));
+                    }
+                    if hash < prev_hash {
+                        return Err(BdatError::NameTableOrder(prev_hash, hash));
+                    }
+                }
+                row_hash_table.push((hash, index));
+            }
+
+            row_hash_table
+        };
+
         Ok(ModernTableBuilder::with_name(name)
             .set_base_id(base_id)
             .set_columns(col_data)
             .set_rows(row_data)
-            .build())
+            .build_with_row_map(row_hash_table))
     }
 
     fn read_value(

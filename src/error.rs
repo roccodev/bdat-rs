@@ -1,5 +1,5 @@
 use crate::table::convert::FormatConvertError;
-use crate::{BdatVersion, DetectError, Label, ValueType};
+use crate::{BdatVersion, DetectError, ValueType};
 use std::num::TryFromIntError;
 use std::str::Utf8Error;
 use thiserror::Error;
@@ -32,11 +32,10 @@ pub enum BdatError {
     FormatConvert(#[from] FormatConvertError),
     #[error("Unsupported cast type for {0:?}")]
     ValueCast(ValueType),
-    #[error(
-        "Duplicate hash key ({}: {}) in rows {} and {}. Duplicate keys are not allowed in the primary key table.",
-        _0.0, _0.1, _0.2, _0.3
-    )]
-    DuplicateKey(Box<(Label<'static>, Label<'static>, usize, usize)>),
+    #[error("Name table contains duplicate ID <{0:08X}>")]
+    NameTableDuplicate(u32),
+    #[error("Name table contains ID pair (<{0:08X}>, <{1:08X}>) in incorrect order")]
+    NameTableOrder(u32, u32),
 }
 
 #[derive(Debug)]

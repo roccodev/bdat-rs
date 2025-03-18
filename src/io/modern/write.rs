@@ -11,7 +11,6 @@ use byteorder::{ByteOrder, WriteBytesExt};
 use crate::io::BDAT_MAGIC;
 use crate::modern::ModernTable;
 use crate::{error::Result, Label, Value};
-use crate::{BdatError, ValueType};
 
 use super::FileHeader;
 
@@ -111,9 +110,7 @@ where
         let row_count = table.rows.len().try_into()?;
         let base_id = table.base_id();
 
-        let mut primary_keys: Vec<(u32, u32)> = vec![];
         let mut label_table = LabelTable::default();
-        let mut primary_col: Option<(Label, usize)> = None;
         // Table name should be the first label in the table
         label_table.get(table.name().as_ref());
 
@@ -121,10 +118,7 @@ where
         let column_table: Vec<u8> = {
             let mut data = Vec::with_capacity(columns.len() * (1 + 4));
 
-            for (i, col) in table.columns.as_slice().iter().enumerate() {
-                if col.value_type() == ValueType::HashRef {
-                    primary_col.get_or_insert_with(|| (col.label.clone(), i));
-                }
+            for col in table.columns.as_slice() {
                 data.write_u8(col.value_type as u8)?;
                 data.write_u16::<E>(u16::try_from(label_table.get(col.label.as_ref()))?)?;
             }
@@ -138,13 +132,7 @@ where
             let mut row_len = 0;
 
             for row in table.rows() {
-                for (value_idx, value) in row.values.iter().enumerate() {
-                    match (&primary_col, value) {
-                        (Some((_, i)), Value::HashRef(hash)) if *i == value_idx => {
-                            primary_keys.push((*hash, row.id()));
-                        }
-                        _ => {}
-                    }
+                for value in &row.values {
                     Self::write_value(&mut data, value, &mut label_table)?
                 }
                 if row_len == 0 {
@@ -157,26 +145,10 @@ where
 
         // Mapping of ID hash -> row index, sorted by hash
         let primary_key_table = {
-            primary_keys.sort_unstable();
-
-            // Make sure there are no duplicate hashes
-            if let Some(dups) = primary_keys
-                .windows(2)
-                .find(|w| w.len() > 1 && w[0].0 == w[1].0)
-            {
-                let &[a, b] = dups else { unreachable!() };
-                return Err(BdatError::DuplicateKey(Box::new((
-                    primary_col.unwrap().0.into_owned(),
-                    Label::Hash(a.0),
-                    a.1.try_into()?,
-                    b.1.try_into()?,
-                ))));
-            }
-
-            let mut buf = Vec::with_capacity(primary_keys.len() * 8);
-            for (hash, i) in primary_keys {
+            let mut buf = Vec::with_capacity(table.row_hash_table.len() * 8);
+            for &(hash, i) in &table.row_hash_table {
                 buf.write_u32::<E>(hash)?;
-                buf.write_u32::<E>(i - base_id)?;
+                buf.write_u32::<E>(i)?;
             }
             buf
         };

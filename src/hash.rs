@@ -2,10 +2,8 @@
 
 const MURMUR3_SEED: u32 = 0;
 
-#[cfg(feature = "hash-table")]
 pub use table::{IdentityHasher, PreHashedMap};
 
-#[cfg(feature = "hash-table")]
 mod table {
     use std::hash::{BuildHasher, Hasher};
 

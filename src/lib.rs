@@ -31,7 +31,7 @@
 //!     if table.name() == &label_hash!("CHR_PC") {
 //!         // Found the character table, get Noah's HP at level 99
 //!         let noah = table.row(1);
-//!         // Alternatively, if the `hash-table` feature is enabled (default)
+//!         // Alternatively
 //!         let noah = table.row_by_hash(murmur3_str("PC_NOAH"));
 //!
 //!         let noah_hp = noah

@@ -1,3 +1,5 @@
+use crate::ValueType;
+
 use super::{
     column::ColumnMap,
     convert::FormatConvertError,
@@ -78,10 +80,33 @@ where
 /// Modern builder -> Modern table
 impl<'b> ModernTableBuilder<'b> {
     pub fn try_build(self) -> Result<ModernTable<'b>, FormatConvertError> {
+        // Build row hash table, ensuring there are no duplicate hashes.
+        // XCXDE has some tables with duplicate hashes, in which case it keeps the first entry.
+        let hash_col = self
+            .columns
+            .iter()
+            .position(|c| c.value_type == ValueType::HashRef);
+        // If there are no HashRef columns, use empty vec
+        let mut row_map: Vec<(u32, u32)> = hash_col
+            .map(|col_idx| {
+                self.rows
+                    .iter()
+                    .enumerate()
+                    .map(|(i, row)| (row.values[col_idx].to_integer(), i as u32))
+                    .collect()
+            })
+            .unwrap_or_default();
+        row_map.sort_unstable();
+        row_map.dedup_by_key(|(hash, _)| *hash);
+
         // No need for MaxRowCountExceeded here, we panic on row insertions if
         // the limit is reached, and all legacy table formats have a lower limit
         // than modern tables.
-        Ok(ModernTable::new(self))
+        Ok(ModernTable::new(self, row_map))
+    }
+
+    pub(crate) fn build_with_row_map(self, row_map: Vec<(u32, u32)>) -> ModernTable<'b> {
+        ModernTable::new(self, row_map)
     }
 
     pub fn build(self) -> ModernTable<'b> {

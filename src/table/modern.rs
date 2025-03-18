@@ -1,7 +1,6 @@
 //! Modern (XC3) format types
 
 use crate::compat::CompatTable;
-use crate::hash::PreHashedMap;
 use crate::legacy::LegacyFlag;
 use crate::modern::ModernTableBuilder;
 use crate::{Label, RowId, RowRef, Value, ValueType};
@@ -29,8 +28,6 @@ use super::util::EnumId;
 /// # Examples
 ///
 /// ## Getting a row by its hashed ID
-///
-/// Note: this requires the `hash-table` feature flag, which is enabled by default.
 ///
 /// ```
 /// use bdat::modern::ModernTable;
@@ -60,8 +57,7 @@ pub struct ModernTable<'b> {
     pub(crate) base_id: u32,
     pub(crate) columns: ColumnMap<ModernColumn<'b>, Label<'b>>,
     pub(crate) rows: Vec<ModernRow<'b>>,
-    #[cfg(feature = "hash-table")]
-    row_hash_table: PreHashedMap<u32, RowId>,
+    pub(crate) row_hash_table: Vec<(u32, u32)>,
 }
 
 /// A row from a modern (XC3) table.
@@ -87,13 +83,12 @@ pub type ModernRowMut<'t, 'buf> =
     RowRef<&'t mut ModernRow<'buf>, &'t ColumnMap<ModernColumn<'buf>>>;
 
 impl<'b> ModernTable<'b> {
-    pub(crate) fn new(builder: ModernTableBuilder<'b>) -> Self {
+    pub(crate) fn new(builder: ModernTableBuilder<'b>, row_hash_table: Vec<(u32, u32)>) -> Self {
         Self {
             name: builder.name,
             columns: builder.columns,
             base_id: builder.base_id,
-            #[cfg(feature = "hash-table")]
-            row_hash_table: build_id_map_checked(&builder.rows, builder.base_id),
+            row_hash_table,
             rows: builder.rows,
         }
     }
@@ -175,24 +170,22 @@ impl<'b> ModernTable<'b> {
 
     /// Attempts to get a row by its hashed 32-bit ID.
     /// If there is no row for the given ID, this returns [`None`].
-    ///
-    /// This requires the `hash-table` feature flag, which is enabled
-    /// by default.
-    #[cfg(feature = "hash-table")]
     pub fn get_row_by_hash(&self, hash_id: u32) -> Option<ModernRowRef<'_, 'b>> {
         self.row_hash_table
-            .get(&hash_id)
-            .and_then(|&id| self.get_row(id))
+            .binary_search_by_key(&hash_id, |(hash, _)| *hash)
+            .ok()
+            .and_then(|i| {
+                let index = self.row_hash_table[i].1;
+                self.rows
+                    .get(index as usize)
+                    .map(move |row| RowRef::new(index + self.base_id, row, &self.columns))
+            })
     }
 
     /// Gets a row by its hashed 32-bit ID.
     ///
-    /// This requires the `hash-table` feature flag, which is enabled
-    /// by default.
-    ///
     /// ## Panics
     /// Panics if there is no row for the given ID.
-    #[cfg(feature = "hash-table")]
     pub fn row_by_hash(&self, hash_id: u32) -> ModernRowRef<'_, 'b> {
         self.get_row_by_hash(hash_id)
             .expect("no row with given hash")
@@ -215,9 +208,8 @@ impl<'b> ModernTable<'b> {
     /// Additionally, if the iterator is used to replace rows, proper care must be taken to
     /// ensure the new rows have the same IDs, as to preserve the original table's row order.
     ///
-    /// When the `hash-table` feature is enabled, the new rows must also retain their original
-    /// hashed ID. Failure to do so will lead to improper behavior of
-    /// [`get_row_by_hash`].
+    /// The new rows must also retain their original hashed ID. Failure to do so will lead to
+    /// improper behavior of [`get_row_by_hash`], and similar queries when run by the game.
     ///
     /// [`get_row_by_hash`]: ModernTable::get_row_by_hash
     pub fn rows_mut(&mut self) -> impl Iterator<Item = ModernRowMut<'_, 'b>> {
@@ -311,30 +303,6 @@ impl<'tb> ModernColumn<'tb> {
     }
 }
 
-/// Builds a primary key index for the table.
-///
-/// If there is no hash-type column, the map will be empty.
-///
-/// ## Panics
-/// Panics if there are two rows with the same key hash.
-#[cfg(feature = "hash-table")]
-fn build_id_map_checked(rows: &[ModernRow], base_id: u32) -> PreHashedMap<u32, RowId> {
-    use std::collections::hash_map::Entry;
-
-    let mut res = PreHashedMap::with_capacity_and_hasher(rows.len(), Default::default());
-    for (id, row) in rows.iter().enum_id(base_id) {
-        let Some(hash) = row.id_hash() else { continue };
-        match res.entry(hash) {
-            Entry::Occupied(_) => panic!(
-                "failed to build row hash table: duplicate key {:?}",
-                Label::Hash(hash)
-            ),
-            e => e.or_insert(id),
-        };
-    }
-    res
-}
-
 impl<'buf> Table<'buf> for ModernTable<'buf> {
     type Id = u32;
     type Name = Label<'buf>;
@@ -404,7 +372,6 @@ impl<'buf> Column for ModernColumn<'buf> {
 
 #[cfg(test)]
 mod tests {
-    #[cfg(feature = "hash-table")]
     #[test]
     fn test_hash_table() {
         use crate::modern::{ModernColumn, ModernRow, ModernTableBuilder};

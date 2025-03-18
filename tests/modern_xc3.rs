@@ -1,4 +1,4 @@
-use bdat::{label_hash, BdatFile, BdatVersion, Label, SwitchEndian};
+use bdat::{hash::murmur3_str, label_hash, BdatFile, BdatVersion, Label, SwitchEndian};
 
 type FileEndian = SwitchEndian;
 
@@ -30,6 +30,21 @@ fn basic_read() {
         (3, 104350.27, "Row 3", label_hash!("Row 3")),
         (36, 2.0, "Row 4", label_hash!("Row 4")),
     ];
+
+    assert_eq!(
+        table
+            .row_by_hash(murmur3_str("Row 1"))
+            .get(label_hash!("Col1"))
+            .to_integer(),
+        36
+    );
+    assert_eq!(
+        table
+            .row_by_hash(murmur3_str("Row 4"))
+            .get(label_hash!("Col2"))
+            .to_float(),
+        2.0
+    );
 
     for (row, data) in table.rows().zip(data_t1.into_iter()) {
         let mut cells = row.values();
