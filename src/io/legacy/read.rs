@@ -9,7 +9,7 @@ use byteorder::{ByteOrder, NativeEndian, ReadBytesExt, WriteBytesExt};
 use super::float::BdatReal;
 use super::scramble::{calc_checksum, scramble, unscramble, ScrambleType};
 use super::{ColumnNodeInfo, COLUMN_NODE_SIZE};
-use crate::error::{Result, Scope};
+use crate::error::{ReadError, Result};
 use crate::io::BDAT_MAGIC;
 use crate::legacy::{LegacyColumn, LegacyFlag, LegacyRow, LegacyTable, LegacyTableBuilder};
 use crate::{BdatError, BdatFile, Cell, LegacyVersion, Utf, Value, ValueType};
@@ -35,6 +35,7 @@ pub struct LegacyReader<R, E> {
 
 /// Reads tables in a file.
 struct TableReader<'t, E> {
+    table_offset: u64,
     header: TableHeader,
     version: LegacyVersion,
     data: Cursor<Cow<'t, [u8]>>,
@@ -113,7 +114,7 @@ impl<'t, E: ByteOrder> LegacyBytes<'t, E> {
     pub fn new(bytes: &'t mut [u8], version: LegacyVersion) -> Result<Self> {
         let header = FileHeader::read::<_, E>(Cursor::new(&bytes))?;
         let mut headers = vec![];
-        header.for_each_table_mut(bytes, |table| {
+        header.for_each_table_mut(bytes, |_, table| {
             let header = TableHeader::read::<E>(Cursor::new(&table), version)?;
             header.unscramble_data(table);
             headers.push(header);
@@ -157,7 +158,7 @@ impl FileHeader {
 
     pub fn for_each_table_mut<F, E>(&self, data: &mut [u8], mut f: F) -> std::result::Result<(), E>
     where
-        F: FnMut(&mut [u8]) -> std::result::Result<(), E>,
+        F: FnMut(u64, &mut [u8]) -> std::result::Result<(), E>,
     {
         // An iterator for this would require unsafe code because it's returning mutable
         // references
@@ -169,37 +170,53 @@ impl FileHeader {
 
         match self.table_offsets.len() {
             0 => return Ok(()),
-            1 => return f(&mut data[self.table_offsets[0]..file_size]),
+            1 => {
+                return f(
+                    self.table_offsets[0] as u64,
+                    &mut data[self.table_offsets[0]..file_size],
+                )
+            }
             _ => {}
         }
 
         for bounds in self.table_offsets.windows(2) {
             match *bounds {
-                [s, e] => f(&mut data[s..e])?,
-                [s] => f(&mut data[s..file_size])?,
+                [s, e] => f(s as u64, &mut data[s..e])?,
+                [s] => f(s as u64, &mut data[s..file_size])?,
                 _ => return Ok(()),
             }
         }
 
-        f(&mut data[(self.table_offsets[self.table_offsets.len() - 1])..file_size])?;
+        let offset = self.table_offsets[self.table_offsets.len() - 1];
+        f(offset as u64, &mut data[offset..file_size])?;
 
         Ok(())
     }
 }
 
 impl TableHeader {
-    pub fn read<E: ByteOrder>(mut reader: impl Read, version: LegacyVersion) -> Result<Self> {
+    pub fn read<E: ByteOrder>(
+        mut reader: impl Read + Seek,
+        version: LegacyVersion,
+    ) -> Result<Self> {
         let mut magic = [0u8; 4];
         reader.read_exact(&mut magic)?;
         if version != LegacyVersion::New3ds {
             if magic != BDAT_MAGIC {
                 // BDAT - doesn't change with endianness
-                return Err(BdatError::MalformedBdat(Scope::Table));
+                return Err(BdatError::new_read(
+                    reader.stream_position()?,
+                    ReadError::InvalidMagic(magic),
+                ));
             }
         } else {
             magic.reverse(); // Sike!
             if magic != BDAT_MAGIC {
-                return Err(BdatError::MalformedBdat(Scope::Table));
+                magic.reverse();
+                return Err(BdatError::new_read(
+                    reader.stream_position()?,
+                    ReadError::InvalidMagic(magic),
+                ));
             }
         }
 
@@ -277,9 +294,9 @@ impl TableHeader {
     }
 
     /// Attempts to read the name of the table. The given slice must contain the full table.
-    pub fn read_name<'b>(&self, data: &'b [u8]) -> Result<&'b str> {
+    pub fn read_name<'b>(&self, table_offset: u64, data: &'b [u8]) -> Result<&'b str> {
         // endianness doesn't matter
-        TableReader::<NativeEndian>::read_str(data, self.offset_names)
+        TableReader::<NativeEndian>::read_str(data, table_offset, self.offset_names)
     }
 
     fn get_table_len(&self) -> usize {
@@ -310,6 +327,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         };
 
         Ok(Self {
+            table_offset: original_pos,
             header,
             version,
             data: Cursor::new(Cow::Owned(table_data)),
@@ -331,6 +349,7 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         reader.seek(SeekFrom::Start(original_pos))?;
 
         Ok(Self {
+            table_offset: original_pos,
             header,
             version,
             data: Cursor::new(Cow::Borrowed(bytes)),
@@ -454,16 +473,21 @@ impl<'t, E: ByteOrder> TableReader<'t, E> {
         let res = match self.data.get_ref() {
             // To get a Utf of lifetime 't, we need to extract the 't slice from Cow::Borrowed,
             // or keep using owned values
-            Cow::Owned(owned) => Ok(Self::read_str(owned, offset)?.to_string().into()),
-            Cow::Borrowed(borrowed) => Self::read_str(borrowed, offset).map(Cow::Borrowed),
+            Cow::Owned(owned) => Ok(Self::read_str(owned, self.table_offset, offset)?
+                .to_string()
+                .into()),
+            Cow::Borrowed(borrowed) => {
+                Self::read_str(borrowed, self.table_offset, offset).map(Cow::Borrowed)
+            }
         };
         res
     }
 
-    fn read_str(bytes: &[u8], offset: usize) -> Result<&str> {
+    fn read_str(bytes: &[u8], table_offset: u64, offset: usize) -> Result<&str> {
         Ok(CStr::from_bytes_until_nul(&bytes[offset..])
             .map_err(eof)?
-            .to_str()?)
+            .to_str()
+            .map_err(|e| BdatError::new_read(table_offset + offset as u64, e.into()))?)
     }
 }
 
@@ -529,7 +553,7 @@ impl<'a, 't: 'a, E: ByteOrder + 'a> ColumnReader<'a, 't, E> {
                 ColumnCell::Array(val, sz)
             }
             3 => ColumnCell::Flag(Self::read_flag(info_table, self.data)?),
-            i => return Err(BdatError::UnknownCellType(i)),
+            i => return Err(BdatError::new_read(info_ptr, ReadError::UnknownCellType(i))),
         })
     }
 
@@ -545,10 +569,14 @@ impl<'a, 't: 'a, E: ByteOrder + 'a> ColumnReader<'a, 't, E> {
         })
     }
 
-    fn read_value(mut info_table: impl Read) -> Result<ValueData> {
+    fn read_value(mut info_table: impl Read + Seek) -> Result<ValueData> {
         let value_type = info_table.read_u8()?;
-        let value_type =
-            ValueType::try_from(value_type).map_err(|_| BdatError::UnknownValueType(value_type))?;
+        let value_type = ValueType::try_from(value_type).map_err(|_| {
+            BdatError::new_read(
+                info_table.stream_position().unwrap() - 1,
+                ReadError::UnknownValueType(value_type),
+            )
+        })?;
         let value_offset = info_table.read_u16::<E>()?;
         Ok(ValueData {
             value_type,
@@ -556,10 +584,14 @@ impl<'a, 't: 'a, E: ByteOrder + 'a> ColumnReader<'a, 't, E> {
         })
     }
 
-    fn read_array(mut info_table: impl Read) -> Result<(ValueData, usize)> {
+    fn read_array(mut info_table: impl Read + Seek) -> Result<(ValueData, usize)> {
         let value_type = info_table.read_u8()?;
-        let value_type =
-            ValueType::try_from(value_type).map_err(|_| BdatError::UnknownValueType(value_type))?;
+        let value_type = ValueType::try_from(value_type).map_err(|_| {
+            BdatError::new_read(
+                info_table.stream_position().unwrap() - 1,
+                ReadError::UnknownValueType(value_type),
+            )
+        })?;
         let value_offset = info_table.read_u16::<E>()?;
         let array_size = info_table.read_u16::<E>()?;
         Ok((

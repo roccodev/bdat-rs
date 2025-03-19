@@ -9,12 +9,13 @@ use std::{
 
 use byteorder::{ByteOrder, ReadBytesExt};
 
+use crate::error::ReadError;
 use crate::io::read::{BdatReader, BdatSlice};
 use crate::io::BDAT_MAGIC;
 use crate::legacy::float::BdatReal;
 use crate::modern::{ModernColumn, ModernRow, ModernTable, ModernTableBuilder};
 use crate::{
-    error::{BdatError, Result, Scope},
+    error::{BdatError, Result},
     BdatFile, Label, Utf, Value, ValueType,
 };
 
@@ -31,6 +32,7 @@ pub struct FileReader<R, E> {
 }
 
 struct TableData<'r> {
+    table_offset: usize,
     data: Cow<'r, [u8]>,
     string_table_offset: usize,
 }
@@ -47,6 +49,9 @@ pub trait ModernRead<'b> {
 
     /// Seek the current position to the next table at the given offset.
     fn seek_table(&mut self, offset: usize) -> Result<()>;
+
+    /// Returns the current position of the cursor, relative to the start of the file.
+    fn file_pos(&mut self) -> u64;
 }
 
 struct HeaderReader<R, E> {
@@ -77,13 +82,21 @@ where
     E: ByteOrder,
 {
     pub(crate) fn read_file(mut reader: R) -> Result<Self> {
-        if reader.read_u32()? == u32::from_le_bytes(BDAT_MAGIC) {
-            if reader.read_u32()? != 0x01_00_10_04 {
-                return Err(BdatError::MalformedBdat(Scope::File));
+        let magic = reader.read_u32()?;
+        if magic == u32::from_le_bytes(BDAT_MAGIC) {
+            let version = reader.read_u32()?;
+            if version != 0x01_00_10_04 {
+                return Err(BdatError::new_read(
+                    reader.file_pos() - 8,
+                    ReadError::UnsupportedVersion(version),
+                ));
             }
             Self::new_with_header(reader)
         } else {
-            Err(BdatError::MalformedBdat(Scope::File))
+            return Err(BdatError::new_read(
+                reader.file_pos() - 4,
+                ReadError::InvalidMagic(u32::to_le_bytes(magic)),
+            ));
         }
     }
 
@@ -96,7 +109,7 @@ where
             self.tables
                 .reader
                 .seek_table(self.header.table_offsets[i])?;
-            let header = self.tables.read_header()?;
+            let header = self.tables.read_header(self.header.table_offsets[i])?;
             if header.offset_col == 0x30 {
                 // No debug string table
                 continue;
@@ -123,7 +136,10 @@ where
                         .collect(),
                 };
                 for string in found {
-                    strings.insert(string?);
+                    // Handle utf error
+                    strings.insert(string.map_err(|e| {
+                        BdatError::new_read(self.tables.reader.file_pos(), e.into())
+                    })?);
                 }
                 total_size = total_size.saturating_sub(size);
             }
@@ -131,8 +147,8 @@ where
         Ok(strings.into_iter().collect())
     }
 
-    fn read_table(&mut self) -> Result<ModernTable<'b>> {
-        self.tables.read_table_v2()
+    fn read_table(&mut self, offset: usize) -> Result<ModernTable<'b>> {
+        self.tables.read_table_v2(offset)
     }
 
     fn new_with_header(reader: R) -> Result<Self> {
@@ -179,11 +195,20 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
         }
     }
 
-    fn read_header(&mut self) -> Result<TableHeader> {
-        if self.reader.read_u32()? != u32::from_le_bytes(BDAT_MAGIC)
-            || self.reader.read_u32()? != 0x3004
-        {
-            return Err(BdatError::MalformedBdat(Scope::Table));
+    fn read_header(&mut self, table_offset: usize) -> Result<TableHeader> {
+        let magic = self.reader.read_u32()?;
+        if magic != u32::from_le_bytes(BDAT_MAGIC) {
+            return Err(BdatError::new_read(
+                table_offset as u64,
+                ReadError::InvalidMagic(magic.to_be_bytes()),
+            ));
+        }
+        let version = self.reader.read_u32()?;
+        if version != 0x3004 {
+            return Err(BdatError::new_read(
+                table_offset as u64 + 4,
+                ReadError::UnsupportedVersion(version),
+            ));
         }
 
         let columns = self.reader.read_u32()? as usize;
@@ -191,10 +216,10 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
         let base_id = self.reader.read_u32()?;
         let unk = self.reader.read_u32()?;
         if unk != 0 {
-            return Err(BdatError::Assert(format!(
-                "Found unk={} at index 0x14 that was not 0",
-                unk,
-            )));
+            return Err(BdatError::new_read(
+                self.reader.file_pos() - 4,
+                ReadError::UnexpectedUnknown(unk),
+            ));
         }
 
         let offset_col = self.reader.read_u32()? as usize;
@@ -218,8 +243,8 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
         })
     }
 
-    fn read_table_v2(&mut self) -> Result<ModernTable<'b>> {
-        let hdr = self.read_header()?;
+    fn read_table_v2(&mut self, table_offset: usize) -> Result<ModernTable<'b>> {
+        let hdr = self.read_header(table_offset)?;
         let lengths = [
             hdr.offset_col + LEN_COLUMN_DEF_V2 * hdr.columns,
             hdr.offset_hash + LEN_HASH_DEF_V2 * hdr.rows,
@@ -231,16 +256,18 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
             .max_by_key(|&i| i)
             .expect("could not determine table length");
         let table_raw = self.reader.read_table_data(*table_len)?;
-        let table_data = TableData::new(table_raw, hdr.offset_string);
+        let table_data = TableData::new(table_raw, table_offset, hdr.offset_string);
 
         let name = table_data.get_name::<E>()?;
         let mut col_data = Vec::with_capacity(hdr.columns);
         let mut row_data = Vec::with_capacity(hdr.rows);
 
         for i in 0..hdr.columns {
-            let col = &table_data.data[hdr.offset_col + i * LEN_COLUMN_DEF_V2..];
-            let ty =
-                ValueType::try_from(col[0]).map_err(|_| BdatError::UnknownValueType(col[0]))?;
+            let col_offset = hdr.offset_col + i * LEN_COLUMN_DEF_V2;
+            let col = &table_data.data[col_offset..];
+            let ty = ValueType::try_from(col[0]).map_err(|_| {
+                BdatError::new_read(col_offset as u64, ReadError::UnknownValueType(col[0]))
+            })?;
             let name_offset = (&col[1..]).read_u16::<E>()?;
             let label = table_data.get_label::<E>(name_offset as usize)?;
 
@@ -275,10 +302,16 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
                         // The issue with XCXDE is that some rows have duplicate IDs. However,
                         // those rows only have one entry in the hash table, so mark it as an error
                         // if the hash table has duplicate entries.
-                        return Err(BdatError::NameTableDuplicate(hash));
+                        return Err(BdatError::new_read(
+                            reader.position() + table_offset as u64 - 8,
+                            ReadError::NameTableDuplicate(hash),
+                        ));
                     }
                     if hash < prev_hash {
-                        return Err(BdatError::NameTableOrder(prev_hash, hash));
+                        return Err(BdatError::new_read(
+                            reader.position() + table_offset as u64 - 8,
+                            ReadError::NameTableOrder(prev_hash, hash),
+                        ));
                     }
                 }
                 row_hash_table.push((hash, index));
@@ -323,8 +356,9 @@ impl<'b, R: ModernRead<'b>, E: ByteOrder> TableReader<R, E> {
 }
 
 impl<'r> TableData<'r> {
-    fn new(data: Cow<'r, [u8]>, strings_offset: usize) -> TableData<'r> {
+    fn new(data: Cow<'r, [u8]>, table_offset: usize, strings_offset: usize) -> TableData<'r> {
         Self {
+            table_offset,
             data,
             string_table_offset: strings_offset,
         }
@@ -350,12 +384,18 @@ impl<'r> TableData<'r> {
             .take(limit)
             .count();
         let str = match &self.data {
-            Cow::Borrowed(data) => {
-                Cow::Borrowed(std::str::from_utf8(&data[str_ptr..str_ptr + len])?)
-            }
-            Cow::Owned(data) => {
-                Cow::Owned(std::str::from_utf8(&data[str_ptr..str_ptr + len])?.to_string())
-            }
+            Cow::Borrowed(data) => Cow::Borrowed(
+                std::str::from_utf8(&data[str_ptr..str_ptr + len]).map_err(|e| {
+                    BdatError::new_read((self.table_offset + str_ptr) as u64, e.into())
+                })?,
+            ),
+            Cow::Owned(data) => Cow::Owned(
+                std::str::from_utf8(&data[str_ptr..str_ptr + len])
+                    .map_err(|e| {
+                        BdatError::new_read((self.table_offset + str_ptr) as u64, e.into())
+                    })?
+                    .to_string(),
+            ),
         };
         Ok(str)
     }
@@ -432,6 +472,10 @@ where
         self.table_offset = offset;
         Ok(())
     }
+
+    fn file_pos(&mut self) -> u64 {
+        self.data.position()
+    }
 }
 
 impl<'b, R, E> ModernRead<'b> for BdatReader<R, E>
@@ -463,6 +507,10 @@ where
         self.table_offset = offset;
         Ok(())
     }
+
+    fn file_pos(&mut self) -> u64 {
+        self.stream.stream_position().unwrap()
+    }
 }
 
 impl<'b, R, E> BdatFile<'b> for FileReader<R, E>
@@ -480,7 +528,7 @@ where
             self.tables
                 .reader
                 .seek_table(self.header.table_offsets[i])?;
-            let table = self.read_table()?;
+            let table = self.read_table(self.header.table_offsets[i])?;
             tables.push(table);
         }
 

@@ -104,7 +104,7 @@ fn unscramble_file(path_in: PathBuf, path_out: PathBuf, progress: &ProgressBarSt
     let table_bar = progress.add_child(header.table_count);
     table_bar.inc(0);
 
-    header.for_each_table_mut(&mut bytes, |table| {
+    header.for_each_table_mut(&mut bytes, |offset, table| {
         let header = match version {
             LegacyVersion::Switch | LegacyVersion::New3ds => {
                 TableHeader::read::<SwitchEndian>(Cursor::new(&table), version)
@@ -116,7 +116,7 @@ fn unscramble_file(path_in: PathBuf, path_out: PathBuf, progress: &ProgressBarSt
         if let ScrambleType::None = header.scramble_type {
             progress.println(format!(
                 "Note: skipping table {} (not scrambled)",
-                header.read_name(table)?
+                header.read_name(offset, table)?
             ))?;
             return Ok(());
         }
@@ -153,7 +153,7 @@ fn scramble_file(path_in: PathBuf, path_out: PathBuf, progress: &ProgressBarStat
 
     let mut table_idx = 0;
 
-    header.for_each_table_mut(&mut bytes, |table| {
+    header.for_each_table_mut(&mut bytes, |_, table| {
         let header = match wii_endian {
             true => TableHeader::read::<WiiEndian>(Cursor::new(&table), version),
             false => TableHeader::read::<SwitchEndian>(Cursor::new(&table), version),

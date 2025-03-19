@@ -11,17 +11,11 @@ pub type Result<T> = std::result::Result<T, BdatError>;
 #[derive(Error, Debug)]
 pub enum BdatError {
     #[error(transparent)]
-    Utf8(#[from] Utf8Error),
-    #[error(transparent)]
     Io(#[from] std::io::Error),
-    #[error("Malformed BDAT ({0:?})")]
-    MalformedBdat(Scope),
+    #[error(transparent)]
+    Read(#[from] Box<PosError>),
     #[error(transparent)]
     InvalidLength(#[from] TryFromIntError),
-    #[error("Unknown cell type: {0}")]
-    UnknownCellType(u8),
-    #[error("Unknown value type: {0}")]
-    UnknownValueType(u8),
     #[error("Unsupported type: BDAT version {1:?} does not support value type {0:?}")]
     UnsupportedType(ValueType, BdatVersion),
     #[error("Invalid flag type: value type {0:?} does not support flags")]
@@ -32,17 +26,37 @@ pub enum BdatError {
     FormatConvert(#[from] FormatConvertError),
     #[error("Unsupported cast type for {0:?}")]
     ValueCast(ValueType),
-    #[error("Name table contains duplicate ID <{0:08X}>")]
-    NameTableDuplicate(u32),
-    #[error("Name table contains ID pair (<{0:08X}>, <{1:08X}>) in incorrect order")]
-    NameTableOrder(u32, u32),
-    /// Format-related assertions, error instead of panic to allow recovery on malformed inputs
-    #[error("Assertion error: {0}")]
-    Assert(String),
 }
 
-#[derive(Debug)]
-pub enum Scope {
-    Table,
-    File,
+#[derive(Error, Debug)]
+pub enum ReadError {
+    #[error("invalid magic bytes {0:02X?}")]
+    InvalidMagic([u8; 4]),
+    #[error("unsupported version {0}")]
+    UnsupportedVersion(u32),
+    #[error("unknown cell type: {0}")]
+    UnknownCellType(u8),
+    #[error("unknown value type: {0}")]
+    UnknownValueType(u8),
+    #[error("name table contains duplicate ID <{0:08X}>")]
+    NameTableDuplicate(u32),
+    #[error("name table contains ID pair (<{0:08X}>, <{1:08X}>) in incorrect order")]
+    NameTableOrder(u32, u32),
+    #[error("unexpected unknown value {0}")]
+    UnexpectedUnknown(u32),
+    #[error(transparent)]
+    Utf8(#[from] Utf8Error),
+}
+
+#[derive(Debug, Error)]
+#[error("BDAT read error at {pos}: {error}")]
+pub struct PosError {
+    pub pos: u64,
+    pub error: ReadError,
+}
+
+impl BdatError {
+    pub(crate) fn new_read(pos: u64, error: ReadError) -> Self {
+        Self::Read(Box::new(PosError { pos, error }))
+    }
 }
