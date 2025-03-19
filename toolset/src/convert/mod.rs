@@ -193,9 +193,10 @@ pub fn run_extract(args: ConvertArgs, hash_table: HashNameTable) -> Result<()> {
                     File::create(tables_dir.join(serializer.get_file_name(&name.as_file_name())))
                         .context("Could not create output file")?;
                 let mut writer = BufWriter::new(out_file);
+                let name = table.name().to_string();
                 serializer
                     .write_table(table, &hash_table, &mut writer)
-                    .context("Could not write table")?;
+                    .with_context(|| format!("Could not write table {}", name))?;
                 writer.flush().context("Could not save table")?;
 
                 table_bar.inc(1);
@@ -280,11 +281,18 @@ fn run_pack(args: ConvertArgs) -> Result<()> {
                     let mut reader = BufReader::new(table_file);
 
                     table_bar.inc(1);
-                    let table = deserializer.read_table(
-                        label.clone().into_hash(schema_file.version).into_owned(),
-                        &schema_file,
-                        &mut reader,
-                    )?;
+                    let table = deserializer
+                        .read_table(
+                            label.clone().into_hash(schema_file.version).into_owned(),
+                            &schema_file,
+                            &mut reader,
+                        )
+                        .with_context(|| {
+                            format!(
+                                "Could not read source file for table {}",
+                                label.to_string_convert()
+                            )
+                        })?;
                     let warnings = check_table_for_write(&table, &label.to_string_convert());
                     Ok((table, warnings))
                 })
@@ -310,7 +318,8 @@ fn run_pack(args: ConvertArgs) -> Result<()> {
                 .input
                 .game
                 .unwrap_or_else(|| BdatGame::version_default(schema_file.version));
-            game.to_writer(out_file, tables)?;
+            game.to_writer(out_file, tables)
+                .with_context(|| format!("Could not write tables ({})", schema_file.file_name))?;
             progress_bar.master_bar.inc(1);
 
             op_result.end_file();
