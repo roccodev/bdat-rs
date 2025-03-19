@@ -1,6 +1,6 @@
 # Modern BDAT format
 
-This document describes the data format used for BDAT files in Xenoblade Chronicles 3.
+This document describes the data format used for BDAT files in Xenoblade Chronicles 3 and Xenoblade Chronicles X: Definitive Edition.
 
 ## Hashed labels
 
@@ -45,7 +45,7 @@ Tables in each file are in no particular order.
 | ID of the first row                            | u32  |
 | ??? (0)                                        | u32  |
 | Column info table offset                       | u32  |
-| Row ID -> Index table offset                   | u32  |
+| Row ID table offset                   | u32  |
 | Row data offset                                | u32  |
 | Size of a single row, bytes                    | u32  |
 | String table offset                            | u32  |
@@ -61,6 +61,11 @@ and the second element is the row index (that always starts at 0, i.e. `Row ID -
 
 Pairs must be ordered by hash, as the game runs a binary search to look them up.
 
+In 3, there must not be duplicate hashes, and there must be an entry for each row. This is relaxed
+in XDE (likely to ease porting of X tables): duplicates are still not allowed, but the table may
+be incomplete. In XDE, the row ID table has its size bounded by the start of the row section. In 3,
+the game reads as many entries as there are rows.
+
 ## Column info
 
 Column names are always hashed. When reading the column name, a 32-bit value should be expected.
@@ -74,7 +79,7 @@ This structure is repeated for each column.
 
 ## Row data and values
 
-Unlike legacy BDATs, there are no flag or list cells.  
+Unlike legacy BDATs, there are no flag or list cells (see below).  
 Rows are stored sequentially. Each cell is represented as follows, depending on value type:
 
 | ID | Type | Size (bytes) | Notes |
@@ -85,13 +90,23 @@ Rows are stored sequentially. Each cell is represented as follows, depending on 
 | 4 | Signed Byte | 1 | |
 | 5 | Signed Short | 2 | |
 | 6 | Signed Int | 4 | |
-| 7 | String | 4 | pointer to a nul-terminated C string (relative to string table) |
+| 7 | String | 4 | pointer to a nul-terminated UTF-8 string (relative to string table) |
 | 8 | Float | 4 | IEEE-754 floating point |
 | 9 | Murmur3 Hash | 4 | murmur3 (32bit) hashed ID |
 | 10 | Percent | 1 | `v = raw * 0.01` |
 | 11 | Debug String | 4 | same as String, used for debug columns like `DebugName` |
 | 12 | Unknown | 1 | |
 | 13 | MessageStudio Index? | 2 | Used for most `Name` and `Caption` fields, that point to message tables |
+
+In XDE, floats seem to have been adapted from their original precise source values (in X, they were `20.12` fixed-points), as most of them cannot be recreated from trivial `/ 4096.0` operations on the XCX BDATs.
+
+### Alternative flag/list cell representation
+
+In XDE, tables from the original game were adapted to use the new column representation. The game still accesses fields using the original structure though, here's how the conversion is implemented.
+
+Flag cells are now converted to boolean (`Unsigned Byte` 0/1) columns named with the format `{parent}({field})`. For example, the `is_friendly` field from the `flags` parent column is now a separate column called `flags(is_friendly)`.
+
+List cells are converted to multiple columns of the same type, named with the format `{name}[{index}]`. For example, the `attributes` list cell with 5 elements has turned into 5 columns named `attributes[0]`, `attributes[1]`, `attributes[2]`, `attributes[3]`, and `attributes[4]`.
 
 ## String table
 
@@ -105,12 +120,15 @@ Strings from row values are always in plain text.
 The table name is always the first entry.  
 The second entry is also reserved. Language BDATs leave it empty (0), but it is populated in game BDATs (it's possibly a debug name).
 
-## Debug sections (1.3.0)
+## Debug sections (1.3.0, XDE)
 
-Some files in XC3 1.3.0 had debug sections left inside them.
+Some files in XC3 1.3.0 and XDE have debug sections left inside them.
 
-Debug sections aren't referenced by any offset, but they are commonly found at index 0x30 (right after the header, where
+Debug sections aren't referenced by any offset, but they are found at index 0x30 (right after the header, where
 column info would usually be).
+
+In XDE, some functions load the string but immediately discard it, suggesting it might have been
+used for e.g. logging.
 
 Debug sections follow this format:
 
