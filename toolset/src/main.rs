@@ -13,6 +13,7 @@ use filter::FileFilter;
 use hash::HashArgs;
 use info::InfoArgs;
 use itertools::Itertools;
+use strings::StringsArgs;
 use util::hash::HashNameTable;
 use walkdir::WalkDir;
 
@@ -23,6 +24,7 @@ pub mod filter;
 pub mod hash;
 mod info;
 mod scramble;
+mod strings;
 pub mod util;
 
 #[derive(Parser)]
@@ -55,6 +57,8 @@ enum Commands {
     /// Calculates hashes from file or command input. Hashes are returned one per line, in the order
     /// of the respective input strings.
     Hash(HashArgs),
+    /// Extracts strings from BDAT files
+    Strings(StringsArgs),
 }
 
 #[derive(Args, Default)]
@@ -85,6 +89,7 @@ fn main() -> anyhow::Result<()> {
         Some(Commands::Scramble(args)) => scramble::scramble(args),
         Some(Commands::Unscramble(args)) => scramble::unscramble(args),
         Some(Commands::Hash(args)) => hash::run(args),
+        Some(Commands::Strings(args)) => strings::run(args),
         _ => Ok(()),
     }
 }
