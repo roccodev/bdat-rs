@@ -226,12 +226,37 @@ impl TableHeader {
         reader.read_u8()?;
         let offset_names = reader.read_u16::<E>()? as usize;
         let row_len = reader.read_u16::<E>()? as usize;
-        let offset_hashes = reader.read_u16::<E>()? as usize;
-        let hash_slot_count = reader.read_u16::<E>()? as usize;
-        let offset_rows = reader.read_u16::<E>()? as usize;
-        let row_count = reader.read_u16::<E>()? as usize;
-        let base_id = reader.read_u16::<E>()?;
-        assert_eq!(2, reader.read_u16::<E>()?, "unknown constant is not 2");
+
+        let offset_hashes;
+        let hash_slot_count;
+        let offset_rows;
+        let row_count;
+        if version == LegacyVersion::Disaster {
+            offset_rows = reader.read_u16::<E>()? as usize;
+            row_count = reader.read_u16::<E>()? as usize;
+            offset_hashes = reader.read_u16::<E>()? as usize;
+            hash_slot_count = reader.read_u16::<E>()? as usize;
+        } else {
+            offset_hashes = reader.read_u16::<E>()? as usize;
+            hash_slot_count = reader.read_u16::<E>()? as usize;
+            offset_rows = reader.read_u16::<E>()? as usize;
+            row_count = reader.read_u16::<E>()? as usize;
+        }
+
+        let mut base_id = 1;
+        if version != LegacyVersion::Disaster {
+            base_id = reader.read_u16::<E>()?;
+            let unk = reader.read_u16::<E>()?;
+            if unk != 2 {
+                return Err(BdatError::new_read(
+                    reader.stream_position()? - 2,
+                    ReadError::UnexpectedUnknown(unk.into()),
+                ));
+            }
+        }
+
+        // These will just read junk (usually just zeroes) for Disaster, but they are not used
+        // for that version
         let scramble_key = reader.read_u16::<E>()?;
         let offset_strings = reader.read_u32::<E>()? as usize;
         let strings_len = reader.read_u32::<E>()? as usize;
@@ -664,7 +689,11 @@ impl<'a, 't, E: ByteOrder> RowReader<'a, 't, E> {
             ValueType::SignedShort => Value::SignedShort(buf.read_i16::<E>()?),
             ValueType::SignedInt => Value::SignedInt(buf.read_i32::<E>()?),
             ValueType::String => {
-                let offset = buf.read_u32::<E>()? as usize;
+                let offset = if self.table.version == LegacyVersion::Disaster {
+                    buf.read_u16::<E>()? as usize
+                } else {
+                    buf.read_u32::<E>()? as usize
+                };
                 // explicit return to get rid of the `buf` mutable borrow early
                 return Ok(Value::String(self.table.read_string(offset)?));
             }

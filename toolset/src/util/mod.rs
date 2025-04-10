@@ -31,6 +31,7 @@ pub struct RayonPoolJobs {
 
 #[derive(Clone, Copy, Ord, PartialOrd, Eq, PartialEq)]
 pub enum BdatGame {
+    Disaster,
     Wii,
     Xcx,
     New3ds,
@@ -41,6 +42,7 @@ pub enum BdatGame {
 impl BdatGame {
     pub fn version_default(version: BdatVersion) -> Self {
         match version {
+            BdatVersion::Legacy(LegacyVersion::Disaster) => Self::Disaster,
             BdatVersion::Legacy(LegacyVersion::Wii) => Self::Wii,
             BdatVersion::Legacy(LegacyVersion::New3ds) => Self::New3ds,
             BdatVersion::Legacy(LegacyVersion::Switch) => Self::LegacySwitch,
@@ -56,6 +58,13 @@ impl BdatGame {
         op_result: &mut OpResult,
     ) -> BdatResult<Vec<CompatTable<'b>>> {
         Ok(match self {
+            Self::Disaster => {
+                bdat::legacy::from_bytes::<WiiEndian>(bytes, LegacyVersion::Disaster)?
+                    .get_tables()?
+                    .into_iter()
+                    .map(Into::into)
+                    .collect()
+            }
             Self::Wii => bdat::legacy::from_bytes::<WiiEndian>(bytes, LegacyVersion::Wii)?
                 .get_tables()?
                 .into_iter()
@@ -105,6 +114,9 @@ impl BdatGame {
             .map(CompatTable::into_legacy)
             .collect_vec();
         match self {
+            Self::Disaster => {
+                bdat::legacy::to_writer::<_, WiiEndian>(writer, tables, LegacyVersion::Disaster)
+            }
             Self::Wii => {
                 bdat::legacy::to_writer::<_, WiiEndian>(writer, tables, LegacyVersion::Wii)
             }
@@ -135,6 +147,7 @@ impl BdatGame {
             .map(CompatTable::into_legacy)
             .collect_vec();
         match self {
+            Self::Disaster => bdat::legacy::to_vec::<WiiEndian>(tables, LegacyVersion::Disaster),
             Self::Wii => bdat::legacy::to_vec::<WiiEndian>(tables, LegacyVersion::Wii),
             Self::LegacySwitch => {
                 bdat::legacy::to_vec::<SwitchEndian>(tables, LegacyVersion::Switch)
@@ -202,6 +215,7 @@ impl RayonPoolJobs {
 impl ValueEnum for BdatGame {
     fn value_variants<'a>() -> &'a [Self] {
         &[
+            Self::Disaster,
             Self::Wii,
             Self::New3ds,
             Self::Xcx,
@@ -212,6 +226,7 @@ impl ValueEnum for BdatGame {
 
     fn to_possible_value<'a>(&self) -> Option<clap::builder::PossibleValue> {
         match self {
+            Self::Disaster => Some(clap::builder::PossibleValue::new("ddoc")),
             Self::Wii => Some(clap::builder::PossibleValue::new("xc1")),
             Self::New3ds => Some(clap::builder::PossibleValue::new("xc3d")),
             Self::LegacySwitch => Some(clap::builder::PossibleValue::new("xc2de")),
@@ -224,6 +239,7 @@ impl ValueEnum for BdatGame {
 impl From<BdatGame> for BdatVersion {
     fn from(value: BdatGame) -> Self {
         match value {
+            BdatGame::Disaster => LegacyVersion::Disaster.into(),
             BdatGame::Wii => LegacyVersion::Wii.into(),
             BdatGame::New3ds => LegacyVersion::New3ds.into(),
             BdatGame::Xcx => LegacyVersion::X.into(),

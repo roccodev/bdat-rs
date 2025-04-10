@@ -98,7 +98,9 @@ fn unscramble_file(path_in: PathBuf, path_out: PathBuf, progress: &ProgressBarSt
         LegacyVersion::Switch | LegacyVersion::New3ds => {
             FileHeader::read::<_, SwitchEndian>(cursor)
         }
-        LegacyVersion::X | LegacyVersion::Wii => FileHeader::read::<_, WiiEndian>(cursor),
+        LegacyVersion::Disaster | LegacyVersion::X | LegacyVersion::Wii => {
+            FileHeader::read::<_, WiiEndian>(cursor)
+        }
     }?;
 
     let table_bar = progress.add_child(header.table_count);
@@ -109,7 +111,7 @@ fn unscramble_file(path_in: PathBuf, path_out: PathBuf, progress: &ProgressBarSt
             LegacyVersion::Switch | LegacyVersion::New3ds => {
                 TableHeader::read::<SwitchEndian>(Cursor::new(&table), version)
             }
-            LegacyVersion::X | LegacyVersion::Wii => {
+            LegacyVersion::Disaster | LegacyVersion::X | LegacyVersion::Wii => {
                 TableHeader::read::<WiiEndian>(Cursor::new(&table), version)
             }
         }?;
@@ -141,7 +143,7 @@ fn scramble_file(path_in: PathBuf, path_out: PathBuf, progress: &ProgressBarStat
     let cursor = Cursor::new(&bytes);
     let wii_endian = match version {
         LegacyVersion::Wii | LegacyVersion::X => true,
-        LegacyVersion::Switch | LegacyVersion::New3ds => false,
+        LegacyVersion::Disaster | LegacyVersion::Switch | LegacyVersion::New3ds => false,
     };
     let header = match wii_endian {
         true => FileHeader::read::<_, WiiEndian>(cursor),

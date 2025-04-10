@@ -5,7 +5,8 @@
 [![docs.rs (with version)](https://img.shields.io/docsrs/bdat/latest)](https://docs.rs/bdat)
 
 
-A library to read and write [MONOLITHSOFT](https://www.monolithsoft.co.jp/)'s proprietary BDAT format, used for data tables in all Xenoblade games.
+A library to read and write [MONOLITHSOFT](https://www.monolithsoft.co.jp/)'s proprietary BDAT format, 
+used for data tables in most of their games, including all Xenoblade games and Disaster: Day of Crisis.
 
 ## Usage
 

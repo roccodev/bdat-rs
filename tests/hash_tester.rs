@@ -66,12 +66,14 @@ fn test_table(table: &LegacyTable, version: LegacyVersion, slots: impl TryInto<N
             )
             .unwrap()
         }
-        LegacyVersion::X | LegacyVersion::Wii => bdat::legacy::to_vec_options::<WiiEndian>(
-            [table],
-            version,
-            LegacyWriteOptions::new().hash_slots(slots),
-        )
-        .unwrap(),
+        LegacyVersion::X | LegacyVersion::Wii | LegacyVersion::Disaster => {
+            bdat::legacy::to_vec_options::<WiiEndian>(
+                [table],
+                version,
+                LegacyWriteOptions::new().hash_slots(slots),
+            )
+            .unwrap()
+        }
     };
 
     let table_bytes = &written[12..];
@@ -86,7 +88,7 @@ fn test_table(table: &LegacyTable, version: LegacyVersion, slots: impl TryInto<N
             match version {
                 LegacyVersion::Switch | LegacyVersion::New3ds =>
                     find_col_def::<SwitchEndian>(table_bytes, &col, usize::from(slots) as u32),
-                LegacyVersion::X | LegacyVersion::Wii =>
+                LegacyVersion::X | LegacyVersion::Disaster | LegacyVersion::Wii =>
                     find_col_def::<WiiEndian>(table_bytes, &col, usize::from(slots) as u32),
             },
             "column {col} not found"

@@ -73,9 +73,9 @@ pub fn from_bytes(bytes: &mut [u8]) -> Result<VersionSlice<'_>> {
         BdatVersion::Legacy(v @ LegacyVersion::Switch | v @ LegacyVersion::New3ds) => {
             Ok(VersionSlice::LegacySwitch(LegacyBytes::new(bytes, v)?))
         }
-        BdatVersion::Legacy(v @ LegacyVersion::Wii | v @ LegacyVersion::X) => {
-            Ok(VersionSlice::LegacyWii(LegacyBytes::new(bytes, v)?))
-        }
+        BdatVersion::Legacy(
+            v @ LegacyVersion::Disaster | v @ LegacyVersion::Wii | v @ LegacyVersion::X,
+        ) => Ok(VersionSlice::LegacyWii(LegacyBytes::new(bytes, v)?)),
         BdatVersion::Modern => Ok(VersionSlice::Modern(
             FileReader::<_, SwitchEndian>::read_file(BdatSlice::<SwitchEndian>::new(bytes))?,
         )),
@@ -115,9 +115,9 @@ pub fn from_reader<R: Read + Seek>(mut reader: R) -> Result<VersionReader<R>> {
         BdatVersion::Legacy(v @ LegacyVersion::Switch | v @ LegacyVersion::New3ds) => {
             Ok(VersionReader::LegacySwitch(LegacyReader::new(reader, v)?))
         }
-        BdatVersion::Legacy(v @ LegacyVersion::Wii | v @ LegacyVersion::X) => {
-            Ok(VersionReader::LegacyWii(LegacyReader::new(reader, v)?))
-        }
+        BdatVersion::Legacy(
+            v @ LegacyVersion::Disaster | v @ LegacyVersion::Wii | v @ LegacyVersion::X,
+        ) => Ok(VersionReader::LegacyWii(LegacyReader::new(reader, v)?)),
         BdatVersion::Modern => Ok(VersionReader::Modern(
             FileReader::<_, SwitchEndian>::read_file(BdatReader::<_, SwitchEndian>::new(reader))?,
         )),
@@ -231,7 +231,15 @@ fn detect_version<R: Read + Seek>(mut reader: R) -> Result<BdatVersion> {
     if reader.read_u32::<SwitchEndian>()? != MAGIC_INT {
         return Err(DetectError::NotBdat.into());
     }
-    reader.seek(SeekFrom::Current(32 - 4 * 3))?;
+
+    // Table+20 != 2 => Disaster: Day of Crisis
+    reader.seek(SeekFrom::Current(20 - 4))?;
+    let t_20 = reader.read_u16::<WiiEndian>()?;
+    if t_20 != 2 {
+        return Ok(LegacyVersion::Disaster.into());
+    }
+
+    reader.seek(SeekFrom::Start(first_offset as u64 + 32 - 4 * 2))?;
     let string_table_offset = reader.read_u32::<WiiEndian>()?;
     let string_table_len = reader.read_u32::<WiiEndian>()?;
     let final_offset = string_table_offset + string_table_len;

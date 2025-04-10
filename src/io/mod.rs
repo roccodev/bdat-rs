@@ -34,6 +34,8 @@ pub enum BdatVersion {
 #[derive(Debug, Copy, Clone, PartialEq, Eq, PartialOrd, Ord)]
 #[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub enum LegacyVersion {
+    /// Used in Disaster: Day of Crisis (Wii)
+    Disaster,
     /// Used in XC1 (Wii)
     Wii,
     /// Used in XC3D (New 3DS)
@@ -70,7 +72,7 @@ impl LegacyVersion {
     }
 
     pub(crate) const fn is_wii_table_format(&self) -> bool {
-        matches!(self, Self::Wii | Self::New3ds)
+        matches!(self, Self::Disaster | Self::Wii | Self::New3ds)
     }
 }
 
